@@ -1,0 +1,7 @@
+{
+  "req_id": 123,
+  "type": "result",
+  "success": false,
+  "error_code": "index_out_of_range",
+  "error_message": "Index is out of range"
+}

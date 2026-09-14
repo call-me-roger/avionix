@@ -1,0 +1,8 @@
+{
+  "api": {
+    "versions": ["v1", "v2", "v3"]
+  },
+  "x-plane": {
+    "version": "12.4.0"
+  }
+}
