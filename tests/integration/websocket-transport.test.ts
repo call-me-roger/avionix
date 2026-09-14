@@ -2,6 +2,7 @@ import { isAvionixError } from '@/domain/errors/avionix-error';
 import type { DataRefUpdate } from '@/domain/simulator/types';
 import type { SocketCloseInfo } from '@/domain/simulator/simulator-client';
 import { createLogger, createMemorySink } from '@/infrastructure/logging/logger';
+import type { WebSocketLike } from '@/infrastructure/xplane/websocket/websocket-transport';
 import { WebSocketTransport } from '@/infrastructure/xplane/websocket/websocket-transport';
 import { MockXPlaneServer } from '../mock-xplane/mock-xplane-server';
 
@@ -78,8 +79,30 @@ describe('WebSocketTransport', () => {
   });
 
   it('rejects connect with TIMEOUT when nothing answers', async () => {
-    const ws = transport({ url: 'ws://192.0.2.1:8086/api/v3', connectTimeoutMs: 100 });
-    await expect(codeOf(ws.connect())).resolves.toBe('TIMEOUT');
+    jest.useFakeTimers();
+    try {
+      const fakeSocket: WebSocketLike = {
+        readyState: 0,
+        onopen: null,
+        onclose: null,
+        onerror: null,
+        onmessage: null,
+        send: () => undefined,
+        close: jest.fn(),
+      };
+      const ws = new WebSocketTransport({
+        url: 'ws://fake-host/api/v3',
+        logger,
+        connectTimeoutMs: 100,
+        createSocket: () => fakeSocket,
+      });
+      const pending = codeOf(ws.connect());
+      await jest.advanceTimersByTimeAsync(101);
+      await expect(pending).resolves.toBe('TIMEOUT');
+      expect(fakeSocket.close).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('surfaces simulator errors for a failed request', async () => {
