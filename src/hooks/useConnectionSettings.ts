@@ -6,6 +6,7 @@ import {
   loadConnectionSettings,
   saveConnectionSettings,
 } from '@/application/settings-store';
+import { validatePort } from '@/domain/connection/connection-config';
 
 export function useConnectionSettings() {
   const { settingsStorage } = useServices();
@@ -29,8 +30,10 @@ export function useConnectionSettings() {
   }, [settingsStorage]);
 
   const persist = useCallback(async () => {
-    const parsedPort = Number(port.trim());
-    if (!/^\d+$/.test(port.trim()) || !Number.isInteger(parsedPort)) {
+    let parsedPort: number;
+    try {
+      parsedPort = validatePort(port);
+    } catch {
       return;
     }
     await saveConnectionSettings(settingsStorage, { host: host.trim(), port: parsedPort });

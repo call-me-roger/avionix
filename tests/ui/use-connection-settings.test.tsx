@@ -58,4 +58,17 @@ describe('useConnectionSettings', () => {
     });
     expect(await storage.getItem('avionix.connection')).toBeNull();
   });
+
+  it('does not persist an out-of-range port', async () => {
+    const storage = createMemorySettingsStorage();
+    const { result } = await renderHook(() => useConnectionSettings(), {
+      wrapper: wrapperFor(services(storage)),
+    });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(() => result.current.setPort('99999'));
+    await act(async () => {
+      await result.current.persist();
+    });
+    expect(await storage.getItem('avionix.connection')).toBeNull();
+  });
 });
