@@ -483,7 +483,22 @@ export class MockXPlaneServer {
         const list = Array.isArray(params.datarefs) ? params.datarefs : [];
         let failures = 0;
         for (const item of list) {
-          if (!isRecord(item) || typeof item.id !== 'number' || !isDataRefValue(item.value)) {
+          if (!isRecord(item) || typeof item.id !== 'number') {
+            failures += 1;
+            reply({
+              success: false,
+              error_code: 'invalid_dataref_id',
+              error_message: 'Dataref id is missing or not a number',
+            });
+            continue;
+          }
+          if (!isDataRefValue(item.value)) {
+            failures += 1;
+            reply({
+              success: false,
+              error_code: 'insufficient_data',
+              error_message: `Provided data for dataref ${item.id} is not valid`,
+            });
             continue;
           }
           const dataRef = this.dataRefs.get(item.id);

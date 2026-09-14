@@ -1,5 +1,9 @@
 import { MockXPlaneServer } from '../mock-xplane/mock-xplane-server';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function waitForMessage(socket: WebSocket, predicate: (msg: unknown) => boolean): Promise<unknown> {
   return new Promise((resolve) => {
     const handler = (event: MessageEvent): void => {
@@ -115,6 +119,50 @@ describe('MockXPlaneServer', () => {
     const unknown = waitForMessage(socket, (m) => (m as { req_id?: number }).req_id === 2);
     socket.send(JSON.stringify({ req_id: 2, type: 'bogus', params: {} }));
     expect(await unknown).toMatchObject({ success: false, error_code: 'unknown_type' });
+
+    socket.close();
+  });
+
+  it('reports each malformed dataref_set_values item as its own failure', async () => {
+    const socket = await openSocket(`ws://${server.host}:${server.port}/api/v3`);
+    const isReq3 = (m: unknown): boolean => isRecord(m) && m.req_id === 3;
+
+    const invalidId = waitForMessage(
+      socket,
+      (m) => isReq3(m) && (m as { error_code?: string }).error_code === 'invalid_dataref_id',
+    );
+    const insufficientData = waitForMessage(
+      socket,
+      (m) => isReq3(m) && (m as { error_code?: string }).error_code === 'insufficient_data',
+    );
+
+    socket.send(
+      JSON.stringify({
+        req_id: 3,
+        type: 'dataref_set_values',
+        params: {
+          datarefs: [{ id: 1003, value: 45 }, { value: 1 }, { id: 1001, value: null }],
+        },
+      }),
+    );
+
+    const [first, second] = await Promise.all([invalidId, insufficientData]);
+    expect(first).toMatchObject({ req_id: 3, success: false, error_code: 'invalid_dataref_id' });
+    expect(second).toMatchObject({ req_id: 3, success: false, error_code: 'insufficient_data' });
+
+    let sawSuccess = false;
+    const watchForSuccess = (event: MessageEvent): void => {
+      const parsed: unknown = JSON.parse(String(event.data));
+      if (isReq3(parsed) && (parsed as { success?: boolean }).success === true) {
+        sawSuccess = true;
+      }
+    };
+    socket.addEventListener('message', watchForSuccess);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    socket.removeEventListener('message', watchForSuccess);
+
+    expect(sawSuccess).toBe(false);
+    expect(server.writes).toContainEqual({ id: 1003, value: 45 });
 
     socket.close();
   });
