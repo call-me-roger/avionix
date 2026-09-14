@@ -48,10 +48,10 @@ describe('ThemeProvider', () => {
     expect(screen.getByTestId('background')).toHaveTextContent(lightTheme.colors.background);
   });
 
-  it('useTheme throws outside the provider', () => {
+  it('useTheme throws outside the provider', async () => {
     const spy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
-      expect(() => render(<Probe />)).rejects.toThrow('ThemeProvider');
+      await expect(render(<Probe />)).rejects.toThrow('ThemeProvider');
     } finally {
       spy.mockRestore();
     }
