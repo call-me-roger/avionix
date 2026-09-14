@@ -54,8 +54,5 @@ export function toDataRefUpdates(
     }
     updates.push({ id: Number(trimmed), value, receivedAt });
   }
-  // Sort by ID descending to preserve fixture insertion order
-  // (numeric keys are reordered by Object.entries)
-  updates.sort((a, b) => b.id - a.id);
   return updates;
 }

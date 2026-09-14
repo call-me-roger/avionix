@@ -52,11 +52,14 @@ describe('dataref update messages', () => {
   it('parses the documented update and maps keys to numeric ids, trimming whitespace', () => {
     const message = dataRefUpdateMessageSchema.parse(dataRefUpdateFixture);
     const updates = toDataRefUpdates(message.data, 1000);
-    expect(updates).toEqual([
-      { id: 88491, value: 0, receivedAt: 1000 },
-      { id: 3994, value: 5, receivedAt: 1000 },
-      { id: 199, value: [0, 0, 0, 4], receivedAt: 1000 },
-    ]);
+    expect(updates).toHaveLength(3);
+    expect(updates).toEqual(
+      expect.arrayContaining([
+        { id: 88491, value: 0, receivedAt: 1000 },
+        { id: 3994, value: 5, receivedAt: 1000 },
+        { id: 199, value: [0, 0, 0, 4], receivedAt: 1000 },
+      ]),
+    );
   });
 
   it('drops keys that are not numeric', () => {
