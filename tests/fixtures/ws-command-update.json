@@ -1,0 +1,8 @@
+{
+  "type": "command_update_is_active",
+  "data": {
+    "88491": false,
+    "3994": false,
+    "199": true
+  }
+}
