@@ -72,7 +72,9 @@ describe('ThemeToggle', () => {
 
     await fireEvent.press(screen.getByLabelText('Theme Dark'));
     await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('dark'));
+    expect(screen.getByLabelText('Theme Dark')).toBeChecked();
     expect(screen.getByLabelText('Theme Dark')).toBeSelected();
+    expect(screen.getByLabelText('Theme System')).not.toBeChecked();
     expect(screen.getByLabelText('Theme System')).not.toBeSelected();
     await waitFor(async () =>
       expect(await storage.getItem(THEME_STORAGE_KEY)).toBe(JSON.stringify({ preference: 'dark' })),
@@ -80,5 +82,32 @@ describe('ThemeToggle', () => {
 
     await fireEvent.press(screen.getByLabelText('Theme System'));
     await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('light'));
+  });
+
+  it('a choice made before the stored preference loads is not overwritten', async () => {
+    let release: (value: string | null) => void = () => undefined;
+    const storage = {
+      getItem: () =>
+        new Promise<string | null>((resolve) => {
+          release = resolve;
+        }),
+      setItem: jest.fn(async () => undefined),
+    };
+
+    await render(
+      <ThemeProvider storage={storage} systemSchemeOverride="light">
+        <ThemeToggle />
+        <Probe />
+      </ThemeProvider>,
+    );
+
+    await fireEvent.press(screen.getByLabelText('Theme Dark'));
+    await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('dark'));
+
+    release(JSON.stringify({ preference: 'light' }));
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('ready'));
+
+    expect(screen.getByTestId('mode')).toHaveTextContent('dark');
+    expect(screen.getByTestId('preference')).toHaveTextContent('dark');
   });
 });

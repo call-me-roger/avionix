@@ -3,15 +3,15 @@ import { z } from 'zod';
 import type { SettingsStorage } from '@/application/settings-store';
 import type { ThemeMode } from '@/theme/tokens';
 
-export type ThemePreference = 'system' | 'light' | 'dark';
+export const THEME_PREFERENCES = ['system', 'light', 'dark'] as const;
 
-export const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark'];
+export type ThemePreference = (typeof THEME_PREFERENCES)[number];
 
 export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'system';
 
 export const THEME_STORAGE_KEY = 'avionix.theme';
 
-const storedSchema = z.object({ preference: z.enum(['system', 'light', 'dark']) });
+const storedSchema = z.object({ preference: z.enum([...THEME_PREFERENCES]) });
 
 export function resolveThemeMode(
   preference: ThemePreference,

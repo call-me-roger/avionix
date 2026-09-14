@@ -147,7 +147,9 @@ describe('MvpScreen', () => {
 
   it('paints the light theme by default and the dark theme when the OS is dark', async () => {
     const { services } = makeServices();
+    await saveThemePreference(services.settingsStorage, 'light');
     const light = await renderScreen(services, 'light');
+    await waitFor(() => expect(screen.getByLabelText('Theme Light')).toBeChecked());
     expect(screen.getByTestId('mvp-screen')).toHaveStyle({
       backgroundColor: lightTheme.colors.background,
     });

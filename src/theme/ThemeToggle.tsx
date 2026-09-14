@@ -34,7 +34,8 @@ export function ThemeToggle() {
             key={option}
             accessibilityRole="radio"
             accessibilityLabel={`Theme ${LABELS[option]}`}
-            accessibilityState={{ selected }}
+            accessibilityState={{ checked: selected, selected }}
+            hitSlop={8}
             onPress={() => setPreference(option)}
             style={[styles.chip, selected ? styles.chipSelected : null]}
           >

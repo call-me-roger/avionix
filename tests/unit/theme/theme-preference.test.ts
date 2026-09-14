@@ -1,11 +1,18 @@
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import {
   DEFAULT_THEME_PREFERENCE,
+  THEME_PREFERENCES,
   THEME_STORAGE_KEY,
   loadThemePreference,
   resolveThemeMode,
   saveThemePreference,
 } from '@/theme/theme-preference';
+
+describe('THEME_PREFERENCES', () => {
+  it('lists the supported preferences in a stable order', () => {
+    expect(THEME_PREFERENCES).toEqual(['system', 'light', 'dark']);
+  });
+});
 
 describe('resolveThemeMode', () => {
   it('follows the OS scheme when the preference is system', () => {

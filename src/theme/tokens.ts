@@ -39,7 +39,7 @@ export const lightTheme: Theme = {
     danger: '#b00020',
     success: '#1a7f37',
     inputBackground: '#ffffff',
-    placeholder: '#8b929c',
+    placeholder: '#6b7280',
   },
   spacing,
   radius,
@@ -54,18 +54,20 @@ export const darkTheme: Theme = {
     text: '#e6edf3',
     textMuted: '#9aa4b2',
     border: '#30363d',
-    primary: '#58a6ff',
-    onPrimary: '#0e1117',
+    primary: '#1f6feb',
+    onPrimary: '#ffffff',
     danger: '#ff7b72',
     success: '#3fb950',
     inputBackground: '#0d1117',
-    placeholder: '#6e7681',
+    placeholder: '#8b949e',
   },
   spacing,
   radius,
   typography,
 };
 
+const THEMES: Record<ThemeMode, Theme> = { light: lightTheme, dark: darkTheme };
+
 export function themeForMode(mode: ThemeMode): Theme {
-  return mode === 'dark' ? darkTheme : lightTheme;
+  return THEMES[mode];
 }

@@ -1,4 +1,12 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { StyleSheet, useColorScheme } from 'react-native';
 
 import type { SettingsStorage } from '@/application/settings-store';
@@ -34,6 +42,7 @@ export function ThemeProvider({ storage, systemSchemeOverride, children }: Theme
     systemSchemeOverride === undefined ? normalizedOsScheme : systemSchemeOverride;
   const [preference, setPreferenceState] = useState<ThemePreference>(DEFAULT_THEME_PREFERENCE);
   const [ready, setReady] = useState(false);
+  const touched = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,7 +50,9 @@ export function ThemeProvider({ storage, systemSchemeOverride, children }: Theme
       if (cancelled) {
         return;
       }
-      setPreferenceState(stored);
+      if (!touched.current) {
+        setPreferenceState(stored);
+      }
       setReady(true);
     });
     return () => {
@@ -51,6 +62,7 @@ export function ThemeProvider({ storage, systemSchemeOverride, children }: Theme
 
   const setPreference = useCallback(
     (next: ThemePreference) => {
+      touched.current = true;
       setPreferenceState(next);
       void saveThemePreference(storage, next);
     },

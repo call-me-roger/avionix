@@ -80,10 +80,12 @@ do not interfere with each other. Device roles and pairing are intentionally not
 
 `src/theme` owns appearance. A `Theme` (`tokens.ts`) holds `mode`, `colors`, `spacing`, `radius`
 and `typography`; `lightTheme` and `darkTheme` share one shape, so adding a palette later means
-adding one more `Theme` object. `ThemeProvider` (`theme-context.tsx`) resolves the effective mode
-from the persisted preference (`system`, `light`, `dark`; key `avionix.theme`, validated with zod,
-default `system`) and the OS colour scheme, and exposes `useTheme()`, `useThemePreference()` and
-`useThemedStyles(factory)`. Components never hold colour literals; they use the primitives in
+adding one more `Theme` object. `themeForMode` dispatches through a `Record<ThemeMode, Theme>`, so
+an unhandled mode is a compile error, and the preference literals live in one `as const` tuple that
+feeds both the type and the zod schema. `ThemeProvider` (`theme-context.tsx`) resolves the effective
+mode from the persisted preference (`system`, `light`, `dark`; key `avionix.theme`, validated with
+zod, default `system`) and the OS colour scheme, and exposes `useTheme()`, `useThemePreference()`
+and `useThemedStyles(factory)`. Components never hold colour literals; they use the primitives in
 `primitives.tsx` (`Section`, `SectionTitle`, `BodyText`, `ThemedTextInput`) or build styles from
 the theme. The toggle (`ThemeToggle.tsx`) sits under the Avionix heading. The theme preference is
 the second persisted setting after host and port; nothing else is stored.
