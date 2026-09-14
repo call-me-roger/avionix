@@ -1,34 +1,28 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
 
 import type { SessionSnapshot } from '@/application/session-snapshot';
+import { BodyText, Section, SectionTitle } from '@/theme/primitives';
 
 export function ConnectionStatus({ snapshot }: { snapshot: SessionSnapshot }) {
   const versions = snapshot.capabilities?.rawApiVersions.join(', ') ?? '-';
   const using = snapshot.apiVersion === null ? '' : ` (using ${snapshot.apiVersion})`;
   return (
-    <View style={styles.section}>
-      <Text style={styles.title}>Status</Text>
-      <Text>Status: {snapshot.state}</Text>
+    <Section>
+      <SectionTitle>Status</SectionTitle>
+      <BodyText>Status: {snapshot.state}</BodyText>
       {snapshot.state === 'reconnecting' ? (
-        <Text>Reconnect attempt: {snapshot.reconnectAttempt}</Text>
+        <BodyText>Reconnect attempt: {snapshot.reconnectAttempt}</BodyText>
       ) : null}
-      <Text>X-Plane version: {snapshot.capabilities?.simulatorVersion ?? '-'}</Text>
-      <Text>
+      <BodyText>X-Plane version: {snapshot.capabilities?.simulatorVersion ?? '-'}</BodyText>
+      <BodyText>
         API versions: {versions}
         {using}
-      </Text>
+      </BodyText>
       {snapshot.error !== null ? (
-        <Text style={styles.error}>
+        <BodyText tone="danger">
           {snapshot.error.code}: {snapshot.error.message}
-        </Text>
+        </BodyText>
       ) : null}
-    </View>
+    </Section>
   );
 }
-
-const styles = StyleSheet.create({
-  section: { marginBottom: 16 },
-  title: { fontWeight: 'bold', fontSize: 16, marginBottom: 4 },
-  error: { color: '#b00020', marginTop: 4 },
-});

@@ -1,8 +1,11 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { View } from 'react-native';
 
 import { MVP_DATAREFS } from '@/application/mvp-bindings';
 import type { SessionSnapshot, TelemetrySample } from '@/application/session-snapshot';
+import { BodyText, Section, SectionTitle } from '@/theme/primitives';
+import { useThemedStyles } from '@/theme/theme-context';
+import type { Theme } from '@/theme/tokens';
 
 function formatValue(sample: TelemetrySample | undefined): string {
   if (sample === undefined) {
@@ -23,10 +26,20 @@ const ROWS: { label: string; name: string }[] = [
   { label: 'Heading bug (deg)', name: MVP_DATAREFS.heading },
 ];
 
+const makeStyles = (theme: Theme) => ({
+  row: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    gap: theme.spacing.sm,
+  },
+  value: { fontVariant: ['tabular-nums' as const], fontWeight: 'bold' as const },
+});
+
 export function TelemetryPanel({ snapshot, now }: { snapshot: SessionSnapshot; now: number }) {
+  const styles = useThemedStyles(makeStyles);
   return (
-    <View style={styles.section}>
-      <Text style={styles.title}>Live telemetry</Text>
+    <Section>
+      <SectionTitle>Live telemetry</SectionTitle>
       {ROWS.map((row) => {
         const sample = snapshot.telemetry[row.name];
         const age =
@@ -35,20 +48,12 @@ export function TelemetryPanel({ snapshot, now }: { snapshot: SessionSnapshot; n
             : ` (${Math.max(0, Math.round((now - sample.receivedAt) / 1000))}s ago)`;
         return (
           <View key={row.name} style={styles.row}>
-            <Text>{row.label}</Text>
-            <Text style={styles.value}>{formatValue(sample)}</Text>
-            <Text style={styles.muted}>{age}</Text>
+            <BodyText>{row.label}</BodyText>
+            <BodyText style={styles.value}>{formatValue(sample)}</BodyText>
+            <BodyText muted>{age}</BodyText>
           </View>
         );
       })}
-    </View>
+    </Section>
   );
 }
-
-const styles = StyleSheet.create({
-  section: { marginBottom: 16 },
-  title: { fontWeight: 'bold', fontSize: 16, marginBottom: 4 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
-  value: { fontVariant: ['tabular-nums'], fontWeight: 'bold' },
-  muted: { color: '#666' },
-});
