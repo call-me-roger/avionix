@@ -114,6 +114,7 @@ export class WebSocketTransport {
         }
         settled = true;
         this.logger.warn('connect timeout', { url: this.options.url });
+        this.detach(socket);
         socket.close();
         this.socket = null;
         reject(
@@ -126,7 +127,7 @@ export class WebSocketTransport {
       }, this.connectTimeoutMs);
 
       socket.onopen = () => {
-        if (settled) {
+        if (this.socket !== socket || settled) {
           return;
         }
         settled = true;
@@ -135,10 +136,14 @@ export class WebSocketTransport {
         resolve();
       };
       socket.onerror = (event) => {
+        if (this.socket !== socket) {
+          return;
+        }
         this.logger.warn('socket error', { url: this.options.url, event: String(event) });
         if (!settled) {
           settled = true;
           clearTimeout(timer);
+          this.detach(socket);
           this.socket = null;
           reject(
             new AvionixError({
@@ -158,7 +163,7 @@ export class WebSocketTransport {
           wasClean: event.wasClean ?? false,
           initiatedByClient: this.closeRequested,
         };
-        this.handleClosed(info);
+        this.handleClosed(socket, info);
         if (!settled) {
           settled = true;
           reject(
@@ -170,7 +175,12 @@ export class WebSocketTransport {
           );
         }
       };
-      socket.onmessage = (event) => this.handleMessage(event.data);
+      socket.onmessage = (event) => {
+        if (this.socket !== socket) {
+          return;
+        }
+        this.handleMessage(event.data);
+      };
     });
   }
 
@@ -191,13 +201,8 @@ export class WebSocketTransport {
       this.socket.send(JSON.stringify(message));
       this.logger.debug('sent', { reqId, type });
     } catch (error) {
-      this.requests.settle({
-        req_id: reqId,
-        type: 'result',
-        success: false,
-        error_code: 'send_failed',
-      });
-      return Promise.reject(
+      this.requests.reject(
+        reqId,
         new AvionixError({
           code: 'WEBSOCKET_ERROR',
           message: 'Failed to send WebSocket message',
@@ -233,7 +238,14 @@ export class WebSocketTransport {
     return () => this.closeListeners.delete(listener);
   }
 
-  private handleClosed(info: SocketCloseInfo): void {
+  private detach(socket: WebSocketLike): void {
+    socket.onopen = null;
+    socket.onclose = null;
+    socket.onerror = null;
+    socket.onmessage = null;
+  }
+
+  private handleClosed(socket: WebSocketLike, info: SocketCloseInfo): void {
     if (this.closeEmitted) {
       return;
     }
@@ -250,6 +262,7 @@ export class WebSocketTransport {
     for (const listener of this.closeListeners) {
       listener(info);
     }
+    this.detach(socket);
   }
 
   private handleMessage(data: unknown): void {

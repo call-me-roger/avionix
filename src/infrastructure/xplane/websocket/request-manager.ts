@@ -66,6 +66,17 @@ export class RequestManager {
     return true;
   }
 
+  reject(reqId: number, error: AvionixError): boolean {
+    const entry = this.pending.get(reqId);
+    if (entry === undefined) {
+      return false;
+    }
+    clearTimeout(entry.timer);
+    this.pending.delete(reqId);
+    entry.reject(error);
+    return true;
+  }
+
   rejectAll(error: AvionixError): void {
     for (const [reqId, entry] of this.pending) {
       clearTimeout(entry.timer);

@@ -92,6 +92,23 @@ describe('RequestManager', () => {
     }
   });
 
+  it('reject rejects one pending request with the given error, clears its timer, and returns false for an unknown id', async () => {
+    jest.useFakeTimers();
+    try {
+      const { manager: m } = manager(1000);
+      const id = m.nextRequestId();
+      const pending = codeOf(m.register(id));
+      const error = new AvionixError({ code: 'WEBSOCKET_ERROR', message: 'send failed' });
+      expect(m.reject(id, error)).toBe(true);
+      await expect(pending).resolves.toBe('WEBSOCKET_ERROR');
+      expect(m.pendingCount).toBe(0);
+      expect(jest.getTimerCount()).toBe(0);
+      expect(m.reject(999, error)).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('rejectAll rejects every pending request and clears timers', async () => {
     jest.useFakeTimers();
     try {

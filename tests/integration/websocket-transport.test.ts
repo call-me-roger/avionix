@@ -170,3 +170,103 @@ describe('WebSocketTransport', () => {
     expect(closes).toBe(1);
   });
 });
+
+interface FakeSocket extends WebSocketLike {
+  readyState: number;
+}
+
+function fakeSocket(overrides: Partial<FakeSocket> = {}): FakeSocket {
+  return {
+    readyState: 0,
+    onopen: null,
+    onclose: null,
+    onerror: null,
+    onmessage: null,
+    send: () => undefined,
+    close: jest.fn(),
+    ...overrides,
+  };
+}
+
+describe('WebSocketTransport with a fake socket', () => {
+  const logger = createLogger('websocket', { sink: createMemorySink(), minLevel: 'debug' });
+
+  it('send failure rejects the caller once and leaves no pending request', async () => {
+    const fake = fakeSocket({
+      send: () => {
+        throw new Error('boom');
+      },
+    });
+    const ws = new WebSocketTransport({
+      url: 'ws://fake-host/api/v3',
+      logger,
+      createSocket: () => fake,
+    });
+
+    const connecting = ws.connect();
+    await Promise.resolve();
+    fake.onopen?.({});
+    await connecting;
+    fake.readyState = 1;
+
+    const spy = jest.fn();
+    process.on('unhandledRejection', spy);
+    try {
+      await expect(
+        codeOf(ws.send('dataref_unsubscribe_values', { datarefs: 'all' })),
+      ).resolves.toBe('WEBSOCKET_ERROR');
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      process.removeListener('unhandledRejection', spy);
+    }
+  });
+
+  it('a late close from an abandoned socket does not affect a new connection', async () => {
+    jest.useFakeTimers();
+    try {
+      const first = fakeSocket();
+      const second = fakeSocket();
+      let callCount = 0;
+      const ws = new WebSocketTransport({
+        url: 'ws://fake-host/api/v3',
+        logger,
+        connectTimeoutMs: 50,
+        createSocket: () => {
+          callCount += 1;
+          return callCount === 1 ? first : second;
+        },
+      });
+
+      const firstConnect = codeOf(ws.connect());
+      await jest.advanceTimersByTimeAsync(51);
+      await expect(firstConnect).resolves.toBe('TIMEOUT');
+      expect(first.close).toHaveBeenCalledTimes(1);
+
+      const secondConnect = ws.connect();
+      second.onopen?.({});
+      await secondConnect;
+      second.readyState = 1;
+
+      let closes = 0;
+      let lastInfo: SocketCloseInfo | undefined;
+      ws.onClose((info) => {
+        closes += 1;
+        lastInfo = info;
+      });
+
+      first.onclose?.({ code: 1006, reason: '', wasClean: false });
+      first.onerror?.({});
+      expect(ws.isOpen).toBe(true);
+      expect(closes).toBe(0);
+
+      ws.close();
+      expect(second.close).toHaveBeenCalledTimes(1);
+      second.onclose?.({ code: 1000, wasClean: true });
+      expect(closes).toBe(1);
+      expect(lastInfo).toMatchObject({ initiatedByClient: true });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
