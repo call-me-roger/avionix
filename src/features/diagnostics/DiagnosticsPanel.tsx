@@ -1,7 +1,7 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
 
 import type { SessionSnapshot, StepStatus } from '@/application/session-snapshot';
+import { BodyText, Section, SectionTitle } from '@/theme/primitives';
 
 function label(status: StepStatus): string {
   switch (status) {
@@ -16,29 +16,34 @@ function label(status: StepStatus): string {
   }
 }
 
+function tone(status: StepStatus): 'danger' | 'success' | undefined {
+  if (status === 'ok') {
+    return 'success';
+  }
+  if (status === 'failed') {
+    return 'danger';
+  }
+  return undefined;
+}
+
 export function DiagnosticsPanel({ snapshot }: { snapshot: SessionSnapshot }) {
   const d = snapshot.diagnostics;
   return (
-    <View style={styles.section}>
-      <Text style={styles.title}>Diagnostics</Text>
-      <Text>
+    <Section>
+      <SectionTitle>Diagnostics</SectionTitle>
+      <BodyText>
         Target: {snapshot.config === null ? '-' : `${snapshot.config.host}:${snapshot.config.port}`}
-      </Text>
-      <Text>HTTP: {label(d.http)}</Text>
-      <Text>Capabilities: {label(d.capabilities)}</Text>
-      <Text>WebSocket: {label(d.websocket)}</Text>
+      </BodyText>
+      <BodyText tone={tone(d.http)}>HTTP: {label(d.http)}</BodyText>
+      <BodyText tone={tone(d.capabilities)}>Capabilities: {label(d.capabilities)}</BodyText>
+      <BodyText tone={tone(d.websocket)}>WebSocket: {label(d.websocket)}</BodyText>
       {Object.entries(d.dataRefs).map(([name, status]) => (
-        <Text key={name}>
+        <BodyText key={name} tone={tone(status)}>
           DataRef {name}: {label(status)}
-        </Text>
+        </BodyText>
       ))}
-      <Text>Command: {label(d.command)}</Text>
-      <Text>Subscription: {label(d.subscription)}</Text>
-    </View>
+      <BodyText tone={tone(d.command)}>Command: {label(d.command)}</BodyText>
+      <BodyText tone={tone(d.subscription)}>Subscription: {label(d.subscription)}</BodyText>
+    </Section>
   );
 }
-
-const styles = StyleSheet.create({
-  section: { marginBottom: 16 },
-  title: { fontWeight: 'bold', fontSize: 16, marginBottom: 4 },
-});

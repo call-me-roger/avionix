@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
-import { Button, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Button, View } from 'react-native';
 
 import type { LastOperation } from '@/application/session-snapshot';
+import { BodyText, Section, SectionTitle, ThemedTextInput } from '@/theme/primitives';
+import { useTheme, useThemedStyles } from '@/theme/theme-context';
+import type { Theme } from '@/theme/tokens';
 
 interface Props {
   enabled: boolean;
@@ -10,17 +13,22 @@ interface Props {
   onHeadingUp: () => void;
 }
 
+const makeStyles = (theme: Theme) => ({
+  row: { flexDirection: 'row' as const, gap: theme.spacing.md, marginBottom: theme.spacing.sm },
+});
+
 export function ControlPanel(props: Props) {
+  const theme = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [heading, setHeading] = useState('90');
   const parsed = Number(heading);
   const canWrite = props.enabled && heading.trim() !== '' && Number.isFinite(parsed);
   return (
-    <View style={styles.section}>
-      <Text style={styles.title}>Test controls</Text>
-      <Text>Heading bug to write (0-360)</Text>
-      <TextInput
+    <Section>
+      <SectionTitle>Test controls</SectionTitle>
+      <BodyText>Heading bug to write (0-360)</BodyText>
+      <ThemedTextInput
         accessibilityLabel="Heading to write"
-        style={styles.input}
         value={heading}
         onChangeText={setHeading}
         keyboardType="numeric"
@@ -30,22 +38,23 @@ export function ControlPanel(props: Props) {
           title="Write heading"
           onPress={() => props.onWriteHeading(parsed)}
           disabled={!canWrite}
+          color={theme.colors.primary}
         />
-        <Button title="Heading up" onPress={props.onHeadingUp} disabled={!props.enabled} />
+        <Button
+          title="Heading up"
+          onPress={props.onHeadingUp}
+          disabled={!props.enabled}
+          color={theme.colors.primary}
+        />
       </View>
-      <Text>
+      <BodyText
+        tone={props.lastOperation === null || props.lastOperation.ok ? undefined : 'danger'}
+      >
         Last operation:{' '}
         {props.lastOperation === null
           ? '-'
           : `${props.lastOperation.ok ? 'OK' : 'FAILED'} ${props.lastOperation.message}`}
-      </Text>
-    </View>
+      </BodyText>
+    </Section>
   );
 }
-
-const styles = StyleSheet.create({
-  section: { marginBottom: 16 },
-  title: { fontWeight: 'bold', fontSize: 16, marginBottom: 4 },
-  input: { borderWidth: 1, borderColor: '#888', padding: 8, marginBottom: 8 },
-  row: { flexDirection: 'row', gap: 12, marginBottom: 8 },
-});

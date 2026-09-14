@@ -16,6 +16,7 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
 - Write the autopilot heading bug and activate `sim/autopilot/heading_up`.
 - Bounded automatic reconnect after an unexpected socket loss.
 - A diagnostics panel that shows exactly which step failed.
+- Light / dark theme with a system / light / dark toggle; the choice is persisted.
 
 Not in scope: any real avionics UI, device roles, pairing, accounts, cloud. See
 `docs/superpowers/specs/2026-09-14-avionix-mvp-design.md` for the full design.

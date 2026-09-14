@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text } from 'react-native';
+import { ScrollView, Text } from 'react-native';
 
 import { ConnectionForm } from '@/features/connection/ConnectionForm';
 import { ConnectionStatus } from '@/features/connection/ConnectionStatus';
@@ -8,10 +8,25 @@ import { ControlPanel } from '@/features/mvp/ControlPanel';
 import { TelemetryPanel } from '@/features/mvp/TelemetryPanel';
 import { useConnectionSettings } from '@/hooks/useConnectionSettings';
 import { useSimulatorSession } from '@/hooks/useSimulatorSession';
+import { ThemeToggle } from '@/theme/ThemeToggle';
+import { useThemedStyles } from '@/theme/theme-context';
+import type { Theme } from '@/theme/tokens';
+
+const makeStyles = (theme: Theme) => ({
+  screen: { flex: 1, backgroundColor: theme.colors.background },
+  container: { padding: theme.spacing.lg, paddingTop: 56 },
+  heading: {
+    color: theme.colors.text,
+    fontSize: theme.typography.headingSize,
+    fontWeight: 'bold' as const,
+    marginBottom: theme.spacing.md,
+  },
+});
 
 export function MvpScreen() {
   const { snapshot, connect, disconnect, writeHeading, activateHeadingUp } = useSimulatorSession();
   const settings = useConnectionSettings();
+  const styles = useThemedStyles(makeStyles);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -25,8 +40,14 @@ export function MvpScreen() {
   }, [connect, settings]);
 
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      testID="mvp-screen"
+      style={styles.screen}
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={styles.heading}>Avionix</Text>
+      <ThemeToggle />
       <ConnectionForm
         host={settings.host}
         port={settings.port}
@@ -48,8 +69,3 @@ export function MvpScreen() {
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { padding: 16, paddingTop: 56 },
-  heading: { fontSize: 24, fontWeight: 'bold', marginBottom: 12 },
-});

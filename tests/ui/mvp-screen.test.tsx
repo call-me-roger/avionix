@@ -8,6 +8,9 @@ import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import { MvpScreen } from '@/features/mvp/MvpScreen';
+import { ThemeProvider } from '@/theme/theme-context';
+import { saveThemePreference } from '@/theme/theme-preference';
+import { darkTheme, lightTheme } from '@/theme/tokens';
 
 function makeServices(snapshot: Partial<SessionSnapshot> = {}) {
   const store = new Store<SessionSnapshot>({ ...initialSnapshot(MVP_DATAREF_NAMES), ...snapshot });
@@ -22,10 +25,12 @@ function makeServices(snapshot: Partial<SessionSnapshot> = {}) {
   return { services, session, store };
 }
 
-async function renderScreen(services: AppServices) {
+async function renderScreen(services: AppServices, systemScheme: 'light' | 'dark' = 'light') {
   return render(
     <ServicesProvider services={services}>
-      <MvpScreen />
+      <ThemeProvider storage={services.settingsStorage} systemSchemeOverride={systemScheme}>
+        <MvpScreen />
+      </ThemeProvider>
     </ServicesProvider>,
   );
 }
@@ -138,5 +143,39 @@ describe('MvpScreen', () => {
     await renderScreen(services);
     await fireEvent.press(screen.getByText('Disconnect'));
     expect(session.disconnect).toHaveBeenCalled();
+  });
+
+  it('paints the light theme by default and the dark theme when the OS is dark', async () => {
+    const { services } = makeServices();
+    await saveThemePreference(services.settingsStorage, 'light');
+    const light = await renderScreen(services, 'light');
+    await waitFor(() => expect(screen.getByLabelText('Theme Light')).toBeChecked());
+    expect(screen.getByTestId('mvp-screen')).toHaveStyle({
+      backgroundColor: lightTheme.colors.background,
+    });
+    await light.unmount();
+    await renderScreen(makeServices().services, 'dark');
+    await waitFor(() =>
+      expect(screen.getByTestId('mvp-screen')).toHaveStyle({
+        backgroundColor: darkTheme.colors.background,
+      }),
+    );
+  });
+
+  it('applies a persisted dark preference and lets the toggle switch back', async () => {
+    const { services } = makeServices();
+    await saveThemePreference(services.settingsStorage, 'dark');
+    await renderScreen(services, 'light');
+    await waitFor(() =>
+      expect(screen.getByTestId('mvp-screen')).toHaveStyle({
+        backgroundColor: darkTheme.colors.background,
+      }),
+    );
+    await fireEvent.press(screen.getByLabelText('Theme Light'));
+    await waitFor(() =>
+      expect(screen.getByTestId('mvp-screen')).toHaveStyle({
+        backgroundColor: lightTheme.colors.background,
+      }),
+    );
   });
 });
