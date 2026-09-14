@@ -74,3 +74,31 @@ them.
 `createLogger(category)` in `src/infrastructure/logging/logger.ts` writes to the console in
 development and only warnings and errors in production builds. Categories: `connection`, `http`,
 `websocket`, `dataref`, `command`, `session`, `ui`.
+
+## Development builds (EAS)
+
+Expo Go is enough for the MVP, but a development build is required to verify the native LAN
+settings in `app.json` (iOS App Transport Security local networking, Android cleartext traffic)
+and to test on iOS without the Expo Go login requirement.
+
+Prerequisites: an Expo account (`npx eas-cli@latest login`) with access to the project
+(`extra.eas.projectId` in `app.json`). The `eas.json` `development` profile builds a dev client
+with internal distribution; Android produces an installable APK.
+
+```bash
+npm run build:dev:android   # eas build --profile development --platform android
+npm run build:dev:ios       # eas build --profile development --platform ios
+```
+
+The scripts call `eas`; install or update the CLI first with `npm install -g eas-cli` (version 24
+or newer, see `cli.version` in `eas.json`), or run `npx eas-cli@latest build ...` directly.
+
+Android: when the build finishes, open the build page link, install the APK on the device, start
+the dev server with `npx expo start --dev-client`, and open the project from the dev client.
+
+iOS: internal distribution needs an Apple Developer account and each test device registered with
+`npx eas-cli@latest device:create` before the first build. EAS manages the signing credentials.
+Install the resulting build from the link, then start `npx expo start --dev-client`.
+
+After the first development build, run the smoke test in `docs/testing/xplane-smoke-test.md` on
+it; that run confirms the LAN networking settings that Expo Go does not exercise.
