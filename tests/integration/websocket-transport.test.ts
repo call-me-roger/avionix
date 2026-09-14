@@ -15,6 +15,16 @@ async function codeOf(promise: Promise<unknown>): Promise<string> {
   }
 }
 
+async function waitForCondition(check: () => boolean, timeoutMs = 2000): Promise<void> {
+  const start = Date.now();
+  while (!check()) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error('timed out waiting for condition');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 function waitFor<T>(
   register: (resolve: (value: T) => void) => () => void,
   timeoutMs = 2000,
@@ -166,7 +176,8 @@ describe('WebSocketTransport', () => {
     });
     ws.close();
     ws.close();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitForCondition(() => closes > 0);
+    await new Promise((resolve) => setImmediate(resolve));
     expect(closes).toBe(1);
   });
 });

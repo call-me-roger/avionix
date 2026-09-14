@@ -286,6 +286,7 @@ export class SimulatorSession {
 
     const client = this.deps.createClient(config, apiVersion, http);
     this.setStep((d) => ({ ...d, websocket: 'pending' }));
+    let unsubscribeClose: () => void;
     try {
       await client.connectWebSocket();
       if (!this.isCurrent(generation)) {
@@ -293,6 +294,14 @@ export class SimulatorSession {
         return false;
       }
       this.setStep((d) => ({ ...d, websocket: 'ok' }));
+      // Registered as soon as the socket is open so a loss during DataRef/command
+      // resolution (below) is still observed and can drive a reconnect instead of
+      // being missed until the next explicit socket interaction.
+      unsubscribeClose = client.onSocketClosed((info) => {
+        if (this.isCurrent(generation)) {
+          this.handleSocketClosed(info);
+        }
+      });
     } catch (error) {
       if (!this.isCurrent(generation)) {
         return false;
@@ -345,11 +354,13 @@ export class SimulatorSession {
       this.setStep((d) => ({ ...d, command: 'pending' }));
       headingUp = await commands.resolve(MVP_COMMAND_HEADING_UP);
       if (!this.isCurrent(generation)) {
+        unsubscribeClose();
         client.disconnectWebSocket();
         return false;
       }
       this.setStep((d) => ({ ...d, command: 'ok' }));
     } catch (error) {
+      unsubscribeClose();
       client.disconnectWebSocket();
       if (!this.isCurrent(generation)) {
         return false;
@@ -367,11 +378,6 @@ export class SimulatorSession {
     const unsubscribeUpdates = client.onDataRefUpdate((updates) => {
       if (this.isCurrent(generation)) {
         this.applyUpdates(dataRefsById, updates);
-      }
-    });
-    const unsubscribeClose = client.onSocketClosed((info) => {
-      if (this.isCurrent(generation)) {
-        this.handleSocketClosed(info);
       }
     });
     this.active = {

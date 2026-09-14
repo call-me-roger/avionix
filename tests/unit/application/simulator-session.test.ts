@@ -426,4 +426,41 @@ describe('SimulatorSession reconnect', () => {
     await scheduler.runNext();
     expect(snapshot().state).toBe('connected');
   });
+
+  it('socket loss while dataref resolution is pending starts a reconnect', async () => {
+    const client = new FakeClient();
+    // findDataRef is called once per MVP DataRef name (all issued synchronously by
+    // Promise.all before any microtask runs), so each call gets its own controllable
+    // promise; releasing all of them together simulates resolution finally settling.
+    const resolvers: Array<() => void> = [];
+    client.findDataRef = jest.fn(
+      (name: string) =>
+        new Promise((resolve) => {
+          const id = resolvers.length + 1;
+          resolvers.push(() => resolve({ id, name, valueType: 'float' as const }));
+        }),
+    );
+    const releaseDataRefs = (): void => {
+      for (const resolve of resolvers) {
+        resolve();
+      }
+    };
+    const second = new FakeClient();
+    const { session, scheduler, snapshot } = setup({ clients: [client, second] });
+
+    const connecting = session.connect('192.168.1.100', 8086);
+    await flush();
+
+    client.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });
+    releaseDataRefs();
+    await connecting;
+
+    expect(snapshot().state).toBe('reconnecting');
+    expect(snapshot().reconnectAttempt).toBe(1);
+    expect(scheduler.queue.filter((entry) => !entry.cancelled).length).toBe(1);
+    expect(client.disconnectWebSocket).toHaveBeenCalled();
+
+    await scheduler.runNext();
+    expect(snapshot().state).toBe('connected');
+  });
 });

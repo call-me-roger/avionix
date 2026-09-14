@@ -174,13 +174,13 @@ describe.each(['v2', 'v3'] as const)('XPlaneClient over %s', (apiVersion) => {
     const received: DataRefUpdate[][] = [];
     client.onDataRefUpdate((updates) => received.push(updates));
     await client.subscribeDataRefs([{ id: 1001 }, { id: 1003 }]);
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await waitForCondition(() => received.length > 0);
     expect(received[0]).toEqual([
       { id: 1001, value: 12.5, receivedAt: expect.any(Number) },
       { id: 1003, value: 270, receivedAt: expect.any(Number) },
     ]);
     server.setDataRefValue('sim/time/total_running_time_sec', 99);
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await waitForCondition(() => received.at(-1)?.[0]?.value === 99);
     expect(received.at(-1)).toEqual([{ id: 1001, value: 99, receivedAt: expect.any(Number) }]);
     await client.unsubscribeDataRefs('all');
     const closed = new Promise((resolve) => client.onSocketClosed(resolve));

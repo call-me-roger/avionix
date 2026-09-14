@@ -52,8 +52,12 @@ connecting --failed--> error          connecting --disconnect--> disconnected
 connected --socketLost--> reconnecting --connected--> connected
 reconnecting --retryExhausted--> error   reconnecting --disconnect--> disconnected
 connected --disconnect--> disconnected   error --connect--> connecting
+connected --failed--> error
 error --disconnect--> disconnected
 ```
+
+The `connected → error` edge exists because the session reports `connected` as soon as the socket
+opens (spec step 9); DataRef resolution and subscription happen afterwards and can still fail.
 
 Reconnect uses exponential backoff (1 s, 2 s, 4 s, 8 s, 16 s, ±20 % jitter, 5 attempts) and reruns
 the whole connect flow, including capabilities and name resolution, because X-Plane may have

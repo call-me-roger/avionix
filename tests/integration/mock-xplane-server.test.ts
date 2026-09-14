@@ -4,23 +4,60 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function waitForMessage(socket: WebSocket, predicate: (msg: unknown) => boolean): Promise<unknown> {
-  return new Promise((resolve) => {
-    const handler = (event: MessageEvent): void => {
-      const parsed: unknown = JSON.parse(String(event.data));
-      if (predicate(parsed)) {
-        socket.removeEventListener('message', handler);
-        resolve(parsed);
-      }
-    };
-    socket.addEventListener('message', handler);
+type MessageReader = (predicate: (msg: unknown) => boolean, timeoutMs?: number) => Promise<unknown>;
+
+/**
+ * Buffers every parsed frame as soon as it arrives and lets waiters scan that buffer first,
+ * consuming each entry at most once, before parking a predicate. This avoids a race where a
+ * `message` event fires synchronously (Node can dispatch several frames from one TCP read
+ * back-to-back) before the next `waitForMessage`-style listener has been attached, which would
+ * otherwise drop the frame and hang the waiting promise forever.
+ */
+function createMessageReader(socket: WebSocket): MessageReader {
+  const buffer: unknown[] = [];
+  const waiters: { predicate: (m: unknown) => boolean; resolve: (m: unknown) => void }[] = [];
+  socket.addEventListener('message', (event: MessageEvent) => {
+    const parsed: unknown = JSON.parse(String(event.data));
+    const index = waiters.findIndex((w) => w.predicate(parsed));
+    if (index >= 0) {
+      const [w] = waiters.splice(index, 1);
+      w?.resolve(parsed);
+      return;
+    }
+    buffer.push(parsed);
   });
+  return function next(predicate: (m: unknown) => boolean, timeoutMs = 2000): Promise<unknown> {
+    const i = buffer.findIndex(predicate);
+    if (i >= 0) {
+      const [m] = buffer.splice(i, 1);
+      return Promise.resolve(m);
+    }
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const k = waiters.findIndex((w) => w.resolve === wrapped);
+        if (k >= 0) {
+          waiters.splice(k, 1);
+        }
+        reject(new Error('never received a matching message'));
+      }, timeoutMs);
+      const wrapped = (m: unknown): void => {
+        clearTimeout(timer);
+        resolve(m);
+      };
+      waiters.push({ predicate, resolve: wrapped });
+    });
+  };
 }
 
-function openSocket(url: string): Promise<WebSocket> {
+function openSocket(url: string): Promise<{ socket: WebSocket; next: MessageReader }> {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url);
-    socket.addEventListener('open', () => resolve(socket));
+    socket.addEventListener('open', () => {
+      // Attached before resolving `open`, so no frame the server sends immediately after
+      // connecting can be dispatched before a reader exists to buffer it.
+      const next = createMessageReader(socket);
+      resolve({ socket, next });
+    });
     socket.addEventListener('error', () => reject(new Error('socket error')));
   });
 }
@@ -92,8 +129,8 @@ describe('MockXPlaneServer', () => {
   });
 
   it('streams subscribed values with delta semantics over WebSocket', async () => {
-    const socket = await openSocket(`ws://${server.host}:${server.port}/api/v3`);
-    const result = waitForMessage(socket, (m) => (m as { type?: string }).type === 'result');
+    const { socket, next } = await openSocket(`ws://${server.host}:${server.port}/api/v3`);
+    const result = next((m) => (m as { type?: string }).type === 'result');
     socket.send(
       JSON.stringify({
         req_id: 1,
@@ -103,20 +140,14 @@ describe('MockXPlaneServer', () => {
     );
     expect(await result).toEqual({ req_id: 1, type: 'result', success: true });
 
-    const first = await waitForMessage(
-      socket,
-      (m) => (m as { type?: string }).type === 'dataref_update_values',
-    );
+    const first = await next((m) => (m as { type?: string }).type === 'dataref_update_values');
     expect(first).toEqual({ type: 'dataref_update_values', data: { '1001': 12.5, '1003': 270 } });
 
     server.setDataRefValue('sim/time/total_running_time_sec', 13);
-    const second = await waitForMessage(
-      socket,
-      (m) => (m as { type?: string }).type === 'dataref_update_values',
-    );
+    const second = await next((m) => (m as { type?: string }).type === 'dataref_update_values');
     expect(second).toEqual({ type: 'dataref_update_values', data: { '1001': 13 } });
 
-    const unknown = waitForMessage(socket, (m) => (m as { req_id?: number }).req_id === 2);
+    const unknown = next((m) => (m as { req_id?: number }).req_id === 2);
     socket.send(JSON.stringify({ req_id: 2, type: 'bogus', params: {} }));
     expect(await unknown).toMatchObject({ success: false, error_code: 'unknown_type' });
 
@@ -124,15 +155,13 @@ describe('MockXPlaneServer', () => {
   });
 
   it('reports each malformed dataref_set_values item as its own failure', async () => {
-    const socket = await openSocket(`ws://${server.host}:${server.port}/api/v3`);
+    const { socket, next } = await openSocket(`ws://${server.host}:${server.port}/api/v3`);
     const isReq3 = (m: unknown): boolean => isRecord(m) && m.req_id === 3;
 
-    const invalidId = waitForMessage(
-      socket,
+    const invalidId = next(
       (m) => isReq3(m) && (m as { error_code?: string }).error_code === 'invalid_dataref_id',
     );
-    const insufficientData = waitForMessage(
-      socket,
+    const insufficientData = next(
       (m) => isReq3(m) && (m as { error_code?: string }).error_code === 'insufficient_data',
     );
 
@@ -150,18 +179,10 @@ describe('MockXPlaneServer', () => {
     expect(first).toMatchObject({ req_id: 3, success: false, error_code: 'invalid_dataref_id' });
     expect(second).toMatchObject({ req_id: 3, success: false, error_code: 'insufficient_data' });
 
-    let sawSuccess = false;
-    const watchForSuccess = (event: MessageEvent): void => {
-      const parsed: unknown = JSON.parse(String(event.data));
-      if (isReq3(parsed) && (parsed as { success?: boolean }).success === true) {
-        sawSuccess = true;
-      }
-    };
-    socket.addEventListener('message', watchForSuccess);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    socket.removeEventListener('message', watchForSuccess);
+    await expect(
+      next((m) => isReq3(m) && (m as { success?: boolean }).success === true, 50),
+    ).rejects.toThrow('never received a matching message');
 
-    expect(sawSuccess).toBe(false);
     expect(server.writes).toContainEqual({ id: 1003, value: 45 });
 
     socket.close();

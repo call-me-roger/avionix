@@ -2,6 +2,7 @@ export interface ReconnectPolicy {
   maxAttempts: number;
   baseDelayMs: number;
   factor: number;
+  /** Cap on the exponential schedule before jitter; the actual wait can exceed it by up to jitterRatio. */
   maxDelayMs: number;
   jitterRatio: number;
 }

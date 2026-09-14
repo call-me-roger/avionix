@@ -442,7 +442,11 @@ export class MockXPlaneServer {
     const reply = (payload: Record<string, unknown>): void => {
       ws.send(JSON.stringify({ req_id: reqId, type: 'result', ...payload }));
     };
-    const subs = this.subscriptions.get(ws) ?? new Map<number, string>();
+    let subs = this.subscriptions.get(ws);
+    if (subs === undefined) {
+      subs = new Map<number, string>();
+      this.subscriptions.set(ws, subs);
+    }
 
     switch (message.type) {
       case 'dataref_subscribe_values': {
