@@ -16,6 +16,7 @@ export interface ResolutionCacheOptions<T> {
 export class ResolutionCache<T extends { id: number; name: string }> {
   private readonly resolved = new Map<string, T>();
   private readonly inFlight = new Map<string, Promise<T>>();
+  private generation = 0;
 
   constructor(private readonly options: ResolutionCacheOptions<T>) {}
 
@@ -36,6 +37,7 @@ export class ResolutionCache<T extends { id: number; name: string }> {
     if (pending !== undefined) {
       return pending;
     }
+    const generation = this.generation;
     const lookup = this.options
       .lookup(name)
       .then((descriptor) => {
@@ -45,11 +47,15 @@ export class ResolutionCache<T extends { id: number; name: string }> {
             message: `X-Plane has no ${this.options.kind} named "${name}"`,
           });
         }
-        this.resolved.set(name, descriptor);
+        if (generation === this.generation) {
+          this.resolved.set(name, descriptor);
+        }
         return descriptor;
       })
       .finally(() => {
-        this.inFlight.delete(name);
+        if (generation === this.generation) {
+          this.inFlight.delete(name);
+        }
       });
     this.inFlight.set(name, lookup);
     return lookup;
@@ -60,6 +66,7 @@ export class ResolutionCache<T extends { id: number; name: string }> {
   }
 
   clear(): void {
+    this.generation += 1;
     this.resolved.clear();
     this.inFlight.clear();
   }
