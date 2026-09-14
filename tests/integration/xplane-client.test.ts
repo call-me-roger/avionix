@@ -3,6 +3,7 @@ import type { DataRefUpdate } from '@/domain/simulator/types';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { probeCapabilities } from '@/infrastructure/xplane/capabilities';
 import { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
+import type { WebSocketLike } from '@/infrastructure/xplane/websocket/websocket-transport';
 import { XPlaneClient } from '@/infrastructure/xplane/xplane-client';
 import { MockXPlaneServer } from '../mock-xplane/mock-xplane-server';
 
@@ -13,6 +14,28 @@ async function codeOf(promise: Promise<unknown>): Promise<string> {
   } catch (error) {
     return isAvionixError(error) ? error.code : `not avionix: ${String(error)}`;
   }
+}
+
+async function waitForCondition(check: () => boolean, timeoutMs = 2000): Promise<void> {
+  const start = Date.now();
+  while (!check()) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error('timed out waiting for condition');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+function fakeSocket(): WebSocketLike & { close: jest.Mock } {
+  return {
+    readyState: 0,
+    onopen: null,
+    onclose: null,
+    onerror: null,
+    onmessage: null,
+    send: () => undefined,
+    close: jest.fn(),
+  };
 }
 
 describe('probeCapabilities', () => {
@@ -173,6 +196,52 @@ describe.each(['v2', 'v3'] as const)('XPlaneClient over %s', (apiVersion) => {
     } catch (error) {
       expect(isAvionixError(error) && error.code).toBe('SUBSCRIPTION_FAILED');
       expect(isAvionixError(error) && error.simulatorErrorCode).toBe('invalid_dataref_id');
+    }
+  });
+
+  it('shares one outcome between concurrent connectWebSocket calls', async () => {
+    const first = client.connectWebSocket();
+    const second = client.connectWebSocket();
+    await Promise.all([first, second]);
+    await waitForCondition(() => server.connectionCount === 1);
+    expect(server.connectionCount).toBe(1);
+    client.disconnectWebSocket();
+  });
+
+  it('rejects concurrent connect attempts with TIMEOUT and starts a fresh attempt afterwards', async () => {
+    jest.useFakeTimers();
+    try {
+      let callCount = 0;
+      const failingClient = new XPlaneClient({
+        config: { host: server.host, port: server.port },
+        apiVersion,
+        http: new HttpTransport({
+          origin: `http://${server.host}:${server.port}`,
+          logger: silentLogger,
+        }),
+        logger: silentLogger,
+        connectTimeoutMs: 50,
+        createSocket: () => {
+          callCount += 1;
+          return fakeSocket();
+        },
+      });
+
+      const firstConnect = codeOf(failingClient.connectWebSocket());
+      const secondConnect = codeOf(failingClient.connectWebSocket());
+      await jest.advanceTimersByTimeAsync(51);
+      await expect(firstConnect).resolves.toBe('TIMEOUT');
+      await expect(secondConnect).resolves.toBe('TIMEOUT');
+      expect(callCount).toBe(1);
+
+      const thirdConnect = codeOf(failingClient.connectWebSocket());
+      expect(callCount).toBe(2);
+      await jest.advanceTimersByTimeAsync(51);
+      await expect(thirdConnect).resolves.toBe('TIMEOUT');
+
+      failingClient.disconnectWebSocket();
+    } finally {
+      jest.useRealTimers();
     }
   });
 

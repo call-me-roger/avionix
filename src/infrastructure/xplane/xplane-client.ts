@@ -55,6 +55,7 @@ export class XPlaneClient implements SimulatorClient {
   private readonly http: HttpTransport;
   private readonly logger: Logger;
   private socket: WebSocketTransport | null = null;
+  private connecting: Promise<void> | null = null;
   private readonly dataRefListeners = new Set<(updates: DataRefUpdate[]) => void>();
   private readonly closeListeners = new Set<(info: SocketCloseInfo) => void>();
 
@@ -141,9 +142,12 @@ export class XPlaneClient implements SimulatorClient {
     }
   }
 
-  async connectWebSocket(): Promise<void> {
-    if (this.socket !== null) {
-      return;
+  connectWebSocket(): Promise<void> {
+    if (this.socket !== null && this.connecting === null) {
+      return Promise.resolve();
+    }
+    if (this.connecting !== null) {
+      return this.connecting;
     }
     const socket = new WebSocketTransport({
       url: webSocketUrl(this.options.config, this.apiVersion),
@@ -166,12 +170,17 @@ export class XPlaneClient implements SimulatorClient {
       }
     });
     this.socket = socket;
-    try {
-      await socket.connect();
-    } catch (error) {
-      this.socket = null;
-      throw error;
-    }
+    this.connecting = socket
+      .connect()
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        this.socket = null;
+        throw error;
+      })
+      .finally(() => {
+        this.connecting = null;
+      });
+    return this.connecting;
   }
 
   async subscribeDataRefs(subscriptions: DataRefSubscription[]): Promise<void> {
