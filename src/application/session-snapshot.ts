@@ -40,11 +40,15 @@ export interface SessionSnapshot {
 }
 
 export function initialDiagnostics(dataRefNames: readonly string[]): SessionDiagnostics {
+  const dataRefs: Record<string, StepStatus> = {};
+  for (const name of dataRefNames) {
+    dataRefs[name] = 'idle';
+  }
   return {
     http: 'idle',
     capabilities: 'idle',
     websocket: 'idle',
-    dataRefs: Object.fromEntries(dataRefNames.map((name) => [name, 'idle' as StepStatus])),
+    dataRefs,
     command: 'idle',
     subscription: 'idle',
   };

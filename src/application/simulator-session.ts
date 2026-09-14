@@ -320,7 +320,6 @@ export class SimulatorSession {
     for (const name of MVP_DATAREF_NAMES) {
       this.setDataRefStep(name, 'pending');
     }
-    this.setStep((d) => ({ ...d, command: 'pending' }));
     let headingUp: CommandDescriptor;
     try {
       const resolved = await Promise.all(
@@ -343,6 +342,7 @@ export class SimulatorSession {
         dataRefsById.set(descriptor.id, descriptor);
         dataRefsByName.set(descriptor.name, descriptor);
       }
+      this.setStep((d) => ({ ...d, command: 'pending' }));
       headingUp = await commands.resolve(MVP_COMMAND_HEADING_UP);
       if (!this.isCurrent(generation)) {
         client.disconnectWebSocket();
@@ -354,7 +354,9 @@ export class SimulatorSession {
       if (!this.isCurrent(generation)) {
         return false;
       }
-      this.setStep((d) => ({ ...d, command: d.command === 'ok' ? 'ok' : 'failed' }));
+      // command only reaches 'pending' once the DataRefs resolved; a DataRef failure
+      // rejects Promise.all before the command lookup ever runs, so command stays 'idle'.
+      this.setStep((d) => ({ ...d, command: d.command === 'pending' ? 'failed' : d.command }));
       this.markFailure(
         toAvionixError(error, { code: 'DATAREF_NOT_FOUND', message: 'Resolution failed' }),
         mode,
@@ -369,7 +371,7 @@ export class SimulatorSession {
     });
     const unsubscribeClose = client.onSocketClosed((info) => {
       if (this.isCurrent(generation)) {
-        this.handleSocketClosed(generation, info);
+        this.handleSocketClosed(info);
       }
     });
     this.active = {
@@ -438,7 +440,7 @@ export class SimulatorSession {
     });
   }
 
-  private handleSocketClosed(generation: number, info: SocketCloseInfo): void {
+  private handleSocketClosed(info: SocketCloseInfo): void {
     if (info.initiatedByClient || this.store.getSnapshot().state !== 'connected') {
       return;
     }
@@ -446,12 +448,17 @@ export class SimulatorSession {
     const active = this.active;
     this.active = null;
     active?.unsubscribe();
+    // Bump the generation before touching state: this supersedes the connect flow that was
+    // still in flight (e.g. awaiting subscribeDataRefs) so its eventual rejection sees
+    // isCurrent() = false and bails out instead of running markFailure() against the
+    // `reconnecting` state it now finds itself in.
+    const next = this.nextGeneration();
     this.store.setState((prev) => ({
       ...prev,
       state: transition(prev.state, 'socketLost'),
       diagnostics: { ...prev.diagnostics, websocket: 'failed', subscription: 'idle' },
     }));
-    this.scheduleReconnect(generation, 1);
+    this.scheduleReconnect(next, 1);
   }
 
   private scheduleReconnect(previousGeneration: number, attempt: number): void {

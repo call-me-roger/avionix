@@ -237,6 +237,7 @@ describe('SimulatorSession connect flow', () => {
     expect(snapshot().error?.code).toBe('DATAREF_NOT_FOUND');
     expect(snapshot().diagnostics.dataRefs[MVP_DATAREFS.airspeed]).toBe('failed');
     expect(snapshot().diagnostics.dataRefs[MVP_DATAREFS.heartbeat]).toBe('ok');
+    expect(snapshot().diagnostics.command).toBe('idle');
   });
 
   it('marks subscription failed', async () => {
@@ -395,6 +396,34 @@ describe('SimulatorSession reconnect', () => {
     const { session, clients, snapshot } = setup();
     await session.connect('192.168.1.100', 8086);
     clients[0]?.emitClose({ code: 1000, reason: '', wasClean: true, initiatedByClient: true });
+    expect(snapshot().state).toBe('connected');
+  });
+
+  it('socket loss while the initial subscription is pending starts a reconnect instead of failing', async () => {
+    const client = new FakeClient();
+    let rejectSubscribe!: (e: Error) => void;
+    client.subscribeDataRefs = jest.fn(
+      (_subs: Array<{ id: number }>) =>
+        new Promise<void>((_, reject) => {
+          rejectSubscribe = reject;
+        }),
+    );
+    const second = new FakeClient();
+    const { session, scheduler, snapshot } = setup({ clients: [client, second] });
+
+    const connecting = session.connect('192.168.1.100', 8086);
+    await flush();
+
+    client.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });
+    rejectSubscribe(new AvionixError({ code: 'CANCELLED', message: 'closed' }));
+    await expect(connecting).resolves.toBeUndefined();
+
+    expect(snapshot().state).toBe('reconnecting');
+    expect(snapshot().reconnectAttempt).toBe(1);
+    expect(scheduler.queue.length).toBe(1);
+    expect(scheduler.queue[0]?.cancelled).toBe(false);
+
+    await scheduler.runNext();
     expect(snapshot().state).toBe('connected');
   });
 });
