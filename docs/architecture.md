@@ -75,3 +75,15 @@ available. Raw exceptions never reach the UI.
 Each device runs its own `SimulatorSession` and its own WebSocket to X-Plane. There is no Avionix
 server. The X-Plane Web API keeps per-connection subscription and command bookkeeping, so devices
 do not interfere with each other. Device roles and pairing are intentionally not implemented.
+
+## Theming
+
+`src/theme` owns appearance. A `Theme` (`tokens.ts`) holds `mode`, `colors`, `spacing`, `radius`
+and `typography`; `lightTheme` and `darkTheme` share one shape, so adding a palette later means
+adding one more `Theme` object. `ThemeProvider` (`theme-context.tsx`) resolves the effective mode
+from the persisted preference (`system`, `light`, `dark`; key `avionix.theme`, validated with zod,
+default `system`) and the OS colour scheme, and exposes `useTheme()`, `useThemePreference()` and
+`useThemedStyles(factory)`. Components never hold colour literals; they use the primitives in
+`primitives.tsx` (`Section`, `SectionTitle`, `BodyText`, `ThemedTextInput`) or build styles from
+the theme. The toggle (`ThemeToggle.tsx`) sits under the Avionix heading. The theme preference is
+the second persisted setting after host and port; nothing else is stored.
