@@ -1,6 +1,6 @@
 export type QueryParams = Record<
   string,
-  string | number | ReadonlyArray<string | number> | undefined
+  string | number | readonly (string | number)[] | undefined
 >;
 
 function encodeKey(key: string): string {
