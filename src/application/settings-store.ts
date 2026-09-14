@@ -16,7 +16,7 @@ export const DEFAULT_CONNECTION_SETTINGS: ConnectionSettings = { host: '', port:
 
 const STORAGE_KEY = 'avionix.connection';
 
-const settingsSchema = z.object({ host: z.string(), port: z.number().int() });
+const settingsSchema = z.object({ host: z.string(), port: z.number().int().min(1).max(65535) });
 
 export async function loadConnectionSettings(
   storage: SettingsStorage,

@@ -38,4 +38,24 @@ describe('connection settings', () => {
     };
     await expect(loadConnectionSettings(storage)).resolves.toEqual(DEFAULT_CONNECTION_SETTINGS);
   });
+
+  it('falls back to defaults on an out-of-range port', async () => {
+    const storage = createMemorySettingsStorage();
+    await storage.setItem('avionix.connection', JSON.stringify({ host: 'x', port: 0 }));
+    await expect(loadConnectionSettings(storage)).resolves.toEqual(DEFAULT_CONNECTION_SETTINGS);
+    await storage.setItem('avionix.connection', JSON.stringify({ host: 'x', port: 70000 }));
+    await expect(loadConnectionSettings(storage)).resolves.toEqual(DEFAULT_CONNECTION_SETTINGS);
+  });
+
+  it('swallows storage write failures', async () => {
+    const storage = {
+      getItem: async () => null,
+      setItem: async () => {
+        throw new Error('disk full');
+      },
+    };
+    await expect(
+      saveConnectionSettings(storage, { host: '10.0.0.1', port: 8086 }),
+    ).resolves.toBeUndefined();
+  });
 });
