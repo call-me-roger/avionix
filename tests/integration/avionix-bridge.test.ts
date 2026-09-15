@@ -179,6 +179,58 @@ function startBrokenChunkedUpstream(): Promise<{ port: number; close: () => Prom
   });
 }
 
+/** A raw TCP "X-Plane" that records the request line + headers of each request it gets. */
+function startRecordingUpstream(): Promise<{
+  port: number;
+  requests: string[];
+  close: () => Promise<void>;
+}> {
+  return new Promise((resolve, reject) => {
+    const requests: string[] = [];
+    const sockets = new Set<net.Socket>();
+    const server = net.createServer((socket) => {
+      sockets.add(socket);
+      socket.on('close', () => sockets.delete(socket));
+      socket.on('error', () => undefined);
+      let buffered = '';
+      socket.on('data', (chunk: Buffer) => {
+        buffered += chunk.toString('utf8');
+        const headerEnd = buffered.indexOf('\r\n\r\n');
+        if (headerEnd >= 0) {
+          requests.push(buffered.slice(0, headerEnd));
+          socket.write('HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}');
+        }
+      });
+    });
+    server.on('error', () => undefined);
+    listenAndGetPort(server)
+      .then((port) => {
+        resolve({
+          port,
+          requests,
+          close: () =>
+            new Promise((done) => {
+              for (const socket of sockets) socket.destroy();
+              server.close(() => done());
+            }),
+        });
+      })
+      .catch(reject);
+  });
+}
+
+/** Builds a minimal but fully-typed IPv4 network interface entry for computeUrls tests. */
+function ipv4(address: string, internal: boolean): os.NetworkInterfaceInfoIPv4 {
+  return {
+    address,
+    netmask: '255.255.255.0',
+    family: 'IPv4',
+    mac: '00:00:00:00:00:00',
+    internal,
+    cidr: `${address}/24`,
+  };
+}
+
 describe('Avionix bridge', () => {
   let xplane: MockXPlaneServer;
   let bridge: Awaited<ReturnType<typeof startBridge>>;
@@ -304,6 +356,7 @@ describe('Avionix bridge', () => {
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get('access-control-allow-methods')).toContain('PATCH');
     expect(preflight.headers.get('access-control-allow-headers')).toContain('Content-Type');
+    expect(preflight.headers.get('access-control-allow-headers')).toContain('Authorization');
 
     const patch = await fetch(`${base}/api/v3/datarefs/1003/value`, {
       method: 'PATCH',
@@ -693,5 +746,215 @@ describe('Avionix connector (pairing, tokens, discovery)', () => {
     };
     expect(info.xplane.reachable).toBe(false);
     xplane = await MockXPlaneServer.start();
+  });
+
+  it('C1: rejects a non-string pairing code instead of crashing the process', async () => {
+    const bad = await fetch(`${base}/avionix/pair`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: { toString: 1 } }),
+    });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toMatchObject({ error_code: 'invalid_body' });
+
+    // The process (and this bridge) must still be alive and answering afterwards.
+    const info = await fetch(`${base}/avionix/info`);
+    expect(info.status).toBe(200);
+  });
+
+  it('answers 413 for an oversized pairing body, then keeps serving', async () => {
+    const big = 'a'.repeat(200 * 1024);
+    const res = await fetch(`${base}/avionix/pair`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: big }),
+    });
+    expect(res.status).toBe(413);
+    expect(await res.json()).toMatchObject({ error_code: 'payload_too_large' });
+
+    const info = await fetch(`${base}/avionix/info`);
+    expect(info.status).toBe(200);
+  });
+
+  it('routes /avionix/info by pathname, ignoring a query string', async () => {
+    const info = await fetch(`${base}/avionix/info?x=1`);
+    expect(info.status).toBe(200);
+    expect(await info.json()).toMatchObject({ pairingRequired: true });
+  });
+
+  it('answers 405 with Allow for the wrong method on /avionix/info', async () => {
+    const res = await fetch(`${base}/avionix/info`, { method: 'POST' });
+    expect(res.status).toBe(405);
+    expect(res.headers.get('allow')).toBe('GET');
+  });
+
+  it('answers 405 with Allow for the wrong method on /avionix/pair', async () => {
+    const res = await fetch(`${base}/avionix/pair`, { method: 'GET' });
+    expect(res.status).toBe(405);
+    expect(res.headers.get('allow')).toBe('POST');
+  });
+
+  it('answers OPTIONS on /api without a token', async () => {
+    const res = await fetch(`${base}/api/capabilities`, { method: 'OPTIONS' });
+    expect(res.status).toBe(204);
+  });
+
+  it('I2: never logs the token used to open a WebSocket', async () => {
+    const paired = await fetch(`${base}/avionix/pair`, {
+      method: 'POST',
+      body: JSON.stringify({ code: '123456' }),
+    });
+    const { token } = (await paired.json()) as { token: string };
+
+    const logs: string[] = [];
+    await bridge.close();
+    bridge = await startBridge({
+      port: 0,
+      host: '127.0.0.1',
+      xplaneHost: xplane.host,
+      xplanePort: xplane.port,
+      staticDir,
+      dataDir,
+      code: '123456',
+      advertiser: fakeAdvertiser(),
+      log: (line) => logs.push(line),
+    });
+    base = `http://127.0.0.1:${bridge.port}`;
+
+    const { socket } = await openSocket(`ws://127.0.0.1:${bridge.port}/api/v3?token=${token}`);
+    await until(() => xplane.connectionCount === 1);
+    socket.close();
+    await until(() => xplane.connectionCount === 0);
+
+    expect(logs.some((line) => line.includes(token))).toBe(false);
+  });
+
+  it('I3: strips the token and the Authorization header before proxying HTTP to X-Plane', async () => {
+    const paired = await fetch(`${base}/avionix/pair`, {
+      method: 'POST',
+      body: JSON.stringify({ code: '123456' }),
+    });
+    const { token } = (await paired.json()) as { token: string };
+
+    let upstream: Awaited<ReturnType<typeof startRecordingUpstream>> | undefined;
+    let recordingBridge: Awaited<ReturnType<typeof startBridge>> | undefined;
+    try {
+      upstream = await startRecordingUpstream();
+      recordingBridge = await startBridge({
+        port: 0,
+        host: '127.0.0.1',
+        xplaneHost: '127.0.0.1',
+        xplanePort: upstream.port,
+        staticDir,
+        dataDir,
+        advertiser: fakeAdvertiser(),
+        log: () => undefined,
+      });
+      const recordingBase = `http://127.0.0.1:${recordingBridge.port}`;
+      await fetch(`${recordingBase}/api/capabilities?token=${token}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      await until(() => (upstream?.requests.length ?? 0) === 1);
+      const request = upstream.requests[0];
+      if (request === undefined) throw new Error('expected a recorded upstream request');
+      expect(request).toContain('GET /api/capabilities HTTP/1.1');
+      expect(request.toLowerCase()).not.toContain('authorization:');
+      expect(request).not.toContain(token);
+    } finally {
+      await recordingBridge?.close();
+      await upstream?.close();
+    }
+  });
+
+  it('I4: honours an injected version in info and on the status page', async () => {
+    await bridge.close();
+    bridge = await startBridge({
+      port: 0,
+      host: '127.0.0.1',
+      xplaneHost: xplane.host,
+      xplanePort: xplane.port,
+      staticDir,
+      dataDir,
+      code: '123456',
+      version: '9.9.9',
+      advertiser: fakeAdvertiser(),
+      log: () => undefined,
+    });
+    base = `http://127.0.0.1:${bridge.port}`;
+
+    const info = (await (await fetch(`${base}/avionix/info`)).json()) as { version: string };
+    expect(info.version).toBe('9.9.9');
+    const page = await (await fetch(`${base}/avionix`)).text();
+    expect(page).toContain('9.9.9');
+  });
+
+  it('--no-mdns without an advertiser publishes nothing and still closes cleanly', async () => {
+    await bridge.close();
+    bridge = await startBridge({
+      port: 0,
+      host: '0.0.0.0',
+      xplaneHost: xplane.host,
+      xplanePort: xplane.port,
+      staticDir,
+      dataDir,
+      open: true,
+      mdns: false,
+      networkInterfaces: () => ({ eth0: [ipv4('10.0.0.5', false)] }),
+      log: () => undefined,
+    });
+    base = `http://127.0.0.1:${bridge.port}`;
+    expect(bridge.urls).toEqual([`http://10.0.0.5:${bridge.port}`]);
+    await expect(bridge.close()).resolves.toBeUndefined();
+    bridge = await startBridge({
+      port: 0,
+      host: '127.0.0.1',
+      xplaneHost: xplane.host,
+      xplanePort: xplane.port,
+      staticDir,
+      dataDir,
+      open: true,
+      advertiser: fakeAdvertiser(),
+      log: () => undefined,
+    });
+  });
+
+  it('computeUrls lists a URL per non-internal IPv4 interface', async () => {
+    await bridge.close();
+    bridge = await startBridge({
+      port: 0,
+      host: '0.0.0.0',
+      xplaneHost: xplane.host,
+      xplanePort: xplane.port,
+      staticDir,
+      dataDir,
+      open: true,
+      advertiser: fakeAdvertiser(),
+      networkInterfaces: () => ({
+        eth0: [ipv4('10.0.0.5', false)],
+        eth1: [ipv4('192.168.1.10', false)],
+      }),
+      log: () => undefined,
+    });
+    expect(bridge.urls).toEqual([
+      `http://10.0.0.5:${bridge.port}`,
+      `http://192.168.1.10:${bridge.port}`,
+    ]);
+  });
+
+  it('computeUrls falls back to localhost when only loopback interfaces exist', async () => {
+    await bridge.close();
+    bridge = await startBridge({
+      port: 0,
+      host: '0.0.0.0',
+      xplaneHost: xplane.host,
+      xplanePort: xplane.port,
+      staticDir,
+      dataDir,
+      open: true,
+      advertiser: fakeAdvertiser(),
+      networkInterfaces: () => ({ lo: [ipv4('127.0.0.1', true)] }),
+      log: () => undefined,
+    });
+    expect(bridge.urls).toEqual([`http://localhost:${bridge.port}`]);
   });
 });

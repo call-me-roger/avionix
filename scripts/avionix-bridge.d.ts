@@ -14,6 +14,7 @@ export interface BridgeOptions {
   mdns?: boolean;
   advertiser?: Advertiser;
   version?: string;
+  networkInterfaces?: () => NodeJS.Dict<import('node:os').NetworkInterfaceInfo[]>;
 }
 
 export interface BridgeHandle {
@@ -28,6 +29,8 @@ export interface BridgeHandle {
 export function startBridge(options?: BridgeOptions): Promise<BridgeHandle>;
 export function parseArgs(
   argv: string[],
-): Required<Omit<BridgeOptions, 'log' | 'advertiser' | 'version'>> | 'help';
+): Required<Omit<BridgeOptions, 'log' | 'advertiser' | 'version' | 'networkInterfaces'>> | 'help';
 export function usage(): string;
-export const DEFAULTS: Readonly<Required<Omit<BridgeOptions, 'log' | 'advertiser' | 'version'>>>;
+export const DEFAULTS: Readonly<
+  Required<Omit<BridgeOptions, 'log' | 'advertiser' | 'version' | 'networkInterfaces'>>
+>;

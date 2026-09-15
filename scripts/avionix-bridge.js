@@ -179,17 +179,49 @@ function readBody(req, maxBytes) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
-    req.on('data', (chunk) => {
+    let done = false;
+    const finish = (error, value) => {
+      if (done) return;
+      done = true;
+      req.removeListener('data', onData);
+      req.removeListener('end', onEnd);
+      req.removeListener('error', onError);
+      if (error) reject(error);
+      else resolve(value);
+    };
+    const onData = (chunk) => {
       size += chunk.length;
       if (size > maxBytes) {
-        reject(new Error('body too large'));
-        req.destroy();
+        const error = new Error('body too large');
+        error.tooLarge = true;
+        // Leave the socket alone here: the caller responds first, then closes it,
+        // so the client sees the 413 instead of a bare connection reset.
+        finish(error);
         return;
       }
       chunks.push(chunk);
-    });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    req.on('error', reject);
+    };
+    const onEnd = () => finish(null, Buffer.concat(chunks).toString('utf8'));
+    const onError = (error) => finish(error);
+    req.on('data', onData);
+    req.on('end', onEnd);
+    req.on('error', onError);
+  });
+}
+
+function normalizeClientKey(address) {
+  if (typeof address !== 'string') return address;
+  return address.startsWith('::ffff:') ? address.slice('::ffff:'.length) : address;
+}
+
+function runAsyncHandler(promise, res, log) {
+  Promise.resolve(promise).catch((error) => {
+    log(`handler error: ${error instanceof Error ? error.message : String(error)}`);
+    if (!res.headersSent) {
+      sendJson(res, 500, { error_code: 'internal_error', error_message: 'Unexpected error' });
+    } else {
+      res.destroy();
+    }
   });
 }
 
@@ -212,11 +244,11 @@ function checkUpstream(options) {
   });
 }
 
-async function handleInfo(options, auth, name, res) {
+async function handleInfo(options, auth, name, version, res) {
   const reachable = await checkUpstream(options);
   sendJson(res, 200, {
     name,
-    version: VERSION,
+    version,
     pairingRequired: auth.pairingRequired,
     xplane: { host: options.xplaneHost, port: options.xplanePort, reachable },
   });
@@ -226,7 +258,17 @@ async function handlePair(req, res, auth) {
   let raw;
   try {
     raw = await readBody(req, MAX_PAIR_BODY_BYTES);
-  } catch {
+  } catch (error) {
+    if (error && error.tooLarge) {
+      sendJson(res, 413, {
+        error_code: 'payload_too_large',
+        error_message: 'Pairing body is too large.',
+      });
+      // Wait for the 413 to actually flush before hanging up: req and res share
+      // one socket, so destroying req immediately could truncate the response.
+      res.once('finish', () => req.destroy());
+      return;
+    }
     sendJson(res, 400, {
       error_code: 'invalid_body',
       error_message: 'Could not read the request body.',
@@ -240,8 +282,15 @@ async function handlePair(req, res, auth) {
     sendJson(res, 400, { error_code: 'invalid_body', error_message: 'Body must be JSON.' });
     return;
   }
-  const clientKey = req.socket.remoteAddress || 'unknown';
-  const result = auth.pair(String((body && body.code) ?? ''), clientKey);
+  if (typeof body !== 'object' || body === null || typeof body.code !== 'string') {
+    sendJson(res, 400, {
+      error_code: 'invalid_body',
+      error_message: 'Body must include a code string.',
+    });
+    return;
+  }
+  const clientKey = normalizeClientKey(req.socket.remoteAddress) || 'unknown';
+  const result = auth.pair(body.code, clientKey);
   if (result.ok) {
     sendJson(res, 200, { token: result.token });
     return;
@@ -261,17 +310,18 @@ function escapeHtml(value) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
-function renderStatusPage(options, auth, name, urls) {
+function renderStatusPage(options, auth, name, version, urls) {
   const pairingLine = auth.pairingRequired ? 'Pairing: required' : 'Pairing: open';
   const urlItems = urls.map((url) => `<li>${escapeHtml(url)}</li>`).join('');
   return [
     '<!doctype html>',
     '<html><head><meta charset="utf-8"><title>Avionix Connector</title></head><body>',
     `<h1>${escapeHtml(name)}</h1>`,
-    `<p>Avionix Connector ${escapeHtml(VERSION)}</p>`,
+    `<p>Avionix Connector ${escapeHtml(version)}</p>`,
     `<p>${escapeHtml(pairingLine)}</p>`,
     `<p>X-Plane target: ${escapeHtml(`${options.xplaneHost}:${options.xplanePort}`)}</p>`,
     `<ul>${urlItems}</ul>`,
@@ -279,10 +329,14 @@ function renderStatusPage(options, auth, name, urls) {
   ].join('\n');
 }
 
-function computeUrls(host, port) {
-  if (host !== '0.0.0.0') return [`http://${host}:${port}`];
+function formatHost(host) {
+  return host.includes(':') ? `[${host}]` : host;
+}
+
+function computeUrls(host, port, networkInterfacesFn) {
+  if (host !== '0.0.0.0') return [`http://${formatHost(host)}:${port}`];
   const urls = [];
-  const interfaces = os.networkInterfaces();
+  const interfaces = networkInterfacesFn();
   for (const entries of Object.values(interfaces)) {
     if (!entries) continue;
     for (const entry of entries) {
@@ -291,6 +345,7 @@ function computeUrls(host, port) {
       }
     }
   }
+  if (urls.length === 0) urls.push(`http://localhost:${port}`);
   return urls;
 }
 
@@ -355,12 +410,13 @@ function proxyHttp(options, req, res, log, pendingUpstreamRequests) {
     host: `${options.xplaneHost}:${options.xplanePort}`,
   });
   delete headers.origin;
+  delete headers.authorization;
   const upstream = http.request(
     {
       host: options.xplaneHost,
       port: options.xplanePort,
       method: req.method,
-      path: req.url,
+      path: stripTokenQuery(req.url || ''),
       headers,
     },
     (upstreamRes) => {
@@ -460,27 +516,47 @@ function startBridge(overrides = {}) {
     open: options.open,
   });
   const name = options.name || `Avionix Connector (${os.hostname()})`;
+  const version = options.version || VERSION;
+  const networkInterfacesFn = options.networkInterfaces || os.networkInterfaces;
   const advertise =
     options.advertiser ||
     (options.mdns === false ? createNullAdvertiser() : createBonjourAdvertiser(undefined, log));
   let urls = [];
 
   const server = http.createServer((req, res) => {
-    const url = req.url || '';
-    if (url === '/avionix/info') {
-      handleInfo(options, auth, name, res);
+    const pathname = (req.url || '').split('?')[0];
+    if (pathname === '/avionix/info') {
+      if (req.method !== 'GET') {
+        sendJson(
+          res,
+          405,
+          { error_code: 'method_not_allowed', error_message: 'Use GET.' },
+          { allow: 'GET' },
+        );
+        return;
+      }
+      runAsyncHandler(handleInfo(options, auth, name, version, res), res, log);
       return;
     }
-    if (url === '/avionix/pair' && req.method === 'POST') {
-      handlePair(req, res, auth);
+    if (pathname === '/avionix/pair') {
+      if (req.method !== 'POST') {
+        sendJson(
+          res,
+          405,
+          { error_code: 'method_not_allowed', error_message: 'Use POST.' },
+          { allow: 'POST' },
+        );
+        return;
+      }
+      runAsyncHandler(handlePair(req, res, auth), res, log);
       return;
     }
-    if (url === '/avionix' || url === '/avionix/') {
+    if (pathname === '/avionix' || pathname === '/avionix/') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      res.end(renderStatusPage(options, auth, name, urls));
+      res.end(renderStatusPage(options, auth, name, version, urls));
       return;
     }
-    if (isApiPath(url)) {
+    if (isApiPath(pathname)) {
       if (req.method !== 'OPTIONS' && !auth.isAuthorized(extractToken(req))) {
         sendJson(res, 401, {
           error_code: 'unauthorized',
@@ -494,8 +570,9 @@ function startBridge(overrides = {}) {
     }
   });
   server.on('upgrade', (req, socket, head) => {
-    if (isApiPath(req.url || '')) {
-      log(`websocket ${req.socket.remoteAddress} -> ${req.url}`);
+    const pathname = (req.url || '').split('?')[0];
+    if (isApiPath(pathname)) {
+      log(`websocket ${req.socket.remoteAddress} -> ${stripTokenQuery(req.url || '')}`);
       relayUpgrade(options, req, socket, head, log, relays, auth);
     } else {
       socket.destroy();
@@ -506,7 +583,7 @@ function startBridge(overrides = {}) {
     server.listen(options.port, options.host, () => {
       const address = server.address();
       const port = typeof address === 'object' && address ? address.port : options.port;
-      urls = computeUrls(options.host, port);
+      urls = computeUrls(options.host, port, networkInterfacesFn);
       log(
         `listening on http://${options.host}:${port}, serving ${path.resolve(options.staticDir)}, relaying /api to ${options.xplaneHost}:${options.xplanePort}`,
       );
