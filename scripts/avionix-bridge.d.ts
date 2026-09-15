@@ -16,4 +16,4 @@ export interface BridgeHandle {
 export function startBridge(options?: BridgeOptions): Promise<BridgeHandle>;
 export function parseArgs(argv: string[]): Required<Omit<BridgeOptions, 'log'>> | 'help';
 export function usage(): string;
-export const DEFAULTS: Required<Omit<BridgeOptions, 'log'>>;
+export const DEFAULTS: Readonly<Required<Omit<BridgeOptions, 'log'>>>;

@@ -31,4 +31,10 @@ describe('avionix-bridge parseArgs', () => {
     expect(() => parseArgs(['--bogus'])).toThrow('Unknown argument');
     expect(() => parseArgs(['--port', '70000'])).toThrow('--port');
   });
+
+  it('throws when --host, --static or --xplane is missing its value', () => {
+    expect(() => parseArgs(['--host'])).toThrow('--host requires a value');
+    expect(() => parseArgs(['--static'])).toThrow('--static requires a value');
+    expect(() => parseArgs(['--xplane'])).toThrow('--xplane requires a value');
+  });
 });

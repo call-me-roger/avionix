@@ -8,13 +8,13 @@ const http = require('node:http');
 const net = require('node:net');
 const path = require('node:path');
 
-const DEFAULTS = {
+const DEFAULTS = Object.freeze({
   port: 8080,
   host: '0.0.0.0',
   xplaneHost: '127.0.0.1',
   xplanePort: 8086,
   staticDir: 'dist/web',
-};
+});
 
 const CONTENT_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -41,6 +41,27 @@ const CORS_HEADERS = {
   'access-control-max-age': '600',
 };
 
+// Headers that only make sense on a single hop; forwarding them lets the two
+// connections' framing fight each other (Node recomputes them for us).
+const HOP_BY_HOP_HEADERS = [
+  'connection',
+  'keep-alive',
+  'transfer-encoding',
+  'te',
+  'upgrade',
+  'proxy-connection',
+];
+
+function stripHopByHop(headers) {
+  const copy = { ...headers };
+  for (const name of HOP_BY_HOP_HEADERS) delete copy[name];
+  return copy;
+}
+
+function isApiPath(url) {
+  return url === '/api' || url.startsWith('/api/');
+}
+
 function usage() {
   return [
     'Usage: node scripts/avionix-bridge.js [--port 8080] [--host 0.0.0.0] [--xplane 127.0.0.1:8086] [--static dist/web]',
@@ -62,17 +83,20 @@ function parseArgs(argv) {
       continue;
     }
     if (arg === '--host') {
-      options.host = String(value);
+      if (value === undefined) throw new Error('--host requires a value');
+      options.host = value;
       i += 1;
       continue;
     }
     if (arg === '--static') {
-      options.staticDir = String(value);
+      if (value === undefined) throw new Error('--static requires a value');
+      options.staticDir = value;
       i += 1;
       continue;
     }
     if (arg === '--xplane') {
-      const [h, p] = String(value).split(':');
+      if (value === undefined) throw new Error('--xplane requires a value');
+      const [h, p] = value.split(':');
       options.xplaneHost = h || DEFAULTS.xplaneHost;
       options.xplanePort = p ? Number(p) : DEFAULTS.xplanePort;
       i += 1;
@@ -98,7 +122,13 @@ function sendJson(res, status, payload, extraHeaders = {}) {
 
 function resolveStatic(staticDir, urlPath) {
   const root = path.resolve(staticDir);
-  const decoded = decodeURIComponent(urlPath.split('?')[0]);
+  let decoded;
+  try {
+    decoded = decodeURIComponent(urlPath.split('?')[0]);
+  } catch {
+    // Malformed percent-escape (e.g. "/%ZZ"): fall back to the SPA shell.
+    return path.join(root, 'index.html');
+  }
   const candidate = path.resolve(root, `.${decoded}`);
   if (!candidate.startsWith(root + path.sep) && candidate !== root)
     return path.join(root, 'index.html');
@@ -131,13 +161,16 @@ function serveStatic(options, req, res) {
   });
 }
 
-function proxyHttp(options, req, res, log) {
+function proxyHttp(options, req, res, log, pendingUpstreamRequests) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, CORS_HEADERS);
     res.end();
     return;
   }
-  const headers = { ...req.headers, host: `${options.xplaneHost}:${options.xplanePort}` };
+  const headers = stripHopByHop({
+    ...req.headers,
+    host: `${options.xplaneHost}:${options.xplanePort}`,
+  });
   delete headers.origin;
   const upstream = http.request(
     {
@@ -148,24 +181,45 @@ function proxyHttp(options, req, res, log) {
       headers,
     },
     (upstreamRes) => {
-      const responseHeaders = { ...upstreamRes.headers, ...CORS_HEADERS };
+      const responseHeaders = { ...stripHopByHop(upstreamRes.headers), ...CORS_HEADERS };
       res.writeHead(upstreamRes.statusCode || 502, responseHeaders);
+      upstreamRes.on('error', (error) => {
+        log(`upstream response error ${req.method} ${req.url}: ${error.message}`);
+        if (!res.writableEnded) res.destroy();
+      });
       upstreamRes.pipe(res);
     },
   );
+  pendingUpstreamRequests.add(upstream);
+  const forgetUpstream = () => pendingUpstreamRequests.delete(upstream);
+  upstream.on('close', forgetUpstream);
   upstream.on('error', (error) => {
     log(`upstream error ${req.method} ${req.url}: ${error.message}`);
+    if (res.headersSent || res.writableEnded) {
+      // A response is already underway; we cannot send a fresh JSON error
+      // without crashing on "headers already sent", so just tear it down.
+      res.destroy();
+      return;
+    }
     sendJson(res, 502, {
       error_code: 'bridge_upstream_unreachable',
       error_message: `X-Plane at ${options.xplaneHost}:${options.xplanePort} is unreachable: ${error.message}`,
     });
   });
+  res.on('close', () => {
+    if (!res.writableEnded) upstream.destroy();
+  });
   req.pipe(upstream);
 }
 
-function relayUpgrade(options, req, socket, head, log) {
+function relayUpgrade(options, req, socket, head, log, relays) {
   const upstream = net.connect(options.xplanePort, options.xplaneHost);
+  const entry = { socket, upstream };
+  relays.add(entry);
+  const forget = () => relays.delete(entry);
+
   upstream.on('connect', () => {
+    upstream.setNoDelay(true);
     const lines = [`${req.method} ${req.url} HTTP/${req.httpVersion}`];
     for (let i = 0; i < req.rawHeaders.length; i += 2) {
       const name = req.rawHeaders[i];
@@ -184,25 +238,36 @@ function relayUpgrade(options, req, socket, head, log) {
     socket.write('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n');
     socket.destroy();
   });
+  // Let a close frame flush both ways before tearing the sockets down hard.
+  upstream.on('end', () => socket.end());
+  socket.on('end', () => upstream.end());
   socket.on('error', () => upstream.destroy());
-  socket.on('close', () => upstream.destroy());
-  upstream.on('close', () => socket.destroy());
+  socket.on('close', () => {
+    upstream.destroy();
+    forget();
+  });
+  upstream.on('close', () => {
+    socket.destroy();
+    forget();
+  });
 }
 
 function startBridge(overrides = {}) {
   const options = { ...DEFAULTS, ...overrides };
   const log = options.log || ((line) => console.log(`[avionix-bridge] ${line}`));
+  const relays = new Set();
+  const pendingUpstreamRequests = new Set();
   const server = http.createServer((req, res) => {
-    if ((req.url || '').startsWith('/api')) {
-      proxyHttp(options, req, res, log);
+    if (isApiPath(req.url || '')) {
+      proxyHttp(options, req, res, log, pendingUpstreamRequests);
     } else {
       serveStatic(options, req, res);
     }
   });
   server.on('upgrade', (req, socket, head) => {
-    if ((req.url || '').startsWith('/api')) {
+    if (isApiPath(req.url || '')) {
       log(`websocket ${req.socket.remoteAddress} -> ${req.url}`);
-      relayUpgrade(options, req, socket, head, log);
+      relayUpgrade(options, req, socket, head, log, relays);
     } else {
       socket.destroy();
     }
@@ -215,14 +280,27 @@ function startBridge(overrides = {}) {
       log(
         `listening on http://${options.host}:${port}, serving ${path.resolve(options.staticDir)}, relaying /api to ${options.xplaneHost}:${options.xplanePort}`,
       );
+      let closePromise = null;
       resolve({
         port,
         host: options.host,
-        close: () =>
-          new Promise((done) => {
+        close: () => {
+          if (closePromise) return closePromise;
+          closePromise = new Promise((done) => {
+            for (const entry of relays) {
+              entry.socket.destroy();
+              entry.upstream.destroy();
+            }
+            relays.clear();
+            for (const upstreamRequest of pendingUpstreamRequests) {
+              upstreamRequest.destroy();
+            }
+            pendingUpstreamRequests.clear();
             server.closeAllConnections();
             server.close(() => done());
-          }),
+          });
+          return closePromise;
+        },
       });
     });
   });
