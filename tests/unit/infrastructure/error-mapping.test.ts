@@ -23,4 +23,17 @@ describe('simulatorErrorToAvionixError', () => {
       'X-Plane error: invalid_body',
     );
   });
+
+  it.each([
+    ['unauthorized', 'UNAUTHORIZED', false],
+    ['pairing_invalid_code', 'PAIRING_FAILED', false],
+    ['pairing_rate_limited', 'PAIRING_RATE_LIMITED', true],
+    ['too_many_attempts', 'PAIRING_RATE_LIMITED', true],
+  ])('maps the connector code %s to %s', (errorCode, expected, retryable) => {
+    const error = simulatorErrorToAvionixError({ errorCode, errorMessage: 'msg', httpStatus: 429 });
+    expect(error.code).toBe(expected);
+    expect(error.retryable).toBe(retryable);
+    expect(error.simulatorErrorCode).toBe(errorCode);
+    expect(error.httpStatus).toBe(429);
+  });
 });

@@ -2,6 +2,7 @@ import { AvionixError } from '@/domain/errors/avionix-error';
 import type { SocketCloseInfo, Unsubscribe } from '@/domain/simulator/simulator-client';
 import type { DataRefUpdate } from '@/domain/simulator/types';
 import { type Logger, silentLogger } from '@/infrastructure/logging/logger';
+import { urlWithoutQuery } from '@/infrastructure/xplane/auth';
 import { toDataRefUpdates } from '@/infrastructure/xplane/schemas/mappers';
 import {
   type OutgoingMessage,
@@ -61,6 +62,8 @@ export class WebSocketTransport {
   private readonly createSocket: WebSocketFactory;
   private readonly connectTimeoutMs: number;
   private readonly now: () => number;
+  /** The URL without its query string: the query carries the connector token. */
+  private readonly safeUrl: string;
   private closeRequested = false;
   private closeEmitted = false;
   private readonly dataRefListeners = new Set<(updates: DataRefUpdate[]) => void>();
@@ -72,6 +75,7 @@ export class WebSocketTransport {
     this.createSocket = options.createSocket ?? defaultWebSocketFactory;
     this.connectTimeoutMs = options.connectTimeoutMs ?? 5000;
     this.now = options.now ?? Date.now;
+    this.safeUrl = urlWithoutQuery(options.url);
     this.requests = new RequestManager({
       defaultTimeoutMs: options.requestTimeoutMs ?? 5000,
       logger: this.logger,
@@ -97,7 +101,7 @@ export class WebSocketTransport {
         reject(
           new AvionixError({
             code: 'WEBSOCKET_ERROR',
-            message: `Could not open WebSocket to ${this.options.url}`,
+            message: `Could not open WebSocket to ${this.safeUrl}`,
             retryable: true,
             cause: error,
           }),
@@ -113,14 +117,14 @@ export class WebSocketTransport {
           return;
         }
         settled = true;
-        this.logger.warn('connect timeout', { url: this.options.url });
+        this.logger.warn('connect timeout', { url: this.safeUrl });
         this.detach(socket);
         socket.close();
         this.socket = null;
         reject(
           new AvionixError({
             code: 'TIMEOUT',
-            message: `WebSocket to ${this.options.url} did not open within ${this.connectTimeoutMs} ms`,
+            message: `WebSocket to ${this.safeUrl} did not open within ${this.connectTimeoutMs} ms`,
             retryable: true,
           }),
         );
@@ -132,14 +136,14 @@ export class WebSocketTransport {
         }
         settled = true;
         clearTimeout(timer);
-        this.logger.info('connected', { url: this.options.url });
+        this.logger.info('connected', { url: this.safeUrl });
         resolve();
       };
       socket.onerror = (event) => {
         if (this.socket !== socket) {
           return;
         }
-        this.logger.warn('socket error', { url: this.options.url, event: String(event) });
+        this.logger.warn('socket error', { url: this.safeUrl, event: String(event) });
         if (!settled) {
           settled = true;
           clearTimeout(timer);
@@ -148,7 +152,7 @@ export class WebSocketTransport {
           reject(
             new AvionixError({
               code: 'WEBSOCKET_ERROR',
-              message: `WebSocket to ${this.options.url} failed`,
+              message: `WebSocket to ${this.safeUrl} failed`,
               retryable: true,
               cause: event,
             }),
@@ -169,7 +173,7 @@ export class WebSocketTransport {
           reject(
             new AvionixError({
               code: 'WEBSOCKET_ERROR',
-              message: `WebSocket to ${this.options.url} closed before opening (code ${info.code})`,
+              message: `WebSocket to ${this.safeUrl} closed before opening (code ${info.code})`,
               retryable: true,
             }),
           );
@@ -219,7 +223,7 @@ export class WebSocketTransport {
       return;
     }
     this.closeRequested = true;
-    this.logger.info('closing', { url: this.options.url });
+    this.logger.info('closing', { url: this.safeUrl });
     socket.close(1000, 'client disconnect');
   }
 
