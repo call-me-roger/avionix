@@ -29,7 +29,6 @@ export function MvpScreen() {
   const settings = useConnectionSettings();
   const styles = useThemedStyles(makeStyles);
   const [now, setNow] = useState(() => Date.now());
-  const [pairing, setPairing] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -42,15 +41,11 @@ export function MvpScreen() {
   }, [connect, settings]);
 
   const onPair = useCallback(
-    (code: string) => {
-      setPairing(true);
-      void pair(code)
-        .catch(() => {
-          // pair() only rejects with INTERNAL (wrong state or a concurrent call), which the
-          // disabled button already prevents; user-visible failures arrive via snapshot.error.
-        })
-        .finally(() => setPairing(false));
-    },
+    (code: string) =>
+      pair(code).catch(() => {
+        // pair() only rejects with INTERNAL (wrong state or a concurrent call), which the
+        // disabled button already prevents; user-visible failures arrive via snapshot.error.
+      }),
     [pair],
   );
 
@@ -68,7 +63,6 @@ export function MvpScreen() {
         port={settings.port}
         state={snapshot.state}
         connectorName={snapshot.connector?.name ?? null}
-        pairing={pairing}
         onHostChange={settings.setHost}
         onPortChange={settings.setPort}
         onConnect={onConnect}

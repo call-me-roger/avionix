@@ -247,6 +247,45 @@ describe('MvpScreen pairing mode', () => {
     await waitFor(() => expect(screen.getByTestId('pairing-code').props.value).toBe(''));
   });
 
+  it('re-enables Pair after a Cancel while a pair call was still in flight', async () => {
+    const { services, session, store } = makeServices({ state: 'pairing', connector });
+    // A pair call that never settles: Cancel is the only way out of it.
+    session.pair.mockImplementation(() => new Promise<void>(() => undefined));
+    await renderScreen(services);
+    await fireEvent.changeText(screen.getByTestId('pairing-code'), '123456');
+    await fireEvent.press(screen.getByText('Pair'));
+    await waitFor(() => expect(session.pair).toHaveBeenCalledTimes(1));
+
+    await fireEvent.press(screen.getByText('Cancel'));
+    await act(async () => {
+      store.setState((prev) => ({ ...prev, state: 'disconnected' }));
+    });
+    await act(async () => {
+      store.setState((prev) => ({ ...prev, state: 'pairing' }));
+    });
+
+    // The form is usable again: the stale code is gone and a fresh one can be submitted.
+    expect(screen.getByTestId('pairing-code').props.value).toBe('');
+    await fireEvent.changeText(screen.getByTestId('pairing-code'), '654321');
+    await fireEvent.press(screen.getByText('Pair'));
+    await waitFor(() => expect(session.pair).toHaveBeenCalledWith('654321'));
+  });
+
+  it('clears a code left over from an earlier pairing attempt', async () => {
+    const { services, store } = makeServices({ state: 'pairing', connector });
+    await renderScreen(services);
+    await fireEvent.changeText(screen.getByTestId('pairing-code'), '123456');
+
+    await act(async () => {
+      store.setState((prev) => ({ ...prev, state: 'connecting' }));
+    });
+    await act(async () => {
+      store.setState((prev) => ({ ...prev, state: 'pairing' }));
+    });
+
+    expect(screen.getByTestId('pairing-code').props.value).toBe('');
+  });
+
   it.each([
     ['PAIRING_FAILED', 'Wrong code, check the connector window.'],
     ['PAIRING_RATE_LIMITED', 'Too many attempts, wait a minute and try again.'],
