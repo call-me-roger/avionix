@@ -30,15 +30,28 @@ export const ANDROID_IMPL_TYPE: ZeroconfImplType = 'NSD';
 /**
  * Shape of a `resolved` event payload from the native side (`name`, `fullName`, `host`, `port`,
  * `addresses`, `txt`). `addresses` and `txt` fall back to empty on any problem so that a
- * strange TXT record cannot hide a connector; `name` and `port` problems drop the payload.
+ * strange TXT record cannot hide a connector; `name` and `port` problems drop the payload. `txt`
+ * accepts any value per key so that one non-string entry does not drop the whole map (a valid
+ * `pairing=1` alongside a stray non-string key is still usable); non-string values are filtered
+ * out when building the `BrowsedService`.
  */
 export const resolvedServiceSchema = z.object({
   name: z.string().min(1),
   host: z.string().catch(''),
   port: z.number().int().min(1).max(65535),
   addresses: z.array(z.string()).catch([]),
-  txt: z.record(z.string(), z.string()).catch({}),
+  txt: z.record(z.string(), z.unknown()).catch({}),
 });
+
+function stringTxtEntries(txt: Record<string, unknown>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(txt)) {
+    if (typeof value === 'string') {
+      result[key] = value;
+    }
+  }
+  return result;
+}
 
 function reason(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
@@ -85,7 +98,7 @@ export function createZeroconfServiceBrowser(deps: {
           host: parsed.data.host,
           port: parsed.data.port,
           addresses: parsed.data.addresses,
-          txt: parsed.data.txt,
+          txt: stringTxtEntries(parsed.data.txt),
         };
         listener.resolved(service);
       };

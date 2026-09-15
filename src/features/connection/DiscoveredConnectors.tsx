@@ -55,7 +55,9 @@ export function DiscoveredConnectors({ snapshot, enabled, onSelect }: Props) {
                 key={connector.name}
                 testID={`discovered-${connector.name}`}
                 accessibilityRole="button"
-                accessibilityLabel={`Connect to ${connector.name}`}
+                accessibilityLabel={`Connect to ${connector.name}, ${connector.host} port ${connector.port}${
+                  tag === null ? '' : `, ${tag}`
+                }`}
                 onPress={() => onSelect(connector)}
                 style={({ pressed }) => [styles.row, pressed ? styles.rowPressed : null]}
               >

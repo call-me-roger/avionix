@@ -220,7 +220,7 @@ describe('MvpScreen', () => {
       expect(screen.getByText('Needs pairing')).toBeTruthy();
       expect(screen.getByText('Open')).toBeTruthy();
       expect(screen.queryByText('Looking for connectors…')).toBeNull();
-      await fireEvent.press(screen.getByLabelText('Connect to Sim PC'));
+      await fireEvent.press(screen.getByLabelText(/^Connect to Sim PC,/));
       await waitFor(() => expect(session.connect).toHaveBeenCalledWith('192.168.1.20', '8080'));
       expect(screen.getByDisplayValue('192.168.1.20')).toBeTruthy();
       await waitFor(async () =>

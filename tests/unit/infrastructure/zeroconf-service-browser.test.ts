@@ -92,17 +92,24 @@ describe('createZeroconfServiceBrowser', () => {
     });
   });
 
-  it('defaults missing addresses, host and txt and tolerates a non-string txt value', () => {
+  it('defaults missing addresses and host, and drops only the non-string txt entries', () => {
     const { zeroconf, browser, listener } = setup();
     browser.browse('avionix', listener);
-    zeroconf.emit('resolved', { name: 'a', port: 8080, txt: { pairing: 1 } });
+    zeroconf.emit('resolved', { name: 'a', port: 8080, txt: { pairing: '1', weird: 1 } });
     expect(listener.resolved).toHaveBeenCalledWith({
       name: 'a',
       host: '',
       port: 8080,
       addresses: [],
-      txt: {},
+      txt: { pairing: '1' },
     });
+  });
+
+  it('defaults txt to empty when the whole value is not a record', () => {
+    const { zeroconf, browser, listener } = setup();
+    browser.browse('avionix', listener);
+    zeroconf.emit('resolved', { name: 'a', port: 8080, txt: 'nonsense' });
+    expect(listener.resolved).toHaveBeenCalledWith(expect.objectContaining({ name: 'a', txt: {} }));
   });
 
   it('drops a malformed payload with a warning', () => {
