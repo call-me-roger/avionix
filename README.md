@@ -53,7 +53,8 @@ npm start
 Scan the QR code with Expo Go. On iOS, Expo Go for SDK 57 requires the same Expo account to be
 logged in both in the CLI (`npx expo login`) and in the app. See `docs/development.md`.
 
-Run the Avionix Connector on the X-Plane PC (`npm run bridge`), then pair the app with the code it prints; see `docs/connector.md`.
+Run the Avionix Connector on the X-Plane PC. The in-app pairing screen ships in the next PR, so for
+now start the bridge with `--open`: `npm run bridge -- --open`. See `docs/connector.md`.
 
 ## Connecting to X-Plane
 

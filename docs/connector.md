@@ -29,6 +29,9 @@ tests). A device sends it once to `/avionix/pair` and stores the returned token.
 in `~/.avionix/connector-tokens.json` (`--data-dir` overrides) so paired devices survive restarts.
 Delete that file to revoke every device. `--open` disables pairing entirely (trusted networks only).
 
+The Avionix app's pairing screen is pending (next PR). Until then, start the bridge with `--open`
+for the app to reach X-Plane.
+
 ## Flags
 
 `--port 8080`, `--host 0.0.0.0`, `--xplane 127.0.0.1:8086`, `--static dist/web`, `--open`,
