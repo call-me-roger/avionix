@@ -6,7 +6,7 @@
 
 **Architecture:** The React Native app gains the web platform through `react-native-web` with no app-code branching except a one-file platform default for the connection form. A Node script `scripts/avionix-bridge.js` (built-ins only) serves the exported `dist/web` and proxies `/api/*` (including WebSocket upgrades) to X-Plane on `127.0.0.1:8086`, answering CORS preflight itself. Browser and API share one origin, which sidesteps X-Plane's localhost-only binding, its 403 on `OPTIONS`, and mixed-content rules.
 
-**Tech Stack:** Expo SDK 57 web (`react-native-web ~0.21`, `react-dom 19.2.3`, `@expo/metro-runtime`), Metro web export (`output: single`), Node 22 `http`/`net`/`fs`/`path` for the bridge, Jest `node` project for bridge tests, a `jest-expo/web` project for one web-rendering smoke test.
+**Tech Stack:** Expo SDK 57 web (`react-native-web ~0.21`, `react-dom 19.2.3`, `@expo/metro-runtime`), Metro web export (`output: single`), Node 22 `http`/`net`/`fs`/`path` for the bridge, Jest `node` project for bridge tests, a `jest-expo/web` project (jsdom + react-dom `createRoot`, no Testing Library) for web rendering tests.
 
 **Spec:** Design approved in chat on 2026-09-14/15 (no written spec): scope "deployable static web app"; approach A (bridge script in the repo); evidence from X-Plane 12.4.3: binds to `127.0.0.1` only, sends `Access-Control-Allow-Origin: *` but answers `OPTIONS` with 403, DataRef count is 0 at the main menu (handled by PR #3). Out of scope: PWA/service worker, HTTPS, authentication, running the bridge as a service, hosting beyond the bridge.
 
@@ -91,11 +91,11 @@ In `jest.config.js` add a third project (reuse the `transformIgnorePatterns` str
 
 - [ ] **Step 4: Write the web rendering test**
 
-`tests/web/mvp-screen.web.test.tsx`:
+`tests/web/mvp-screen.web.test.tsx` (react-dom in jsdom; @testing-library/react-native cannot render react-native-web output):
 
 ```tsx
-import { render, screen, waitFor } from '@testing-library/react-native';
-import React from 'react';
+import React, { act } from 'react';
+import { type Root, createRoot } from 'react-dom/client';
 
 import { MVP_DATAREF_NAMES } from '@/application/mvp-bindings';
 import { initialSnapshot } from '@/application/session-snapshot';
@@ -104,6 +104,11 @@ import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
 import { MvpScreen } from '@/features/mvp/MvpScreen';
 import { ThemeProvider } from '@/theme/theme-context';
+
+declare global {
+  var IS_REACT_ACT_ENVIRONMENT: boolean | undefined;
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 function services(): AppServices {
   return {
@@ -119,24 +124,47 @@ function services(): AppServices {
 }
 
 describe('MvpScreen on react-native-web', () => {
-  it('renders the screen and the theme toggle', async () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it('renders the screen and the theme toggle as DOM', async () => {
     const s = services();
-    await render(
-      <ServicesProvider services={s}>
-        <ThemeProvider storage={s.settingsStorage} systemSchemeOverride="light">
-          <MvpScreen />
-        </ThemeProvider>
-      </ServicesProvider>,
-    );
-    await waitFor(() => expect(screen.getByText('Status: disconnected')).toBeTruthy());
-    expect(screen.getByText('Avionix')).toBeTruthy();
-    expect(screen.getByLabelText('Theme Dark')).toBeTruthy();
+    await act(async () => {
+      root.render(
+        <ServicesProvider services={s}>
+          <ThemeProvider storage={s.settingsStorage} systemSchemeOverride="light">
+            <MvpScreen />
+          </ThemeProvider>
+        </ServicesProvider>,
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const text = container.textContent ?? '';
+    expect(text).toContain('Avionix');
+    expect(text).toContain('Status: disconnected');
+    expect(container.querySelector('[aria-label="Theme Dark"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="mvp-screen"]')).not.toBeNull();
   });
 });
 ```
 
 Run: `npx jest --selectProjects web`
-Expected: PASS. If `jest-expo/web` cannot resolve `react-dom`/`react-native-web` or fails in the preset itself, record the exact error in the report and stop; do not patch node_modules.
+Expected: PASS. If a querySelector assertion fails, inspect `container.innerHTML` and use the attribute react-native-web actually emits; keep the text assertions. If `jest-expo/web` cannot resolve `react-dom`/`react-native-web` or fails in the preset itself, record the exact error in the report and stop; do not patch node_modules.
 
 - [ ] **Step 5: Export for web and run the gate**
 
@@ -613,11 +641,12 @@ Append to `tests/ui/use-connection-settings.test.tsx`:
   });
 ```
 
-`tests/web/use-connection-settings.web.test.tsx`:
+`tests/web/use-connection-settings.web.test.tsx` (the `web` project renders with react-dom in jsdom; @testing-library/react-native cannot render react-native-web output):
 
 ```tsx
-import { renderHook, waitFor } from '@testing-library/react-native';
-import React from 'react';
+import React, { act } from 'react';
+import { type Root, createRoot } from 'react-dom/client';
+import { Text } from 'react-native';
 
 import { MVP_DATAREF_NAMES } from '@/application/mvp-bindings';
 import { initialSnapshot } from '@/application/session-snapshot';
@@ -626,6 +655,11 @@ import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
 import { useConnectionSettings } from '@/hooks/useConnectionSettings';
 import { platformDefaultConnection } from '@/platform/default-connection';
+
+declare global {
+  var IS_REACT_ACT_ENVIRONMENT: boolean | undefined;
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 function services(storage = createMemorySettingsStorage()): AppServices {
   return {
@@ -640,10 +674,37 @@ function services(storage = createMemorySettingsStorage()): AppServices {
   };
 }
 
-function wrapperFor(s: AppServices) {
-  return function Wrapper({ children }: { children: React.ReactNode }) {
-    return <ServicesProvider services={s}>{children}</ServicesProvider>;
-  };
+function Probe() {
+  const settings = useConnectionSettings();
+  return (
+    <Text testID="probe">
+      {settings.ready ? 'ready' : 'loading'}|{settings.host}|{settings.port}
+    </Text>
+  );
+}
+
+async function renderProbe(s: AppServices): Promise<{ container: HTMLDivElement; root: Root }> {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(
+      <ServicesProvider services={s}>
+        <Probe />
+      </ServicesProvider>,
+    );
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  return { container, root };
+}
+
+async function cleanup(handle: { container: HTMLDivElement; root: Root }): Promise<void> {
+  await act(async () => {
+    handle.root.unmount();
+  });
+  handle.container.remove();
 }
 
 describe('connection defaults on web', () => {
@@ -653,19 +714,17 @@ describe('connection defaults on web', () => {
   });
 
   it('prefills the form from the page origin when nothing is stored', async () => {
-    const { result } = await renderHook(() => useConnectionSettings(), { wrapper: wrapperFor(services()) });
-    await waitFor(() => expect(result.current.ready).toBe(true));
-    expect(result.current.host).toBe('localhost');
-    expect(result.current.port).toBe('80');
+    const handle = await renderProbe(services());
+    expect(handle.container.textContent).toBe('ready|localhost|80');
+    await cleanup(handle);
   });
 
   it('prefers stored settings over the page origin', async () => {
     const storage = createMemorySettingsStorage();
     await saveConnectionSettings(storage, { host: '10.0.0.5', port: 8087 });
-    const { result } = await renderHook(() => useConnectionSettings(), { wrapper: wrapperFor(services(storage)) });
-    await waitFor(() => expect(result.current.ready).toBe(true));
-    expect(result.current.host).toBe('10.0.0.5');
-    expect(result.current.port).toBe('8087');
+    const handle = await renderProbe(services(storage));
+    expect(handle.container.textContent).toBe('ready|10.0.0.5|8087');
+    await cleanup(handle);
   });
 });
 ```
