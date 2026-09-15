@@ -186,4 +186,26 @@ describe('pairing through the real Avionix Connector', () => {
     expect(second.store.getSnapshot().state).toBe('connected');
     second.disconnect();
   });
+
+  it('reports the connector rate limit after five wrong codes', async () => {
+    const session = createSession(createMemorySettingsStorage());
+    const snap = () => session.store.getSnapshot();
+
+    await session.connect('127.0.0.1', bridgePort);
+    expect(snap().state).toBe('pairing');
+
+    // The connector allows five wrong codes per client per minute; this bridge is fresh, so
+    // the count starts at zero.
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      await session.pair('000000');
+      expect(snap().error?.code).toBe('PAIRING_FAILED');
+    }
+
+    // The sixth is refused by the limiter before the code is even compared.
+    await session.pair('000000');
+    expect(snap().state).toBe('pairing');
+    expect(snap().error?.code).toBe('PAIRING_RATE_LIMITED');
+
+    session.disconnect();
+  });
 });

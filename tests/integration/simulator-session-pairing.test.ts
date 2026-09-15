@@ -1,7 +1,7 @@
 import { MVP_DATAREFS } from '@/application/mvp-bindings';
 import { createPairingTokenStore } from '@/application/pairing-token-store';
 import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
-import { SimulatorSession } from '@/application/simulator-session';
+import { type Scheduler, SimulatorSession } from '@/application/simulator-session';
 import { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
@@ -18,7 +18,37 @@ async function until(predicate: () => boolean, timeoutMs = 3000): Promise<void> 
   }
 }
 
-function createSession(storage: SettingsStorage): SimulatorSession {
+/**
+ * Counts the reconnect timers the session arms, so a test can assert that none is waiting
+ * without sleeping to see whether one fires.
+ */
+class RecordingScheduler implements Scheduler {
+  armed = 0;
+  pending = 0;
+
+  schedule(callback: () => void, delayMs: number): () => void {
+    this.armed += 1;
+    this.pending += 1;
+    let settled = false;
+    const finish = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      this.pending -= 1;
+    };
+    const timer = setTimeout(() => {
+      finish();
+      callback();
+    }, delayMs);
+    return () => {
+      finish();
+      clearTimeout(timer);
+    };
+  }
+}
+
+function createSession(storage: SettingsStorage, scheduler?: Scheduler): SimulatorSession {
   return new SimulatorSession({
     createHttpTransport: (config, auth) =>
       new HttpTransport({
@@ -39,6 +69,7 @@ function createSession(storage: SettingsStorage): SimulatorSession {
       }),
     createConnectorClient: (http) => new ConnectorClient({ http, logger: silentLogger }),
     tokenStore: createPairingTokenStore(storage),
+    ...(scheduler === undefined ? {} : { scheduler }),
     reconnectPolicy: {
       maxAttempts: 3,
       baseDelayMs: 20,
@@ -101,7 +132,8 @@ describe('SimulatorSession pairing against the mock connector', () => {
 
   it('returns to pairing and forgets the token when the connector rejects it', async () => {
     const tokenStore = createPairingTokenStore(storage);
-    const session = createSession(storage);
+    const scheduler = new RecordingScheduler();
+    const session = createSession(storage, scheduler);
     await session.connect(server.host, server.port);
     await session.pair('123456');
     expect(session.store.getSnapshot().state).toBe('connected');
@@ -114,10 +146,14 @@ describe('SimulatorSession pairing against the mock connector', () => {
     expect(session.store.getSnapshot().connector?.name).toBe('Sim PC');
     await expect(tokenStore.get(server.host, server.port)).resolves.toBeNull();
 
+    // No retry is waiting: another attempt would be rejected the same way, so the session
+    // must sit in `pairing` until the user enters a code rather than re-arm the scheduler.
+    expect(scheduler.pending).toBe(0);
+    const armedAtPairing = scheduler.armed;
     const attemptsAfter = server.issuedTokens.length;
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await until(() => server.connectionCount === 0);
     expect(session.store.getSnapshot().state).toBe('pairing');
-    expect(server.connectionCount).toBe(0);
+    expect(scheduler.armed).toBe(armedAtPairing);
     expect(server.issuedTokens.length).toBe(attemptsAfter);
     session.disconnect();
   });
