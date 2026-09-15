@@ -20,8 +20,11 @@ function isAddressInfo(value: string | AddressInfo | null): value is AddressInfo
 }
 
 function listenAndGetPort(server: net.Server): Promise<number> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    const onError = (error: Error): void => reject(error);
+    server.once('error', onError);
     server.listen(0, '127.0.0.1', () => {
+      server.removeListener('error', onError);
       const address = server.address();
       if (!isAddressInfo(address)) throw new Error('server has no address after listen');
       resolve(address.port);
@@ -29,7 +32,56 @@ function listenAndGetPort(server: net.Server): Promise<number> {
   });
 }
 
-function openSocket(url: string, timeoutMs = 2000): Promise<WebSocket> {
+type MessageReader = (predicate: (msg: unknown) => boolean, timeoutMs?: number) => Promise<unknown>;
+
+/**
+ * Buffers every parsed frame as soon as it arrives and lets waiters scan that buffer first,
+ * consuming each entry at most once, before parking a predicate. This avoids a race where a
+ * `message` event fires synchronously (Node can dispatch several frames from one TCP read
+ * back-to-back) before the next `next()`-style listener has been attached, which would
+ * otherwise drop the frame and hang the waiting promise forever. Mirrors
+ * `tests/integration/mock-xplane-server.test.ts`'s `createMessageReader`.
+ */
+function createMessageReader(socket: WebSocket): MessageReader {
+  const buffer: unknown[] = [];
+  const waiters: { predicate: (m: unknown) => boolean; resolve: (m: unknown) => void }[] = [];
+  socket.addEventListener('message', (event: MessageEvent) => {
+    const parsed: unknown = JSON.parse(String(event.data));
+    const index = waiters.findIndex((w) => w.predicate(parsed));
+    if (index >= 0) {
+      const [w] = waiters.splice(index, 1);
+      w?.resolve(parsed);
+      return;
+    }
+    buffer.push(parsed);
+  });
+  return function next(predicate: (m: unknown) => boolean, timeoutMs = 2000): Promise<unknown> {
+    const i = buffer.findIndex(predicate);
+    if (i >= 0) {
+      const [m] = buffer.splice(i, 1);
+      return Promise.resolve(m);
+    }
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const k = waiters.findIndex((w) => w.resolve === wrapped);
+        if (k >= 0) {
+          waiters.splice(k, 1);
+        }
+        reject(new Error(`next: timed out waiting for a matching message within ${timeoutMs}ms`));
+      }, timeoutMs);
+      const wrapped = (m: unknown): void => {
+        clearTimeout(timer);
+        resolve(m);
+      };
+      waiters.push({ predicate, resolve: wrapped });
+    });
+  };
+}
+
+function openSocket(
+  url: string,
+  timeoutMs = 2000,
+): Promise<{ socket: WebSocket; next: MessageReader }> {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url);
     const timer = setTimeout(() => {
@@ -37,7 +89,10 @@ function openSocket(url: string, timeoutMs = 2000): Promise<WebSocket> {
     }, timeoutMs);
     socket.addEventListener('open', () => {
       clearTimeout(timer);
-      resolve(socket);
+      // Attached before resolving, so no frame the server sends immediately after
+      // connecting can be dispatched before a reader exists to buffer it.
+      const next = createMessageReader(socket);
+      resolve({ socket, next });
     });
     socket.addEventListener('error', () => {
       clearTimeout(timer);
@@ -46,28 +101,13 @@ function openSocket(url: string, timeoutMs = 2000): Promise<WebSocket> {
   });
 }
 
-function nextMessage(
-  socket: WebSocket,
-  predicate: (m: unknown) => boolean,
-  timeoutMs = 2000,
-): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      socket.removeEventListener('message', handler);
-      reject(
-        new Error(`nextMessage: timed out waiting for a matching message within ${timeoutMs}ms`),
-      );
-    }, timeoutMs);
-    const handler = (event: { data: unknown }): void => {
-      const parsed: unknown = JSON.parse(String(event.data));
-      if (predicate(parsed)) {
-        clearTimeout(timer);
-        socket.removeEventListener('message', handler);
-        resolve(parsed);
-      }
-    };
-    socket.addEventListener('message', handler);
+/** Races `promise` against a `ms`-timeout, always clearing the timer so it never lingers. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
   });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 async function until(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
@@ -104,7 +144,7 @@ function rawHttp(port: number, requestText: string, timeoutMs = 2000): Promise<s
 
 /** A raw TCP "X-Plane" that sends valid chunked headers then a malformed chunk. */
 function startBrokenChunkedUpstream(): Promise<{ port: number; close: () => Promise<void> }> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const sockets = new Set<net.Socket>();
     const server = net.createServer((socket) => {
       sockets.add(socket);
@@ -119,17 +159,21 @@ function startBrokenChunkedUpstream(): Promise<{ port: number; close: () => Prom
         socket.write('not-a-valid-chunk-size\r\n');
       });
     });
+    // Swallow post-listen server errors (listenAndGetPort's own listener already
+    // handles a failure during listen(), and is removed once that succeeds).
     server.on('error', () => undefined);
-    listenAndGetPort(server).then((port) => {
-      resolve({
-        port,
-        close: () =>
-          new Promise((done) => {
-            for (const socket of sockets) socket.destroy();
-            server.close(() => done());
-          }),
-      });
-    });
+    listenAndGetPort(server)
+      .then((port) => {
+        resolve({
+          port,
+          close: () =>
+            new Promise((done) => {
+              for (const socket of sockets) socket.destroy();
+              server.close(() => done());
+            }),
+        });
+      })
+      .catch(reject);
   });
 }
 
@@ -241,16 +285,18 @@ describe('Avionix bridge', () => {
   });
 
   it('C2: destroys the client response instead of crashing when the upstream errors after headers are sent', async () => {
-    const broken = await startBrokenChunkedUpstream();
-    const brokenBridge = await startBridge({
-      port: 0,
-      host: '127.0.0.1',
-      xplaneHost: '127.0.0.1',
-      xplanePort: broken.port,
-      staticDir,
-      log: () => undefined,
-    });
+    let broken: Awaited<ReturnType<typeof startBrokenChunkedUpstream>> | undefined;
+    let brokenBridge: Awaited<ReturnType<typeof startBridge>> | undefined;
     try {
+      broken = await startBrokenChunkedUpstream();
+      brokenBridge = await startBridge({
+        port: 0,
+        host: '127.0.0.1',
+        xplaneHost: '127.0.0.1',
+        xplanePort: broken.port,
+        staticDir,
+        log: () => undefined,
+      });
       const brokenBase = `http://127.0.0.1:${brokenBridge.port}`;
       let bodyFailed = false;
       try {
@@ -265,15 +311,15 @@ describe('Avionix bridge', () => {
       const followUp = await fetch(`${brokenBase}/`);
       expect(followUp.status).toBe(200);
     } finally {
-      await brokenBridge.close();
-      await broken.close();
+      await brokenBridge?.close();
+      await broken?.close();
     }
   });
 
   it('relays WebSocket connections to X-Plane and closes upstream with the client', async () => {
-    const socket = await openSocket(`ws://127.0.0.1:${bridge.port}/api/v3`);
+    const { socket, next } = await openSocket(`ws://127.0.0.1:${bridge.port}/api/v3`);
     await until(() => xplane.connectionCount === 1);
-    const result = nextMessage(socket, (m) => hasType(m, 'result'));
+    const result = next((m) => hasType(m, 'result'));
     socket.send(
       JSON.stringify({
         req_id: 1,
@@ -282,16 +328,16 @@ describe('Avionix bridge', () => {
       }),
     );
     expect(await result).toEqual({ req_id: 1, type: 'result', success: true });
-    const update = await nextMessage(socket, (m) => hasType(m, 'dataref_update_values'));
+    const update = await next((m) => hasType(m, 'dataref_update_values'));
     expect(update).toEqual({ type: 'dataref_update_values', data: { '1001': 12.5 } });
     socket.close();
     await until(() => xplane.connectionCount === 0);
   });
 
   it('I1: closes relayed sockets when the bridge is closed without the client closing first', async () => {
-    const socket = await openSocket(`ws://127.0.0.1:${bridge.port}/api/v3`);
+    const { socket, next } = await openSocket(`ws://127.0.0.1:${bridge.port}/api/v3`);
     await until(() => xplane.connectionCount === 1);
-    const result = nextMessage(socket, (m) => hasType(m, 'result'));
+    const result = next((m) => hasType(m, 'result'));
     socket.send(
       JSON.stringify({
         req_id: 1,
@@ -305,46 +351,38 @@ describe('Avionix bridge', () => {
       socket.addEventListener('close', () => resolve());
     });
 
-    const closeTimeout = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('bridge.close() did not resolve within 1s')), 1000);
-    });
-    await Promise.race([bridge.close(), closeTimeout]);
-
-    const clientCloseTimeout = new Promise<never>((_, reject) => {
-      setTimeout(
-        () => reject(new Error('client socket did not close within 1s of bridge.close()')),
-        1000,
-      );
-    });
-    await Promise.race([clientClosed, clientCloseTimeout]);
+    await withTimeout(bridge.close(), 1000, 'bridge.close()');
+    await withTimeout(clientClosed, 1000, 'client socket close after bridge.close()');
 
     // close() must be idempotent so afterEach's own bridge.close() is a no-op here.
     await expect(bridge.close()).resolves.toBeUndefined();
   });
 
   it('I2: destroys the upstream connection when the client aborts the request', async () => {
-    const stuck = net.createServer((socket) => {
-      socket.on('error', () => undefined);
-      // Never respond: simulate an X-Plane that hangs. Resume so a paused,
-      // never-read socket still notices the peer's FIN/RST once we destroy it.
-      socket.resume();
-    });
-    stuck.on('error', () => undefined);
-    const activeSockets = new Set<net.Socket>();
-    stuck.on('connection', (socket) => {
-      activeSockets.add(socket);
-      socket.on('close', () => activeSockets.delete(socket));
-    });
-    const stuckPort = await listenAndGetPort(stuck);
-    const stuckBridge = await startBridge({
-      port: 0,
-      host: '127.0.0.1',
-      xplaneHost: '127.0.0.1',
-      xplanePort: stuckPort,
-      staticDir,
-      log: () => undefined,
-    });
+    let stuck: net.Server | undefined;
+    let stuckBridge: Awaited<ReturnType<typeof startBridge>> | undefined;
     try {
+      stuck = net.createServer((socket) => {
+        socket.on('error', () => undefined);
+        // Never respond: simulate an X-Plane that hangs. Resume so a paused,
+        // never-read socket still notices the peer's FIN/RST once we destroy it.
+        socket.resume();
+      });
+      stuck.on('error', () => undefined);
+      const activeSockets = new Set<net.Socket>();
+      stuck.on('connection', (socket) => {
+        activeSockets.add(socket);
+        socket.on('close', () => activeSockets.delete(socket));
+      });
+      const stuckPort = await listenAndGetPort(stuck);
+      stuckBridge = await startBridge({
+        port: 0,
+        host: '127.0.0.1',
+        xplaneHost: '127.0.0.1',
+        xplanePort: stuckPort,
+        staticDir,
+        log: () => undefined,
+      });
       const stuckBase = `http://127.0.0.1:${stuckBridge.port}`;
       const controller = new AbortController();
       const pending = fetch(`${stuckBase}/api/v3/datarefs/1001/value`, {
@@ -356,8 +394,8 @@ describe('Avionix bridge', () => {
       await until(() => activeSockets.size === 0, 1000);
       await pending;
     } finally {
-      await stuckBridge.close();
-      await new Promise<void>((done) => stuck.close(() => done()));
+      await stuckBridge?.close();
+      if (stuck) await new Promise<void>((done) => stuck?.close(() => done()));
     }
   });
 

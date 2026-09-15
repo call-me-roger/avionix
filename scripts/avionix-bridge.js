@@ -78,6 +78,7 @@ function parseArgs(argv) {
     const value = argv[i + 1];
     if (arg === '--help' || arg === '-h') return 'help';
     if (arg === '--port') {
+      if (value === undefined) throw new Error('--port requires a value');
       options.port = Number(value);
       i += 1;
       continue;
