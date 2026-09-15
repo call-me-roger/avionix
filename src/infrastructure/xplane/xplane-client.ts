@@ -21,6 +21,7 @@ import type { HttpTransport } from '@/infrastructure/xplane/http/http-transport'
 import { toCommandDescriptor, toDataRefDescriptor } from '@/infrastructure/xplane/schemas/mappers';
 import {
   commandListResponseSchema,
+  countResponseSchema,
   dataRefListResponseSchema,
   dataRefValueResponseSchema,
 } from '@/infrastructure/xplane/schemas/rest';
@@ -103,6 +104,15 @@ export class XPlaneClient implements SimulatorClient {
       }
       throw error;
     }
+  }
+
+  async getDataRefCount(): Promise<number> {
+    const response = await this.http.request({
+      method: 'GET',
+      path: restPath(this.apiVersion, '/datarefs/count'),
+      schema: countResponseSchema,
+    });
+    return response.data;
   }
 
   async getDataRefValue(id: number, index?: number): Promise<DataRefValue> {

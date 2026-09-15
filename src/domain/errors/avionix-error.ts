@@ -15,6 +15,7 @@ export type AvionixErrorCode =
   | 'WRITE_FAILED'
   | 'COMMAND_FAILED'
   | 'SIMULATOR_ERROR'
+  | 'SIMULATOR_NOT_READY'
   | 'CANCELLED'
   | 'INTERNAL'
   | 'UNKNOWN';

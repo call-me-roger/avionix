@@ -133,6 +133,10 @@ describe.each(['v2', 'v3'] as const)('XPlaneClient over %s', (apiVersion) => {
     await expect(client.findCommand('sim/nope')).resolves.toBeNull();
   });
 
+  it('reports the dataref count', async () => {
+    await expect(client.getDataRefCount()).resolves.toBe(5);
+  });
+
   it('reads scalar, array, indexed and data values', async () => {
     await expect(client.getDataRefValue(1003)).resolves.toBe(270);
     await expect(client.getDataRefValue(1004)).resolves.toEqual([10, 20, 30]);

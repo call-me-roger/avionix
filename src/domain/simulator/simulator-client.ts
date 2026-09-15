@@ -22,6 +22,8 @@ export type Unsubscribe = () => void;
 export interface SimulatorClient {
   findDataRef(name: string): Promise<DataRefDescriptor | null>;
   findCommand(name: string): Promise<CommandDescriptor | null>;
+  /** Number of DataRefs X-Plane currently exposes; 0 until a flight is loaded. */
+  getDataRefCount(): Promise<number>;
   getDataRefValue(id: number, index?: number): Promise<DataRefValue>;
   setDataRefValue(id: number, value: DataRefValue, index?: number): Promise<void>;
   activateCommand(id: number, durationSeconds?: number): Promise<void>;

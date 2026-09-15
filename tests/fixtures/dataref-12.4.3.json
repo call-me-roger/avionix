@@ -1,0 +1,10 @@
+{
+  "data": [
+    {
+      "id": 1450448715800,
+      "is_writable": true,
+      "name": "sim/time/total_running_time_sec",
+      "value_type": "float"
+    }
+  ]
+}
