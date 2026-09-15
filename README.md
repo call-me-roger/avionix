@@ -9,7 +9,7 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
 
 ## MVP scope
 
-- Enter the X-Plane host and port (default 8086), connect and disconnect.
+- Enter the connector (or X-Plane) host and port (default 8080), connect and disconnect.
 - Detect the X-Plane version and the supported Web API versions; use the highest of v2/v3.
 - Resolve DataRefs and commands by name (ids are session-specific and never stored).
 - Subscribe to three DataRefs over WebSocket and display live values.
@@ -18,8 +18,7 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
 - A diagnostics panel that shows exactly which step failed.
 - Light / dark theme with a system / light / dark toggle; the choice is persisted.
 
-Not in scope: any real avionics UI, device roles, accounts, cloud. The bridge-side pairing protocol
-is implemented; the in-app pairing screen and discovery land in a follow-up. See
+Not in scope: any real avionics UI, device roles, accounts, cloud, device discovery. See
 `docs/superpowers/specs/2026-09-14-avionix-mvp-design.md` for the full design.
 
 ## Requirements
@@ -53,16 +52,15 @@ npm start
 Scan the QR code with Expo Go. On iOS, Expo Go for SDK 57 requires the same Expo account to be
 logged in both in the CLI (`npx expo login`) and in the app. See `docs/development.md`.
 
-Run the Avionix Connector on the X-Plane PC. The in-app pairing screen ships in the next PR, so for
-now start the bridge with `--open`: `npm run bridge -- --open`. With `--open`, any web page open on
-a device on the LAN can read and write X-Plane through the connector, so use it only on trusted
-networks and stop the connector when done. See `docs/connector.md`.
+Run the Avionix Connector on the X-Plane PC with `npm run bridge`. It prints a six-digit pairing
+code on start. See `docs/connector.md`.
 
 ## Connecting to X-Plane
 
 1. Start X-Plane 12.1.4+ on a computer on the same Wi-Fi network as the phone.
 2. Find the computer's LAN IP address (for example `192.168.1.100`).
-3. In Avionix enter that IP and port 8086, then press Connect.
+3. In Avionix enter that IP and port 8080, press Connect, then type the six-digit pairing code the
+   connector printed. Connecting straight to X-Plane still works: use port 8086 and no code.
 4. The diagnostics section shows each step: HTTP, capabilities, WebSocket, DataRef resolution,
    command resolution, subscription.
 
