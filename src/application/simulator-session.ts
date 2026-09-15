@@ -97,6 +97,8 @@ export class SimulatorSession {
   private token: string | null = null;
   private pendingPairing: PendingPairing | null = null;
   private pairInFlight = false;
+  /** Serializes the token store writes so a late clear cannot undo a later pairing. */
+  private tokenWrites: Promise<void> = Promise.resolve();
 
   constructor(private readonly deps: SimulatorSessionDeps) {
     this.store = new Store(initialSnapshot(MVP_DATAREF_NAMES));
@@ -128,10 +130,13 @@ export class SimulatorSession {
       return;
     }
     this.store.setState((prev) => ({ ...prev, config }));
-    this.token = await this.deps.tokenStore.get(config.host, config.port);
+    // Assigned only after the guard: a read for a connect that a later connect or a
+    // disconnect has superseded must never publish its token into the live session.
+    const storedToken = await this.deps.tokenStore.get(config.host, config.port);
     if (!this.isCurrent(generation)) {
       return;
     }
+    this.token = storedToken;
     await this.runConnectFlow(generation, config, 'initial');
   }
 
@@ -174,7 +179,7 @@ export class SimulatorSession {
         return;
       }
       this.token = token;
-      await this.deps.tokenStore.set(config.host, config.port, token);
+      await this.queueTokenWrite(() => this.deps.tokenStore.set(config.host, config.port, token));
       if (!this.isCurrent(generation)) {
         return;
       }
@@ -265,6 +270,20 @@ export class SimulatorSession {
     return generation === this.generation;
   }
 
+  /**
+   * Runs token store writes one after another in the order they were requested. Without this,
+   * a `clear` from an UNAUTHORIZED could still be in flight when a later `pair` stores its
+   * fresh token and would then wipe it. The returned promise never rejects, so a caller may
+   * `void` it; a failing write is logged and the queue carries on.
+   */
+  private queueTokenWrite(write: () => Promise<void>): Promise<void> {
+    const next = this.tokenWrites.then(write, write).catch((error: unknown) => {
+      this.logger.debug('token store write failed', { message: String(error) });
+    });
+    this.tokenWrites = next;
+    return next;
+  }
+
   /** Returns `disconnected`, applying the `disconnect` edge when the state is not already there. */
   private settled(state: ConnectionState): ConnectionState {
     return state === 'disconnected' ? state : transition(state, 'disconnect');
@@ -346,7 +365,9 @@ export class SimulatorSession {
             http: this.deps.createHttpTransport(config, () => this.token),
           };
     if (config !== null) {
-      void this.deps.tokenStore.clear(config.host, config.port);
+      // Queued rather than awaited so the transition below stays synchronous; the queue is
+      // what guarantees a pair() that follows writes its token after this clear, not before.
+      void this.queueTokenWrite(() => this.deps.tokenStore.clear(config.host, config.port));
     }
     this.store.setState((prev) => ({
       ...prev,

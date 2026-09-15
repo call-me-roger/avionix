@@ -1,7 +1,12 @@
 import { MVP_COMMAND_HEADING_UP, MVP_DATAREFS } from '@/application/mvp-bindings';
+import type { PairingTokenStore } from '@/application/pairing-token-store';
 import { createPairingTokenStore } from '@/application/pairing-token-store';
 import { createMemorySettingsStorage } from '@/application/settings-store';
-import { type Scheduler, SimulatorSession } from '@/application/simulator-session';
+import {
+  type Scheduler,
+  SimulatorSession,
+  type SimulatorSessionDeps,
+} from '@/application/simulator-session';
 import type { XPlaneConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
@@ -137,11 +142,45 @@ interface Route {
   body: string;
 }
 
+/**
+ * Wraps a real token store so a `get` or a `clear` can be held open, which is how the tests
+ * below reproduce a storage read or write that lands after the session has moved on.
+ */
+class ControllableTokenStore implements PairingTokenStore {
+  readonly pendingGets: Array<() => void> = [];
+  readonly pendingClears: Array<() => void> = [];
+  deferGet = false;
+  deferClear = false;
+
+  constructor(private readonly inner: PairingTokenStore) {}
+
+  async get(host: string, port: number): Promise<string | null> {
+    if (this.deferGet) {
+      await new Promise<void>((resolve) => this.pendingGets.push(resolve));
+    }
+    return this.inner.get(host, port);
+  }
+
+  set(host: string, port: number, token: string): Promise<void> {
+    return this.inner.set(host, port, token);
+  }
+
+  async clear(host: string, port: number): Promise<void> {
+    if (this.deferClear) {
+      await new Promise<void>((resolve) => this.pendingClears.push(resolve));
+    }
+    return this.inner.clear(host, port);
+  }
+}
+
 function setup(
   options: {
     capsError?: AvionixError;
     clients?: FakeClient[];
     routes?: Record<string, Route | Route[]>;
+    tokenStore?: PairingTokenStore;
+    createClient?: SimulatorSessionDeps['createClient'];
+    holdPaths?: string[];
   } = {},
 ) {
   const clients = options.clients ?? [new FakeClient()];
@@ -151,12 +190,25 @@ function setup(
   const routes = options.routes ?? {};
   const requestedPaths: string[] = [];
   const storage = createMemorySettingsStorage();
-  const tokenStore = createPairingTokenStore(storage);
+  const tokenStore = options.tokenStore ?? createPairingTokenStore(storage);
   const sentTokens: (string | undefined)[] = [];
+  const holdPaths = options.holdPaths ?? [];
+  // Requests to a held path park here until the test calls release(path).
+  const held = new Map<string, Array<() => void>>();
+  const release = (path: string): void => {
+    held.get(path)?.shift()?.();
+  };
   const fetchImpl = async (url: string, init: { headers: Record<string, string> }) => {
     const path = url.slice(url.indexOf('/', 'http://'.length));
     requestedPaths.push(path);
     sentTokens.push(init.headers.Authorization);
+    if (holdPaths.includes(path)) {
+      await new Promise<void>((resolve) => {
+        const queue = held.get(path) ?? [];
+        queue.push(resolve);
+        held.set(path, queue);
+      });
+    }
     const route = routes[path];
     const next = Array.isArray(route) ? route.shift() : route;
     if (next !== undefined) {
@@ -191,14 +243,16 @@ function setup(
         auth,
         logger: silentLogger,
       }),
-    createClient: () => {
-      const client = clients[Math.min(clientIndex, clients.length - 1)];
-      clientIndex += 1;
-      if (client === undefined) {
-        throw new Error('no fake client');
-      }
-      return client;
-    },
+    createClient:
+      options.createClient ??
+      (() => {
+        const client = clients[Math.min(clientIndex, clients.length - 1)];
+        clientIndex += 1;
+        if (client === undefined) {
+          throw new Error('no fake client');
+        }
+        return client;
+      }),
     createConnectorClient: (http) => new ConnectorClient({ http, logger: silentLogger }),
     tokenStore,
     scheduler,
@@ -214,6 +268,7 @@ function setup(
     tokenStore,
     requestedPaths,
     sentTokens,
+    release,
     snapshot: () => session.store.getSnapshot(),
   };
 }
@@ -689,5 +744,86 @@ describe('SimulatorSession pairing', () => {
     // The stored token (none here) is deliberately kept across a disconnect.
     await expect(tokenStore.get('192.168.1.100', 8080)).resolves.toBeNull();
     await expect(session.pair('123456')).rejects.toMatchObject({ code: 'INTERNAL' });
+  });
+});
+
+describe('SimulatorSession token lifetime', () => {
+  /**
+   * Walks a token read that resolves only after the session has moved on: the live connect
+   * reads its own (absent) token first and parks on the held probe, then the superseded read
+   * lands. The late value must never reach the live session, so the capabilities request that
+   * follows the probe must carry no Authorization header.
+   */
+  async function raceLateTokenRead(supersede: (session: SimulatorSession) => void) {
+    const inner = createPairingTokenStore(createMemorySettingsStorage());
+    await inner.set('192.168.1.100', 8080, 'tok-stale');
+    const store = new ControllableTokenStore(inner);
+    const fixture = setup({ tokenStore: store, holdPaths: ['/avionix/info'] });
+    store.deferGet = true;
+    const first = fixture.session.connect('192.168.1.100', 8080);
+    supersede(fixture.session);
+    const second = fixture.session.connect('192.168.1.101', 8080);
+    await flush();
+    expect(store.pendingGets.length).toBe(2);
+    store.pendingGets[1]?.();
+    await flush();
+    store.pendingGets[0]?.();
+    await flush();
+    fixture.release('/avionix/info');
+    await flush();
+    await Promise.all([first, second]);
+    return fixture;
+  }
+
+  it('drops a token read belonging to a connect that a later connect superseded', async () => {
+    const { snapshot, requestedPaths, sentTokens } = await raceLateTokenRead(() => undefined);
+    const capsIndex = requestedPaths.indexOf('/api/capabilities');
+    expect(capsIndex).toBeGreaterThan(-1);
+    expect(sentTokens[capsIndex]).toBeUndefined();
+    expect(sentTokens).not.toContain('Bearer tok-stale');
+    expect(snapshot().state).toBe('connected');
+  });
+
+  it('drops a token read that lands after a disconnect', async () => {
+    const { snapshot, requestedPaths, sentTokens } = await raceLateTokenRead((session) => {
+      session.disconnect();
+    });
+    const capsIndex = requestedPaths.indexOf('/api/capabilities');
+    expect(capsIndex).toBeGreaterThan(-1);
+    expect(sentTokens[capsIndex]).toBeUndefined();
+    expect(snapshot().state).toBe('connected');
+  });
+
+  it('keeps the token from a later pairing when an earlier clear resolves late', async () => {
+    const inner = createPairingTokenStore(createMemorySettingsStorage());
+    await inner.set('192.168.1.100', 8080, 'tok-stale');
+    const store = new ControllableTokenStore(inner);
+    const { session, snapshot } = setup({
+      tokenStore: store,
+      routes: {
+        '/avionix/info': { status: 200, body: CONNECTOR_INFO },
+        '/api/capabilities': [
+          {
+            status: 401,
+            body: '{"error_code":"unauthorized","error_message":"Pair again"}',
+          },
+        ],
+        '/avionix/pair': { status: 200, body: '{"token":"tok-fresh"}' },
+      },
+    });
+    store.deferClear = true;
+    await session.connect('192.168.1.100', 8080);
+    expect(snapshot().state).toBe('pairing');
+    await flush();
+    expect(store.pendingClears.length).toBe(1);
+
+    const pairing = session.pair('123456');
+    await flush();
+    // The clear only reaches the storage now, after the fresh token was handed to the store.
+    store.pendingClears[0]?.();
+    await pairing;
+
+    expect(snapshot().state).toBe('connected');
+    await expect(inner.get('192.168.1.100', 8080)).resolves.toBe('tok-fresh');
   });
 });
