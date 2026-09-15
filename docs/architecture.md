@@ -62,12 +62,13 @@ reconnecting --pairingRequired--> pairing   connected --pairingRequired--> pairi
 pairing --disconnect--> disconnected
 ```
 
-`pairing` is reached in two cases: when the target is an Avionix Connector that requires a code and
-the app holds no token for it (reached from `connecting` or `reconnecting`), and when a connector
-rejects the token the app does hold after connection is established (the `UNAUTHORIZED` path from
-`connected`; this happens when an authenticated write or command fails). In the second case, the
-session clears the stored token and cancels the reconnect scheduler. Both cases leave the session
-waiting for `SimulatorSession.pair(code)` or `disconnect()`.
+`pairing` is reached in two cases. First, the connector probe (initial connect only, so from
+`connecting`) finds an Avionix Connector that requires a code while the app holds no token for it.
+Second, a connector rejects a token the app does hold (`UNAUTHORIZED`): this can happen from
+`connecting` (capabilities refused during the first connect), from `reconnecting` (refused during a
+reconnect attempt; the probe is not repeated there), or from `connected` (an authenticated write or
+command fails). In the second case the session clears the stored token and cancels the reconnect
+scheduler. Both cases leave the session waiting for `SimulatorSession.pair(code)` or `disconnect()`.
 
 The `connected → error` edge exists because the session reports `connected` as soon as the socket
 opens (spec step 9); DataRef resolution and subscription happen afterwards and can still fail.
