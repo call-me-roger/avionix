@@ -93,9 +93,16 @@ describe('ConnectorAuth', () => {
     expect(auth.code).toMatch(/^\d{6}$/);
   });
 
-  it('bounds the attempts map and prunes expired entries', () => {
+  it('prunes attempt entries once their window expires, regardless of client count', () => {
     let now = 1_000_000;
-    const auth = new ConnectorAuth({ dataDir, code: '123456', now: () => now });
+    // A large global budget isolates this test from F5's cross-client cap: it is purely
+    // about per-client pruning, at a client count the global cap would otherwise trip.
+    const auth = new ConnectorAuth({
+      dataDir,
+      code: '123456',
+      now: () => now,
+      maxGlobalAttempts: 1000,
+    });
     // Fail once from 200 different client keys
     for (let i = 0; i < 200; i += 1) {
       auth.pair('000000', `client-${i}`);
@@ -108,22 +115,107 @@ describe('ConnectorAuth', () => {
     // Should prune expired entries, leaving only the new one
     expect(auth.attemptTrackedClients()).toBe(1);
   });
+
+  it('F6: evicts the oldest attempt entries once the map exceeds its cap', () => {
+    const now = 1_000_000;
+    const auth = new ConnectorAuth({
+      dataDir,
+      code: '123456',
+      now: () => now,
+      maxAttemptClients: 3,
+    });
+    auth.pair('000000', 'client-0');
+    auth.pair('000000', 'client-1');
+    auth.pair('000000', 'client-2');
+    expect(auth.attemptTrackedClients()).toBe(3);
+
+    // Nothing has expired (the clock never moved), yet the cap must still hold.
+    auth.pair('000000', 'client-3');
+    expect(auth.attemptTrackedClients()).toBe(3);
+
+    // The oldest entry (client-0) was evicted, so it gets a fresh budget: a correct
+    // code now succeeds immediately instead of being rate-limited.
+    expect(auth.pair('123456', 'client-0').ok).toBe(true);
+  });
+
+  it('F5: caps pairing attempts globally across all clients', () => {
+    const now = 1_000_000;
+    const auth = new ConnectorAuth({ dataDir, code: '123456', now: () => now });
+    const reasons: (string | undefined)[] = [];
+    for (let client = 0; client < 6; client += 1) {
+      for (let guess = 0; guess < 4; guess += 1) {
+        const result = auth.pair('000000', `client-${client}`);
+        reasons.push(result.ok ? undefined : result.reason);
+      }
+    }
+    expect(reasons.filter((r) => r === 'invalid_code')).toHaveLength(20);
+    expect(reasons.filter((r) => r === 'too_many_attempts')).toHaveLength(4);
+    // Even the correct code is refused while the global window is blown.
+    expect(auth.pair('123456', 'client-0')).toEqual({ ok: false, reason: 'too_many_attempts' });
+  });
+
+  it('F5: groups IPv6 clients in the same /64 under one attempts budget', () => {
+    const now = 1_000_000;
+    const auth = new ConnectorAuth({ dataDir, code: '123456', now: () => now });
+    const a = '2001:db8:1234:5678:aaaa:bbbb:cccc:0001';
+    const b = '2001:db8:1234:5678:eeee:ffff:0000:0002';
+    for (let i = 0; i < 3; i += 1) auth.pair('000000', a);
+    for (let i = 0; i < 2; i += 1) auth.pair('000000', b);
+    // 5 combined wrong guesses (the default per-client cap) from two addresses in the
+    // same /64: both are now rate-limited, even the one with the correct code.
+    expect(auth.pair('000000', a)).toEqual({ ok: false, reason: 'rate_limited' });
+    expect(auth.pair('123456', b)).toEqual({ ok: false, reason: 'rate_limited' });
+  });
+
+  it('F8: compares the pairing code safely, without throwing on a length mismatch', () => {
+    const auth = new ConnectorAuth({ dataDir, code: '123456' });
+    expect(auth.pair('12345', 'x')).toEqual({ ok: false, reason: 'invalid_code' });
+    expect(auth.pair('1234567', 'x')).toEqual({ ok: false, reason: 'invalid_code' });
+    expect(auth.pair('123456', 'x').ok).toBe(true);
+  });
+
+  it('F7: tightens permissions on a pre-existing token file and data dir', () => {
+    if (process.platform === 'win32') return; // POSIX chmod semantics don't apply
+    fs.chmodSync(dataDir, 0o755);
+    const file = path.join(dataDir, 'connector-tokens.json');
+    fs.writeFileSync(file, JSON.stringify({ tokens: [] }));
+    fs.chmodSync(file, 0o644);
+
+    const auth = new ConnectorAuth({ dataDir, code: '123456' });
+    expect(auth.pair('123456', 'x').ok).toBe(true);
+
+    expect(fs.statSync(dataDir).mode & 0o777).toBe(0o700);
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+  });
 });
 
 describe('extractToken / stripTokenQuery', () => {
+  const upgrade = { upgrade: 'websocket' };
+
   it('reads a bearer header', () => {
     expect(extractToken({ headers: { authorization: 'Bearer abc123' } })).toBe('abc123');
     expect(extractToken({ headers: { authorization: 'Basic abc' } })).toBeNull();
     expect(extractToken({ headers: {} })).toBeNull();
   });
 
-  it('falls through to query token when Authorization header is invalid', () => {
-    expect(extractToken({ headers: { authorization: 'Basic abc' }, url: '/x?token=q' })).toBe('q');
-    expect(extractToken({ headers: { authorization: 'Bearer' }, url: '/x?token=q' })).toBe('q');
+  it('F3: falls through to the query token on a WebSocket upgrade when Authorization is invalid', () => {
+    expect(
+      extractToken({ headers: { authorization: 'Basic abc', ...upgrade }, url: '/x?token=q' }),
+    ).toBe('q');
+    expect(
+      extractToken({ headers: { authorization: 'Bearer', ...upgrade }, url: '/x?token=q' }),
+    ).toBe('q');
   });
 
-  it('reads a token query parameter and strips it', () => {
-    expect(extractToken({ headers: {}, url: '/api/v3?token=xyz' })).toBe('xyz');
+  it('F3: ignores the query token on a plain HTTP request (no Upgrade: websocket header)', () => {
+    expect(extractToken({ headers: {}, url: '/api/v3?token=xyz' })).toBeNull();
+    expect(
+      extractToken({ headers: { upgrade: 'not-a-websocket' }, url: '/api/v3?token=xyz' }),
+    ).toBeNull();
+  });
+
+  it('reads a token query parameter on a WebSocket upgrade and strips it', () => {
+    expect(extractToken({ headers: upgrade, url: '/api/v3?token=xyz' })).toBe('xyz');
     expect(stripTokenQuery('/api/v3?token=xyz')).toBe('/api/v3');
     expect(stripTokenQuery('/api/v3?a=1&token=xyz&b=2')).toBe('/api/v3?a=1&b=2');
     expect(stripTokenQuery('/api/v3')).toBe('/api/v3');
@@ -138,7 +230,24 @@ describe('extractToken / stripTokenQuery', () => {
     expect(stripTokenQuery('/api?tokenx=1')).toBe('/api?tokenx=1');
   });
 
+  it('F2: decodes a percent-encoded key before matching "token" when stripping', () => {
+    expect(stripTokenQuery('/api?%74oken=abc&filter[name]=a%2Fb')).toBe('/api?filter[name]=a%2Fb');
+  });
+
+  it('F2: treats an undecodable key as a literal instead of throwing', () => {
+    expect(stripTokenQuery('/api?%zz=1&token=abc')).toBe('/api?%zz=1');
+  });
+
+  it('F2: the query form extractToken accepts is exactly what stripTokenQuery removes', () => {
+    // A percent-encoded "token" key authenticates (extractToken decodes via URLSearchParams)
+    // and must also be stripped before forwarding (stripTokenQuery must decode too).
+    expect(extractToken({ headers: upgrade, url: '/x?%74oken=abc' })).toBe('abc');
+    expect(stripTokenQuery('/x?%74oken=abc')).toBe('/x');
+  });
+
   it('prefers the header over the query', () => {
-    expect(extractToken({ headers: { authorization: 'Bearer h' }, url: '/x?token=q' })).toBe('h');
+    expect(
+      extractToken({ headers: { authorization: 'Bearer h', ...upgrade }, url: '/x?token=q' }),
+    ).toBe('h');
   });
 });

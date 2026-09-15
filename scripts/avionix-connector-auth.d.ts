@@ -6,10 +6,13 @@ export interface ConnectorAuthOptions {
   random?: () => string;
   maxAttempts?: number;
   windowMs?: number;
+  maxGlobalAttempts?: number;
+  maxAttemptClients?: number;
 }
 
 export type PairResult =
-  { ok: true; token: string } | { ok: false; reason: 'invalid_code' | 'rate_limited' };
+  | { ok: true; token: string }
+  | { ok: false; reason: 'invalid_code' | 'rate_limited' | 'too_many_attempts' };
 
 export class ConnectorAuth {
   constructor(options?: ConnectorAuthOptions);

@@ -19,6 +19,27 @@ function generateToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
+/** Constant-time code comparison; a length mismatch is just "not equal", never a throw. */
+function codesMatch(a, b) {
+  const bufA = Buffer.from(String(a));
+  const bufB = Buffer.from(String(b));
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+/**
+ * Groups a client key for rate-limiting purposes: IPv4 (and IPv4-mapped IPv6, defensively;
+ * the bridge already normalizes that away before calling in) pass through unchanged, but a
+ * bare IPv6 address is reduced to its first four hextets (its /64) so an attacker can't dodge
+ * the per-client budget by cycling through addresses in the same /64.
+ */
+function attemptsKeyFor(clientKey) {
+  if (typeof clientKey !== 'string' || !clientKey.includes(':')) return clientKey;
+  if (clientKey.startsWith('::ffff:')) return clientKey.slice('::ffff:'.length);
+  const hextets = clientKey.split(':').slice(0, 4);
+  return `${hextets.join(':')}/64`;
+}
+
 class ConnectorAuth {
   constructor(options = {}) {
     this.dataDir = options.dataDir ?? defaultDataDir();
@@ -28,7 +49,10 @@ class ConnectorAuth {
     this.random = options.random ?? generateToken;
     this.maxAttempts = options.maxAttempts ?? 5;
     this.windowMs = options.windowMs ?? 60000;
+    this.maxGlobalAttempts = options.maxGlobalAttempts ?? 20;
+    this.maxAttemptClients = options.maxAttemptClients ?? 1000;
     this.attempts = new Map(); // clientKey -> number[] (timestamps)
+    this.globalAttempts = []; // timestamps of every wrong guess, across all clients
     this.tokens = new Set(this.load());
   }
 
@@ -51,19 +75,28 @@ class ConnectorAuth {
 
   pair(code, clientKey) {
     if (this.open) return { ok: false, reason: 'invalid_code' };
+    const key = attemptsKeyFor(clientKey);
     this.pruneAttempts();
     const now = this.now();
-    const recent = (this.attempts.get(clientKey) || []).filter((t) => now - t < this.windowMs);
+
+    this.globalAttempts = this.globalAttempts.filter((t) => now - t < this.windowMs);
+    if (this.globalAttempts.length >= this.maxGlobalAttempts) {
+      return { ok: false, reason: 'too_many_attempts' };
+    }
+
+    const recent = (this.attempts.get(key) || []).filter((t) => now - t < this.windowMs);
     if (recent.length >= this.maxAttempts) {
-      this.attempts.set(clientKey, recent);
+      this.attempts.set(key, recent);
       return { ok: false, reason: 'rate_limited' };
     }
-    if (typeof code !== 'string' || code !== this.code) {
+    if (typeof code !== 'string' || !codesMatch(code, this.code)) {
       recent.push(now);
-      this.attempts.set(clientKey, recent.slice(-this.maxAttempts));
+      this.attempts.set(key, recent.slice(-this.maxAttempts));
+      this.globalAttempts.push(now);
+      this.enforceAttemptsCap();
       return { ok: false, reason: 'invalid_code' };
     }
-    this.attempts.delete(clientKey);
+    this.attempts.delete(key);
     const token = this.random();
     this.tokens.add(token);
     this.save();
@@ -82,6 +115,14 @@ class ConnectorAuth {
     }
   }
 
+  /** Bounds memory under a distributed-guessing flood: oldest client entries go first. */
+  enforceAttemptsCap() {
+    while (this.attempts.size > this.maxAttemptClients) {
+      const oldestKey = this.attempts.keys().next().value;
+      this.attempts.delete(oldestKey);
+    }
+  }
+
   load() {
     try {
       const raw = fs.readFileSync(path.join(this.dataDir, TOKEN_FILE), 'utf8');
@@ -96,18 +137,39 @@ class ConnectorAuth {
   }
 
   save() {
+    const file = path.join(this.dataDir, TOKEN_FILE);
+    const tmpFile = `${file}.tmp`;
     try {
       fs.mkdirSync(this.dataDir, { recursive: true, mode: 0o700 });
-      fs.writeFileSync(
-        path.join(this.dataDir, TOKEN_FILE),
-        JSON.stringify({ tokens: [...this.tokens] }, null, 2),
-        { mode: 0o600 },
-      );
+      // Write to a temp file and rename over the target so a reader (or a crash mid-write)
+      // never observes a half-written token file.
+      fs.writeFileSync(tmpFile, JSON.stringify({ tokens: [...this.tokens] }, null, 2), {
+        mode: 0o600,
+      });
+      fs.renameSync(tmpFile, file);
+      // `mode` on writeFileSync/mkdirSync only applies when the file/dir is created; tighten
+      // permissions explicitly in case either pre-existed with looser ones.
+      try {
+        fs.chmodSync(file, 0o600);
+      } catch {
+        // e.g. some platforms (Windows) don't support POSIX chmod bits; best effort.
+      }
+      try {
+        fs.chmodSync(this.dataDir, 0o700);
+      } catch {
+        // same
+      }
     } catch (error) {
       // best effort; tokens still work for this run
       process.stderr.write(`[avionix-connector] could not save tokens: ${error.message}\n`);
     }
   }
+}
+
+function isUpgradeRequest(req) {
+  const header = req.headers && req.headers.upgrade;
+  const value = Array.isArray(header) ? header[0] : header;
+  return typeof value === 'string' && value.toLowerCase() === 'websocket';
 }
 
 function extractToken(req) {
@@ -117,7 +179,9 @@ function extractToken(req) {
     const match = /^Bearer\s+(\S+)$/i.exec(value.trim());
     if (match) return match[1];
   }
-  if (typeof req.url === 'string') {
+  // Browsers cannot set headers on a WebSocket handshake, so only the upgrade path may
+  // fall back to a `?token=` query parameter; plain HTTP must use the Authorization header.
+  if (isUpgradeRequest(req) && typeof req.url === 'string') {
     const query = req.url.split('?')[1];
     if (query) {
       const params = new URLSearchParams(query);
@@ -128,11 +192,24 @@ function extractToken(req) {
   return null;
 }
 
+/** Decodes a query segment's key (up to the first "="); a malformed escape is left as-is. */
+function decodeSegmentKey(rawKey) {
+  try {
+    return decodeURIComponent(rawKey);
+  } catch {
+    return rawKey;
+  }
+}
+
 function stripTokenQuery(url) {
   const [pathname, query] = url.split('?');
   if (!query) return url;
   const segments = query.split('&');
-  const remaining = segments.filter((seg) => seg !== 'token' && !seg.startsWith('token='));
+  const remaining = segments.filter((seg) => {
+    const eq = seg.indexOf('=');
+    const rawKey = eq === -1 ? seg : seg.slice(0, eq);
+    return decodeSegmentKey(rawKey) !== 'token';
+  });
   return remaining.length > 0 ? `${pathname}?${remaining.join('&')}` : pathname;
 }
 
