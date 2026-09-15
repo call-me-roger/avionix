@@ -56,6 +56,7 @@ function wrap(error: unknown, code: AvionixErrorCode, message: string): AvionixE
     message: `${message}: ${inner.message}`,
     retryable: inner.retryable,
     simulatorErrorCode: inner.simulatorErrorCode,
+    httpStatus: inner.httpStatus,
     cause: inner,
   });
 }

@@ -38,6 +38,19 @@ function clientWith(auth: () => string | null) {
   return { client, urls, sink, socket };
 }
 
+function clientAnswering(status: number, body: string) {
+  return new XPlaneClient({
+    config: { host: 'pc.local', port: 8080 },
+    apiVersion: 'v3',
+    http: new HttpTransport({
+      origin: 'http://pc.local:8080',
+      fetchImpl: async () => ({ status, ok: false, text: async () => body }),
+    }),
+    auth: () => 'stale-token',
+    logger: silentLogger,
+  });
+}
+
 function rejectingClient() {
   return new XPlaneClient({
     config: { host: 'pc.local', port: 8080 },
@@ -67,6 +80,20 @@ describe('XPlaneClient when the connector rejects the token', () => {
   it('keeps UNAUTHORIZED on a rejected command', async () => {
     await expect(rejectingClient().activateCommand(9)).rejects.toMatchObject({
       code: 'UNAUTHORIZED',
+    });
+  });
+
+  // The status is what tells a reader whether a write failed on auth, on the DataRef or on
+  // the simulator, so the per-operation wrapping must carry it across.
+  it('carries the HTTP status into the wrapped operation error', async () => {
+    const body = '{"error_code":"not_found","error_message":"No such dataref"}';
+    await expect(clientAnswering(404, body).setDataRefValue(1, 5)).rejects.toMatchObject({
+      code: 'WRITE_FAILED',
+      httpStatus: 404,
+    });
+    await expect(clientAnswering(404, body).activateCommand(9)).rejects.toMatchObject({
+      code: 'COMMAND_FAILED',
+      httpStatus: 404,
     });
   });
 });
