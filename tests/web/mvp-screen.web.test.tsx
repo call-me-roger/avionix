@@ -105,4 +105,21 @@ describe('MvpScreen on react-native-web', () => {
     expect(text).toContain('Sim PC needs pairing.');
     expect(container.querySelector('[data-testid="pairing-code"]')).not.toBeNull();
   });
+
+  it('does not render the discovery section on the web', async () => {
+    const s = services();
+    await act(async () => {
+      root.render(
+        <ServicesProvider services={s}>
+          <ThemeProvider storage={s.settingsStorage} systemSchemeOverride="light">
+            <MvpScreen />
+          </ThemeProvider>
+        </ServicesProvider>,
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(container.textContent ?? '').not.toContain('Connectors on this network');
+  });
 });

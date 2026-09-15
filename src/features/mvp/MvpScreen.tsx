@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text } from 'react-native';
 
+import type { DiscoveredConnector } from '@/domain/discovery/discovered-connector';
 import { ConnectionForm } from '@/features/connection/ConnectionForm';
 import { ConnectionStatus } from '@/features/connection/ConnectionStatus';
+import { DiscoveredConnectors } from '@/features/connection/DiscoveredConnectors';
 import { DiagnosticsPanel } from '@/features/diagnostics/DiagnosticsPanel';
 import { ControlPanel } from '@/features/mvp/ControlPanel';
 import { TelemetryPanel } from '@/features/mvp/TelemetryPanel';
 import { useConnectionSettings } from '@/hooks/useConnectionSettings';
+import { isDiscoveryState, useConnectorDiscovery } from '@/hooks/useConnectorDiscovery';
 import { useSimulatorSession } from '@/hooks/useSimulatorSession';
 import { ThemeToggle } from '@/theme/ThemeToggle';
 import { useThemedStyles } from '@/theme/theme-context';
@@ -27,6 +30,7 @@ export function MvpScreen() {
   const { snapshot, connect, disconnect, pair, writeHeading, activateHeadingUp } =
     useSimulatorSession();
   const settings = useConnectionSettings();
+  const discovery = useConnectorDiscovery(snapshot.state);
   const styles = useThemedStyles(makeStyles);
   const [now, setNow] = useState(() => Date.now());
 
@@ -49,6 +53,14 @@ export function MvpScreen() {
     [pair],
   );
 
+  const onSelectConnector = useCallback(
+    (connector: DiscoveredConnector) => {
+      void settings.setConnection(connector.host, connector.port);
+      void connect(connector.host, String(connector.port));
+    },
+    [connect, settings],
+  );
+
   return (
     <ScrollView
       testID="mvp-screen"
@@ -68,6 +80,11 @@ export function MvpScreen() {
         onConnect={onConnect}
         onDisconnect={disconnect}
         onPair={onPair}
+      />
+      <DiscoveredConnectors
+        snapshot={discovery}
+        enabled={isDiscoveryState(snapshot.state)}
+        onSelect={onSelectConnector}
       />
       <ConnectionStatus snapshot={snapshot} />
       <DiagnosticsPanel snapshot={snapshot} />
