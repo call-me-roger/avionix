@@ -262,4 +262,46 @@ describe('connector mDNS advertiser', () => {
       jest.useRealTimers();
     }
   });
+
+  it('a factory that throws returns an advertisement and stop() resolves', async () => {
+    const logs: string[] = [];
+
+    const advertise = createBonjourAdvertiser(
+      (onError) => {
+        throw new Error('module missing');
+      },
+      (line) => logs.push(line),
+    );
+
+    const ad = advertise({ name: 'test', port: 1234, txt: {} });
+
+    expect(logs).toContainEqual(expect.stringContaining('module missing'));
+    expect(logs).toContainEqual(expect.stringContaining('unavailable'));
+    await expect(ad.stop()).resolves.toBeUndefined();
+  });
+
+  it('a fake whose destroy throws synchronously resolves and logs the error', async () => {
+    const logs: string[] = [];
+
+    const fakeBonjour = {
+      publish() {
+        return {
+          stop: (cb: () => void) => cb(),
+        };
+      },
+      destroy(cb?: () => void) {
+        throw new Error('destroy crashed');
+      },
+    };
+
+    const advertise = createBonjourAdvertiser(
+      (onError) => fakeBonjour,
+      (line) => logs.push(line),
+    );
+
+    const ad = advertise({ name: 'test', port: 1234, txt: {} });
+
+    await expect(ad.stop()).resolves.toBeUndefined();
+    expect(logs).toContainEqual(expect.stringContaining('destroy crashed'));
+  });
 });

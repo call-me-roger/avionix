@@ -16,6 +16,10 @@ function boundedShutdown(instance, service, log, timeoutMs = 2000) {
       return stopPromise;
     }
 
+    if (!instance) {
+      return Promise.resolve();
+    }
+
     stopPromise = new Promise((resolve) => {
       let resolved = false;
       let destroyed = false;
@@ -27,8 +31,9 @@ function boundedShutdown(instance, service, log, timeoutMs = 2000) {
             destroyed = true;
             try {
               instance.destroy(() => undefined);
-            } catch {
-              // Ignore errors during forced destroy
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              log(`mDNS destroy error: ${message}`);
             }
           }
           log('mDNS stop timed out; destroyed instance');
@@ -39,13 +44,23 @@ function boundedShutdown(instance, service, log, timeoutMs = 2000) {
       const attemptDestroy = () => {
         if (!destroyed) {
           destroyed = true;
-          instance.destroy(() => {
+          try {
+            instance.destroy(() => {
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(timer);
+                resolve();
+              }
+            });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            log(`mDNS destroy error: ${message}`);
             if (!resolved) {
               resolved = true;
               clearTimeout(timer);
               resolve();
             }
-          });
+          }
         }
       };
 
@@ -65,14 +80,24 @@ function boundedShutdown(instance, service, log, timeoutMs = 2000) {
 function createBonjourAdvertiser(factory = defaultBonjourFactory, log = () => undefined) {
   return function advertise(spec) {
     let instance;
-    let service;
     const onError = (error) => {
       const message = error instanceof Error ? error.message : String(error);
       log(`mDNS error: ${message}`);
     };
 
+    // Separate factory failure from publish failure
     try {
       instance = factory(onError);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log(`mDNS unavailable: ${message}`);
+      return {
+        stop: () => Promise.resolve(),
+      };
+    }
+
+    let service;
+    try {
       service = instance.publish({
         name: spec.name,
         type: SERVICE_TYPE,
@@ -82,9 +107,8 @@ function createBonjourAdvertiser(factory = defaultBonjourFactory, log = () => un
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       log(`mDNS error: ${message}`);
-      const errorInstance = instance;
       return {
-        stop: boundedShutdown(errorInstance, null, log),
+        stop: boundedShutdown(instance, null, log),
       };
     }
 
