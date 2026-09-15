@@ -5,8 +5,8 @@
 | Layer | Directory | Depends on | Contains |
 |---|---|---|---|
 | Domain | `src/domain` | nothing | `AvionixError`, connection config validation, URL derivation, the connection state table, API version negotiation, simulator types, the `SimulatorClient` port |
-| Infrastructure | `src/infrastructure` | domain | zod schemas and mappers for X-Plane payloads, `HttpTransport`, `WebSocketTransport` + `RequestManager`, `XPlaneClient`, name resolution caches, logging, AsyncStorage adapter |
-| Application | `src/application` | domain, infrastructure | `SimulatorSession` (connect flow, diagnostics, telemetry, reconnect), `Store`, snapshot types, settings |
+| Infrastructure | `src/infrastructure` | domain | zod schemas and mappers for X-Plane payloads, `HttpTransport`, `WebSocketTransport` + `RequestManager`, `XPlaneClient`, `ConnectorClient`, name resolution caches, logging, AsyncStorage adapter |
+| Application | `src/application` | domain, infrastructure | `SimulatorSession` (connect flow, diagnostics, telemetry, reconnect), `PairingTokenStore`, `Store`, snapshot types, settings |
 | UI | `src/app`, `src/hooks`, `src/features` | application | composition root, React context, hooks, plain React Native components |
 
 Dependencies point downwards only. `src/domain` and `src/application` never import React or
@@ -30,13 +30,16 @@ protocol behind that port means:
 TextInput → MvpScreen → useSimulatorSession().connect(host, port)
   → SimulatorSession.connect
       1. validate host/port                       (domain)
-      2. GET /api/capabilities                    (HttpTransport)
-      3. negotiateApiVersion                      (domain)
-      4. XPlaneClient.connectWebSocket            (WebSocketTransport)
-      5. state = connected
-      6. resolve MVP DataRefs + command by name   (ResolutionCache → REST)
-      7. dataref_subscribe_values                 (WebSocket)
-      8. dataref_update_values → DataRefUpdate[] → snapshot.telemetry
+      2. GET /avionix/info                        (ConnectorClient)
+         → no connector: continue (connector: direct); pairing needed: state = pairing until pair(code);
+           connector ready: continue (connector: paired)
+      3. GET /api/capabilities                    (HttpTransport)
+      4. negotiateApiVersion                      (domain)
+      5. XPlaneClient.connectWebSocket            (WebSocketTransport)
+      6. state = connected
+      7. resolve MVP DataRefs + command by name   (ResolutionCache → REST)
+      8. dataref_subscribe_values                 (WebSocket)
+      9. dataref_update_values → DataRefUpdate[] → snapshot.telemetry
   → Store notifies → useSyncExternalStore re-renders the screen
 ```
 
@@ -54,7 +57,18 @@ reconnecting --retryExhausted--> error   reconnecting --disconnect--> disconnect
 connected --disconnect--> disconnected   error --connect--> connecting
 connected --failed--> error
 error --disconnect--> disconnected
+connecting --pairingRequired--> pairing --pair--> connecting
+reconnecting --pairingRequired--> pairing   connected --pairingRequired--> pairing
+pairing --disconnect--> disconnected
 ```
+
+`pairing` is reached in two cases. First, the connector probe (initial connect only, so from
+`connecting`) finds an Avionix Connector that requires a code while the app holds no token for it.
+Second, a connector rejects a token the app does hold (`UNAUTHORIZED`): this can happen from
+`connecting` (capabilities refused during the first connect), from `reconnecting` (refused during a
+reconnect attempt; the probe is not repeated there), or from `connected` (an authenticated write or
+command fails). In the second case the session clears the stored token and cancels the reconnect
+scheduler. Both cases leave the session waiting for `SimulatorSession.pair(code)` or `disconnect()`.
 
 The `connected → error` edge exists because the session reports `connected` as soon as the socket
 opens (spec step 9); DataRef resolution and subscription happen afterwards and can still fail.
@@ -74,7 +88,9 @@ available. Raw exceptions never reach the UI.
 
 Each device runs its own `SimulatorSession` and its own WebSocket to X-Plane. There is no Avionix
 server. The X-Plane Web API keeps per-connection subscription and command bookkeeping, so devices
-do not interfere with each other. Device roles and pairing are intentionally not implemented.
+do not interfere with each other. Devices pair with the Avionix Connector individually: each holds
+its own bearer token, stored per host and port by `PairingTokenStore` in the same `SettingsStorage`
+port as the connection settings. Device roles are still not implemented.
 
 ## Theming
 

@@ -16,6 +16,7 @@ import type {
   SimulatorCapabilities,
 } from '@/domain/simulator/types';
 import { type Logger, silentLogger } from '@/infrastructure/logging/logger';
+import { type AuthProvider, appendTokenQuery, noAuth } from '@/infrastructure/xplane/auth';
 import { probeCapabilities } from '@/infrastructure/xplane/capabilities';
 import type { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
 import { toCommandDescriptor, toDataRefDescriptor } from '@/infrastructure/xplane/schemas/mappers';
@@ -38,15 +39,24 @@ export interface XPlaneClientOptions {
   requestTimeoutMs?: number;
   connectTimeoutMs?: number;
   logger?: Logger;
+  /** Supplies the connector bearer token for the WebSocket upgrade, read at connect time. */
+  auth?: AuthProvider;
 }
 
 function wrap(error: unknown, code: AvionixErrorCode, message: string): AvionixError {
   const inner = toAvionixError(error, { code: 'UNKNOWN', message });
+  if (inner.code === 'UNAUTHORIZED') {
+    // The connector refused the request before the operation could fail on its own terms.
+    // Reporting it as WRITE_FAILED would hide the one thing the session can act on: the
+    // token is gone and the device has to pair again.
+    return inner;
+  }
   return new AvionixError({
     code,
     message: `${message}: ${inner.message}`,
     retryable: inner.retryable,
     simulatorErrorCode: inner.simulatorErrorCode,
+    httpStatus: inner.httpStatus,
     cause: inner,
   });
 }
@@ -159,8 +169,10 @@ export class XPlaneClient implements SimulatorClient {
     if (this.connecting !== null) {
       return this.connecting;
     }
+    const baseUrl = webSocketUrl(this.options.config, this.apiVersion);
+    const token = (this.options.auth ?? noAuth)();
     const socket = new WebSocketTransport({
-      url: webSocketUrl(this.options.config, this.apiVersion),
+      url: token === null ? baseUrl : appendTokenQuery(baseUrl, token),
       createSocket: this.options.createSocket,
       connectTimeoutMs: this.options.connectTimeoutMs,
       requestTimeoutMs: this.options.requestTimeoutMs,

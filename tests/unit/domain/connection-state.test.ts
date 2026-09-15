@@ -11,12 +11,17 @@ const legal: Array<[ConnectionState, ConnectionEvent, ConnectionState]> = [
   ['connecting', 'connected', 'connected'],
   ['connecting', 'failed', 'error'],
   ['connecting', 'disconnect', 'disconnected'],
+  ['connecting', 'pairingRequired', 'pairing'],
+  ['pairing', 'pair', 'connecting'],
+  ['pairing', 'disconnect', 'disconnected'],
   ['connected', 'socketLost', 'reconnecting'],
   ['connected', 'failed', 'error'],
+  ['connected', 'pairingRequired', 'pairing'],
   ['connected', 'disconnect', 'disconnected'],
   ['reconnecting', 'connected', 'connected'],
   ['reconnecting', 'retryExhausted', 'error'],
   ['reconnecting', 'disconnect', 'disconnected'],
+  ['reconnecting', 'pairingRequired', 'pairing'],
   ['error', 'connect', 'connecting'],
   ['error', 'disconnect', 'disconnected'],
 ];
@@ -28,6 +33,8 @@ const events: ConnectionEvent[] = [
   'disconnect',
   'socketLost',
   'retryExhausted',
+  'pairingRequired',
+  'pair',
 ];
 
 describe('transition', () => {
@@ -50,5 +57,20 @@ describe('transition', () => {
         }
       }
     }
+  });
+
+  it('rejects pair from connected with INTERNAL', () => {
+    expect(() => transition('connected', 'pair')).toThrow('Illegal connection transition');
+  });
+
+  it('lists pairing after connecting', () => {
+    expect(CONNECTION_STATES).toEqual([
+      'disconnected',
+      'connecting',
+      'pairing',
+      'connected',
+      'reconnecting',
+      'error',
+    ]);
   });
 });

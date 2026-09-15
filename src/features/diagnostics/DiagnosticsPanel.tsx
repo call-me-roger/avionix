@@ -1,7 +1,19 @@
 import React from 'react';
 
-import type { SessionSnapshot, StepStatus } from '@/application/session-snapshot';
+import type { ConnectorStep, SessionSnapshot, StepStatus } from '@/application/session-snapshot';
 import { BodyText, Section, SectionTitle } from '@/theme/primitives';
+
+const CONNECTOR_LABEL: Record<ConnectorStep, string> = {
+  idle: '-',
+  pending: '...',
+  direct: 'DIRECT',
+  pairing: 'PAIRING',
+  paired: 'PAIRED',
+};
+
+function connectorTone(step: ConnectorStep): 'danger' | 'success' | undefined {
+  return step === 'direct' || step === 'paired' ? 'success' : undefined;
+}
 
 function label(status: StepStatus): string {
   switch (status) {
@@ -33,6 +45,9 @@ export function DiagnosticsPanel({ snapshot }: { snapshot: SessionSnapshot }) {
       <SectionTitle>Diagnostics</SectionTitle>
       <BodyText>
         Target: {snapshot.config === null ? '-' : `${snapshot.config.host}:${snapshot.config.port}`}
+      </BodyText>
+      <BodyText tone={connectorTone(d.connector)}>
+        Connector: {CONNECTOR_LABEL[d.connector]}
       </BodyText>
       <BodyText tone={tone(d.http)}>HTTP: {label(d.http)}</BodyText>
       <BodyText tone={tone(d.capabilities)}>Capabilities: {label(d.capabilities)}</BodyText>

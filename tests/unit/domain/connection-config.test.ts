@@ -70,6 +70,6 @@ describe('createConnectionConfig', () => {
   });
 
   it('exposes the X-Plane default port', () => {
-    expect(DEFAULT_PORT).toBe(8086);
+    expect(DEFAULT_PORT).toBe(8080);
   });
 });

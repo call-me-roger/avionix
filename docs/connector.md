@@ -27,14 +27,21 @@ ignored, so it can never substitute for the header there.
 ## Pairing
 
 On start the connector prints a six-digit code (rotates each run; `--code 123456` fixes it for
-tests). A device sends it once to `/avionix/pair` and stores the returned token. Tokens are saved
-in `~/.avionix/connector-tokens.json` (`--data-dir` overrides) so paired devices survive restarts,
-but valid tokens are also cached in memory while the connector runs, so deleting the file alone
-does not revoke an already-running connector. To revoke every device: stop the connector, delete
-that file, then start it again. `--open` disables pairing entirely (trusted networks only).
+tests). Open Avionix, enter the connector's host and port (8080 by default) and press Connect: the
+app probes `GET /avionix/info`, sees that pairing is required, and shows a code field inline on the
+connection screen. Type the six digits and press Pair. The app stores the returned token per
+connector (host and port) and sends it on every request afterwards, so it never asks again.
 
-The Avionix app's pairing screen is pending (next PR). Until then, start the bridge with `--open`
-for the app to reach X-Plane.
+A wrong code leaves the app on the pairing screen with "Wrong code, check the connector window.";
+after five wrong attempts in a minute it reports "Too many attempts, wait a minute and try again."
+Press Cancel to give up and go back to disconnected.
+
+Tokens are saved in `~/.avionix/connector-tokens.json` (`--data-dir` overrides) so paired devices
+survive restarts, but valid tokens are also cached in memory while the connector runs, so deleting
+the file alone does not revoke an already-running connector. To revoke every device: stop the
+connector, delete that file, then start it again. The next time the app connects, the connector
+rejects its token, the app forgets it and asks for a fresh code. `--open` disables pairing entirely
+(trusted networks only).
 
 ## Flags
 

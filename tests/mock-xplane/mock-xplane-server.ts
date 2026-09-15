@@ -19,6 +19,13 @@ export interface MockCommand {
   description: string;
 }
 
+export interface MockConnectorOptions {
+  name: string;
+  pairingRequired: boolean;
+  code: string;
+  rejectAllTokens?: boolean;
+}
+
 export interface MockXPlaneOptions {
   apiVersions?: string[];
   xplaneVersion?: string;
@@ -26,6 +33,7 @@ export interface MockXPlaneOptions {
   dataRefs?: MockDataRef[];
   commands?: MockCommand[];
   updateIntervalMs?: number;
+  connector?: MockConnectorOptions;
 }
 
 export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
@@ -100,10 +108,14 @@ export class MockXPlaneServer {
   incomingTrafficDisabled = false;
   /** When true, WebSocket requests are recorded but never answered (for cancellation tests). */
   pauseReplies = false;
+  /** Tokens handed out by `/avionix/pair`, in issue order. */
+  readonly issuedTokens: string[] = [];
 
   private readonly apiVersions: string[];
   private readonly xplaneVersion: string;
   private readonly capabilitiesMode: 'ok' | 'not_found';
+  private readonly connector: MockConnectorOptions | undefined;
+  private rejectAllTokens: boolean;
   private readonly dataRefs: Map<number, MockDataRef>;
   private readonly commands: Map<number, MockCommand>;
   private readonly sockets = new Set<WsSocket>();
@@ -122,6 +134,8 @@ export class MockXPlaneServer {
       (options.dataRefs ?? DEFAULT_MOCK_DATAREFS).map((d) => [d.id, { ...d }]),
     );
     this.commands = new Map((options.commands ?? DEFAULT_MOCK_COMMANDS).map((c) => [c.id, c]));
+    this.connector = options.connector;
+    this.rejectAllTokens = options.connector?.rejectAllTokens ?? false;
     this.timer = setInterval(() => this.pushUpdates(), options.updateIntervalMs ?? 20);
     this.timer.unref();
   }
@@ -166,6 +180,11 @@ export class MockXPlaneServer {
     dataRef.value = value;
   }
 
+  /** Simulates a connector that has forgotten every paired device (token file deleted). */
+  setRejectAllTokens(value: boolean): void {
+    this.rejectAllTokens = value;
+  }
+
   sendRawToAll(text: string): void {
     for (const socket of this.sockets) {
       socket.send(text);
@@ -193,12 +212,89 @@ export class MockXPlaneServer {
 
   // ---- HTTP -------------------------------------------------------------
 
+  private bearerToken(req: http.IncomingMessage): string | null {
+    const header = req.headers.authorization;
+    const value = Array.isArray(header) ? header[0] : header;
+    if (typeof value !== 'string') {
+      return null;
+    }
+    const match = /^Bearer\s+(\S+)$/i.exec(value.trim());
+    return match?.[1] ?? null;
+  }
+
+  private tokenAccepted(token: string | null): boolean {
+    if (this.connector === undefined || !this.connector.pairingRequired) {
+      return true;
+    }
+    if (this.rejectAllTokens) {
+      return false;
+    }
+    return token !== null && this.issuedTokens.includes(token);
+  }
+
   private async handleHttp(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const method = req.method ?? 'GET';
     if (this.incomingTrafficDisabled) {
       res.writeHead(403).end();
       return;
+    }
+    const connector = this.connector;
+    if (connector !== undefined) {
+      if (url.pathname === '/avionix/info') {
+        if (method !== 'GET') {
+          res.writeHead(405).end();
+          return;
+        }
+        this.json(res, 200, {
+          name: connector.name,
+          version: '1.0.0-mock',
+          pairingRequired: connector.pairingRequired,
+          xplane: { host: this.host, port: this.port, reachable: true },
+        });
+        return;
+      }
+      if (url.pathname === '/avionix/pair') {
+        if (method !== 'POST') {
+          res.writeHead(405).end();
+          return;
+        }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(await readBody(req));
+        } catch {
+          this.json(res, 400, {
+            error_code: 'invalid_body',
+            error_message: 'Body must be JSON.',
+          });
+          return;
+        }
+        if (!isRecord(parsed) || typeof parsed.code !== 'string') {
+          this.json(res, 400, {
+            error_code: 'invalid_body',
+            error_message: 'Body must include a code string.',
+          });
+          return;
+        }
+        if (parsed.code !== connector.code) {
+          this.json(res, 401, {
+            error_code: 'pairing_invalid_code',
+            error_message: 'Wrong pairing code',
+          });
+          return;
+        }
+        const token = `mock-token-${this.issuedTokens.length + 1}`;
+        this.issuedTokens.push(token);
+        this.json(res, 200, { token });
+        return;
+      }
+      if (url.pathname.startsWith('/api') && !this.tokenAccepted(this.bearerToken(req))) {
+        this.json(res, 401, {
+          error_code: 'unauthorized',
+          error_message: 'Pair this device with the Avionix Connector first.',
+        });
+        return;
+      }
     }
     try {
       if (url.pathname === '/api/capabilities' && method === 'GET') {
@@ -395,6 +491,11 @@ export class MockXPlaneServer {
     head: Buffer,
   ): void {
     const url = new URL(req.url ?? '/', 'http://localhost');
+    if (this.connector !== undefined && !this.tokenAccepted(url.searchParams.get('token'))) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
     const match = /^\/api\/(v\d)$/.exec(url.pathname);
     const version = match?.[1];
     if (

@@ -21,6 +21,7 @@ function services(storage = createMemorySettingsStorage()): AppServices {
       store: new Store(initialSnapshot(MVP_DATAREF_NAMES)),
       connect: async () => undefined,
       disconnect: () => undefined,
+      pair: async () => undefined,
       writeHeading: async () => undefined,
       activateHeadingUp: async () => undefined,
     },
@@ -78,6 +79,6 @@ describe('useConnectionSettings', () => {
     });
     await waitFor(() => expect(result.current.ready).toBe(true));
     expect(result.current.host).toBe('');
-    expect(result.current.port).toBe('8086');
+    expect(result.current.port).toBe('8080');
   });
 });

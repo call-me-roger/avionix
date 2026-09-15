@@ -45,4 +45,22 @@ describe('AvionixError', () => {
     expect(wrappedString.code).toBe('UNKNOWN');
     expect(wrappedString.message).toBe('fallback: oops');
   });
+
+  it('carries an http status when one is given and undefined otherwise', () => {
+    const withStatus = new AvionixError({ code: 'HTTP_ERROR', message: 'x', httpStatus: 404 });
+    expect(withStatus.httpStatus).toBe(404);
+    expect(new AvionixError({ code: 'UNKNOWN', message: 'x' }).httpStatus).toBeUndefined();
+  });
+
+  it('accepts the pairing error codes', () => {
+    const codes = [
+      'PAIRING_REQUIRED',
+      'PAIRING_FAILED',
+      'PAIRING_RATE_LIMITED',
+      'UNAUTHORIZED',
+    ] as const;
+    for (const code of codes) {
+      expect(new AvionixError({ code, message: code }).code).toBe(code);
+    }
+  });
 });

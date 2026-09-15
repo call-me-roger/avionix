@@ -24,7 +24,8 @@ const makeStyles = (theme: Theme) => ({
 });
 
 export function MvpScreen() {
-  const { snapshot, connect, disconnect, writeHeading, activateHeadingUp } = useSimulatorSession();
+  const { snapshot, connect, disconnect, pair, writeHeading, activateHeadingUp } =
+    useSimulatorSession();
   const settings = useConnectionSettings();
   const styles = useThemedStyles(makeStyles);
   const [now, setNow] = useState(() => Date.now());
@@ -39,6 +40,15 @@ export function MvpScreen() {
     void connect(settings.host, settings.port);
   }, [connect, settings]);
 
+  const onPair = useCallback(
+    (code: string) =>
+      pair(code).catch(() => {
+        // pair() only rejects with INTERNAL (wrong state or a concurrent call), which the
+        // disabled button already prevents; user-visible failures arrive via snapshot.error.
+      }),
+    [pair],
+  );
+
   return (
     <ScrollView
       testID="mvp-screen"
@@ -52,10 +62,12 @@ export function MvpScreen() {
         host={settings.host}
         port={settings.port}
         state={snapshot.state}
+        connectorName={snapshot.connector?.name ?? null}
         onHostChange={settings.setHost}
         onPortChange={settings.setPort}
         onConnect={onConnect}
         onDisconnect={disconnect}
+        onPair={onPair}
       />
       <ConnectionStatus snapshot={snapshot} />
       <DiagnosticsPanel snapshot={snapshot} />

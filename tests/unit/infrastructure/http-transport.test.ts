@@ -194,4 +194,57 @@ describe('HttpTransport', () => {
       jest.useRealTimers();
     }
   });
+
+  it('adds an Authorization header only when the auth provider returns a token', async () => {
+    const { fetchImpl, calls } = fakeFetch(() => ({ status: 200, body: '{"data": 1}' }));
+    let token: string | null = null;
+    const withAuth = new HttpTransport({
+      origin: 'http://192.168.1.100:8080',
+      fetchImpl,
+      auth: () => token,
+      logger: silentLogger,
+    });
+    await withAuth.request({ method: 'GET', path: '/x', schema });
+    expect(calls[0]?.init.headers).toEqual({
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    });
+    token = 'tok-123';
+    await withAuth.request({ method: 'GET', path: '/x', schema });
+    expect(calls[1]?.init.headers).toEqual({
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer tok-123',
+    });
+  });
+
+  it('maps a 401 without an X-Plane error body to UNAUTHORIZED', async () => {
+    const { fetchImpl } = fakeFetch(() => ({ status: 401, body: 'Unauthorized' }));
+    await expectCode(
+      transport(fetchImpl).request({ method: 'GET', path: '/x', schema }),
+      'UNAUTHORIZED',
+    );
+  });
+
+  it('maps a 401 carrying error_code unauthorized to UNAUTHORIZED', async () => {
+    const { fetchImpl } = fakeFetch(() => ({
+      status: 401,
+      body: '{"error_code":"unauthorized","error_message":"Pair this device first."}',
+    }));
+    await expectCode(
+      transport(fetchImpl).request({ method: 'GET', path: '/x', schema }),
+      'UNAUTHORIZED',
+    );
+  });
+
+  it('records the HTTP status on HTTP_ERROR so callers can branch on 404', async () => {
+    const { fetchImpl } = fakeFetch(() => ({ status: 404, body: 'Not Found' }));
+    try {
+      await transport(fetchImpl).request({ method: 'GET', path: '/avionix/info', schema });
+      throw new Error('expected rejection');
+    } catch (error) {
+      expect(isAvionixError(error) && error.code).toBe('HTTP_ERROR');
+      expect(isAvionixError(error) && error.httpStatus).toBe(404);
+    }
+  });
 });

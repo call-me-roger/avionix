@@ -187,4 +187,97 @@ describe('MockXPlaneServer', () => {
 
     socket.close();
   });
+
+  it('serves connector info, pairs with the code and guards /api and the upgrade', async () => {
+    const connectorServer = await MockXPlaneServer.start({
+      connector: { name: 'Sim PC', pairingRequired: true, code: '123456' },
+    });
+    const base = `http://${connectorServer.host}:${connectorServer.port}`;
+    try {
+      const info = await fetch(`${base}/avionix/info`);
+      expect(info.status).toBe(200);
+      expect(await info.json()).toEqual({
+        name: 'Sim PC',
+        version: '1.0.0-mock',
+        pairingRequired: true,
+        xplane: { host: connectorServer.host, port: connectorServer.port, reachable: true },
+      });
+
+      expect((await fetch(`${base}/api/capabilities`)).status).toBe(401);
+
+      const wrong = await fetch(`${base}/avionix/pair`, {
+        method: 'POST',
+        body: JSON.stringify({ code: '000000' }),
+      });
+      expect(wrong.status).toBe(401);
+      expect(await wrong.json()).toMatchObject({ error_code: 'pairing_invalid_code' });
+
+      const paired = await fetch(`${base}/avionix/pair`, {
+        method: 'POST',
+        body: JSON.stringify({ code: '123456' }),
+      });
+      expect(paired.status).toBe(200);
+      const body: unknown = await paired.json();
+      const token = isRecord(body) && typeof body.token === 'string' ? body.token : '';
+      expect(token).toBe('mock-token-1');
+      expect(connectorServer.issuedTokens).toEqual(['mock-token-1']);
+
+      const allowed = await fetch(`${base}/api/capabilities`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(allowed.status).toBe(200);
+
+      connectorServer.setRejectAllTokens(true);
+      const revoked = await fetch(`${base}/api/capabilities`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(revoked.status).toBe(401);
+      expect(await revoked.json()).toMatchObject({ error_code: 'unauthorized' });
+    } finally {
+      await connectorServer.stop();
+    }
+  });
+
+  it('refuses a WebSocket upgrade without a token and accepts one with it', async () => {
+    const connectorServer = await MockXPlaneServer.start({
+      connector: { name: 'Sim PC', pairingRequired: true, code: '123456' },
+    });
+    const base = `http://${connectorServer.host}:${connectorServer.port}`;
+    try {
+      const paired = await fetch(`${base}/avionix/pair`, {
+        method: 'POST',
+        body: JSON.stringify({ code: '123456' }),
+      });
+      const body: unknown = await paired.json();
+      const token = isRecord(body) && typeof body.token === 'string' ? body.token : '';
+
+      const denied = new WebSocket(`ws://${connectorServer.host}:${connectorServer.port}/api/v3`);
+      await new Promise<void>((resolve) => {
+        denied.addEventListener('close', () => resolve());
+        denied.addEventListener('error', () => resolve());
+      });
+      expect(connectorServer.connectionCount).toBe(0);
+
+      const opened = new WebSocket(
+        `ws://${connectorServer.host}:${connectorServer.port}/api/v3?token=${token}`,
+      );
+      await new Promise<void>((resolve, reject) => {
+        opened.addEventListener('open', () => resolve());
+        opened.addEventListener('error', () => reject(new Error('upgrade was refused')));
+      });
+      expect(connectorServer.connectionCount).toBe(1);
+      opened.close();
+    } finally {
+      await connectorServer.stop();
+    }
+  });
+
+  it('answers /avionix/info with 404 when no connector option is given', async () => {
+    const plain = await MockXPlaneServer.start();
+    try {
+      expect((await fetch(`http://${plain.host}:${plain.port}/avionix/info`)).status).toBe(404);
+    } finally {
+      await plain.stop();
+    }
+  });
 });

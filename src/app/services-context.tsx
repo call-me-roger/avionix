@@ -5,7 +5,7 @@ import type { SimulatorSession } from '@/application/simulator-session';
 
 export type SessionApi = Pick<
   SimulatorSession,
-  'store' | 'connect' | 'disconnect' | 'writeHeading' | 'activateHeadingUp'
+  'store' | 'connect' | 'disconnect' | 'pair' | 'writeHeading' | 'activateHeadingUp'
 >;
 
 export interface AppServices {
