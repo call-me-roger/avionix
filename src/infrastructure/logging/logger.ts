@@ -1,7 +1,7 @@
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export type LogCategory =
-  'connection' | 'http' | 'websocket' | 'dataref' | 'command' | 'session' | 'ui';
+  'connection' | 'http' | 'websocket' | 'dataref' | 'command' | 'session' | 'discovery' | 'ui';
 
 export interface LogEntry {
   level: LogLevel;

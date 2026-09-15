@@ -2,13 +2,17 @@ import React, { act } from 'react';
 import { type Root, createRoot } from 'react-dom/client';
 import { Text } from 'react-native';
 
+import { ConnectorDiscovery } from '@/application/connector-discovery';
 import { MVP_DATAREF_NAMES } from '@/application/mvp-bindings';
 import { initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage, saveConnectionSettings } from '@/application/settings-store';
 import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
 import { useConnectionSettings } from '@/hooks/useConnectionSettings';
+import { silentLogger } from '@/infrastructure/logging/logger';
 import { platformDefaultConnection } from '@/platform/default-connection';
+
+import { createFakeServiceBrowser } from '../support/fake-service-browser';
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean | undefined;
@@ -18,6 +22,10 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 function services(storage = createMemorySettingsStorage()): AppServices {
   return {
     settingsStorage: storage,
+    discovery: new ConnectorDiscovery({
+      browser: createFakeServiceBrowser('unsupported'),
+      logger: silentLogger,
+    }),
     session: {
       store: new Store(initialSnapshot(MVP_DATAREF_NAMES)),
       connect: async () => undefined,

@@ -1,12 +1,16 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import React from 'react';
 
-import { createMemorySettingsStorage, saveConnectionSettings } from '@/application/settings-store';
-import { type AppServices, ServicesProvider } from '@/app/services-context';
-import { useConnectionSettings } from '@/hooks/useConnectionSettings';
+import { ConnectorDiscovery } from '@/application/connector-discovery';
 import { MVP_DATAREF_NAMES } from '@/application/mvp-bindings';
 import { initialSnapshot } from '@/application/session-snapshot';
+import { createMemorySettingsStorage, saveConnectionSettings } from '@/application/settings-store';
 import { Store } from '@/application/store';
+import { type AppServices, ServicesProvider } from '@/app/services-context';
+import { useConnectionSettings } from '@/hooks/useConnectionSettings';
+import { silentLogger } from '@/infrastructure/logging/logger';
+
+import { createFakeServiceBrowser } from '../support/fake-service-browser';
 
 function wrapperFor(services: AppServices) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
@@ -17,6 +21,10 @@ function wrapperFor(services: AppServices) {
 function services(storage = createMemorySettingsStorage()): AppServices {
   return {
     settingsStorage: storage,
+    discovery: new ConnectorDiscovery({
+      browser: createFakeServiceBrowser(),
+      logger: silentLogger,
+    }),
     session: {
       store: new Store(initialSnapshot(MVP_DATAREF_NAMES)),
       connect: async () => undefined,
@@ -80,5 +88,21 @@ describe('useConnectionSettings', () => {
     await waitFor(() => expect(result.current.ready).toBe(true));
     expect(result.current.host).toBe('');
     expect(result.current.port).toBe('8080');
+  });
+
+  it('setConnection updates the form values and persists exactly those values', async () => {
+    const storage = createMemorySettingsStorage();
+    const { result } = await renderHook(() => useConnectionSettings(), {
+      wrapper: wrapperFor(services(storage)),
+    });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => {
+      await result.current.setConnection('192.168.1.20', 8080);
+    });
+    expect(result.current.host).toBe('192.168.1.20');
+    expect(result.current.port).toBe('8080');
+    expect(await storage.getItem('avionix.connection')).toBe(
+      JSON.stringify({ host: '192.168.1.20', port: 8080 }),
+    );
   });
 });

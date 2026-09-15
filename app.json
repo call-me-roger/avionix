@@ -17,7 +17,8 @@
       "bundleIdentifier": "pro.avionix.app",
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocalNetworkUsageDescription": "Avionix connects to X-Plane running on a computer on your local network.",
+        "NSLocalNetworkUsageDescription": "Avionix finds Avionix Connectors and connects to X-Plane on your local network.",
+        "NSBonjourServices": ["_avionix._tcp"],
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
@@ -25,6 +26,7 @@
     },
     "android": {
       "package": "pro.avionix.app",
+      "permissions": ["ACCESS_NETWORK_STATE", "ACCESS_WIFI_STATE", "CHANGE_WIFI_MULTICAST_STATE"],
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundColor": "#ffffff"

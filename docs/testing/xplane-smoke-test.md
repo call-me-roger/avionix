@@ -19,7 +19,9 @@ Record results at the bottom.
    settings). For the bridge, if `xplane.reachable` is false, X-Plane is down or misconfigured; check
    with `curl -s http://127.0.0.1:8086/api/capabilities` on the X-Plane PC. If nothing answers, fix
    the relay, firewall or network.
-4. Two physical devices with Expo Go on the same Wi-Fi; `npm start` running on the dev machine.
+4. Two physical devices on the same Wi-Fi: one running the Avionix development build (needed for
+   discovery, `docs/development.md`) and one with Expo Go; `npm start` (or
+   `npx expo start --dev-client`) running on the dev machine.
 
 ## Procedure
 
@@ -43,6 +45,14 @@ Record results at the bottom.
 | 16 | Restart X-Plane, press Connect (re-enter the code if prompted) | Connects; DataRef ids were re-resolved (no stale-id errors) | |
 | 17 | Kill and relaunch Avionix, press Connect | Host and port fields are prefilled; if the token is still valid, status goes straight to `connected` without asking for a code | |
 | 18 | Direct X-Plane: enter port 8086 (no connector) and press Connect | Status `connected` without a code prompt; Connector row shows DIRECT | |
+| 19 | Development build, disconnected, connector running with mDNS on: open Avionix | iOS asks for local-network permission on the first scan; allow it. Within a few seconds "Connectors on this network" lists the connector with `<ip>:8080` and "Needs pairing" | |
+| 20 | Tap the connector row | Host and port fill in; status goes to `pairing` (or `connected` when this device is already paired); the section disappears while busy | |
+| 21 | Disconnect, then stop the connector with the app in the foreground | The row disappears within about 10 s; "Looking for connectors…" shows | |
+| 22 | Start the connector with `--no-mdns` | Nothing is listed; typing the IP still connects | |
+| 23 | Background the app, restart the connector without `--no-mdns`, foreground the app | The list is empty for a moment, then shows the connector again | |
+| 24 | Expo Go device, disconnected | The section shows "Connector discovery needs the Avionix development build." and no rows | |
+| 25 | iOS only: Settings → Avionix → Local Network off, reopen the app | No rows and no error; turning the toggle back on and reopening the app lists the connector again | |
+| 26 | Android, if "Discovery failed" ever appears: background the app, then foreground it | The section shows "Looking for connectors…" and lists the connector again | |
 
 ## Failure hints
 
@@ -53,6 +63,15 @@ Record results at the bottom.
 - `WEBSOCKET_ERROR` with HTTP YES: a proxy or firewall blocks WebSocket upgrades.
 - `SIMULATOR_NOT_READY`: X-Plane reports zero DataRefs; load a flight and press Connect again.
 - `DATAREF_NOT_FOUND`: a plugin removed a standard DataRef, or the name changed; check `docs/xplane.md`.
+- Nothing is ever listed on Android: some routers block multicast between clients (AP isolation);
+  the same setting blocks the connection itself, so check that a typed IP works first.
+- Nothing is listed on iOS but a typed IP works: check Settings → Avionix → Local Network.
+- Android: "Discovery failed: …" after a few seconds is usually a transient NSD resolve failure;
+  background and foreground the app (or press Connect and Disconnect) to rescan.
+- A development build on iOS lists nothing and never prompts for local-network permission: before
+  suspecting the permission, suspect the new architecture's interop layer, since
+  `react-native-zeroconf` is a legacy bridge module running under it (`newArchEnabled` is true in
+  `app.json`).
 
 ## Results
 

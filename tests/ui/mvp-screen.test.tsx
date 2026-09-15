@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import React from 'react';
 
+import { ConnectorDiscovery } from '@/application/connector-discovery';
 import { MVP_DATAREFS, MVP_DATAREF_NAMES } from '@/application/mvp-bindings';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
@@ -8,11 +9,17 @@ import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import { MvpScreen } from '@/features/mvp/MvpScreen';
+import { silentLogger } from '@/infrastructure/logging/logger';
 import { ThemeProvider } from '@/theme/theme-context';
 import { saveThemePreference } from '@/theme/theme-preference';
 import { darkTheme, lightTheme } from '@/theme/tokens';
 
-function makeServices(snapshot: Partial<SessionSnapshot> = {}) {
+import { type FakeServiceBrowser, createFakeServiceBrowser } from '../support/fake-service-browser';
+
+function makeServices(
+  snapshot: Partial<SessionSnapshot> = {},
+  browser: FakeServiceBrowser = createFakeServiceBrowser(),
+) {
   const store = new Store<SessionSnapshot>({ ...initialSnapshot(MVP_DATAREF_NAMES), ...snapshot });
   const session = {
     store,
@@ -24,8 +31,13 @@ function makeServices(snapshot: Partial<SessionSnapshot> = {}) {
     writeHeading: jest.fn(async () => undefined),
     activateHeadingUp: jest.fn(async () => undefined),
   };
-  const services: AppServices = { session, settingsStorage: createMemorySettingsStorage() };
-  return { services, session, store };
+  const discovery = new ConnectorDiscovery({ browser, logger: silentLogger });
+  const services: AppServices = {
+    session,
+    discovery,
+    settingsStorage: createMemorySettingsStorage(),
+  };
+  return { services, session, store, browser };
 }
 
 async function renderScreen(services: AppServices, systemScheme: 'light' | 'dark' = 'light') {
@@ -182,6 +194,76 @@ describe('MvpScreen', () => {
         backgroundColor: lightTheme.colors.background,
       }),
     );
+  });
+
+  describe('discovered connectors', () => {
+    const simPc = {
+      name: 'Sim PC',
+      host: 'sim-pc.local.',
+      port: 8080,
+      addresses: ['fe80::1', '192.168.1.20'],
+      txt: { v: '1', pairing: '1' },
+    };
+
+    it('lists resolved connectors and connects with the tapped one', async () => {
+      const { services, session, browser } = makeServices();
+      await renderScreen(services);
+      await waitFor(() => expect(browser.browseCalls).toHaveLength(1));
+      expect(screen.getByText('Connectors on this network')).toBeTruthy();
+      expect(screen.getByText('Looking for connectors…')).toBeTruthy();
+      await act(async () => {
+        browser.listener().resolved(simPc);
+        browser.listener().resolved({ ...simPc, name: 'Open PC', txt: { pairing: '0' } });
+      });
+      expect(screen.getByText('Sim PC')).toBeTruthy();
+      expect(screen.getAllByText('192.168.1.20:8080')).toHaveLength(2);
+      expect(screen.getByText('Needs pairing')).toBeTruthy();
+      expect(screen.getByText('Open')).toBeTruthy();
+      expect(screen.queryByText('Looking for connectors…')).toBeNull();
+      await fireEvent.press(screen.getByLabelText(/^Connect to Sim PC,/));
+      await waitFor(() => expect(session.connect).toHaveBeenCalledWith('192.168.1.20', '8080'));
+      expect(screen.getByDisplayValue('192.168.1.20')).toBeTruthy();
+      await waitFor(async () =>
+        expect(await services.settingsStorage.getItem('avionix.connection')).toBe(
+          JSON.stringify({ host: '192.168.1.20', port: 8080 }),
+        ),
+      );
+    });
+
+    it('hides the section while connected and shows it again after disconnect', async () => {
+      const { services, store, browser } = makeServices({ state: 'connected' });
+      await renderScreen(services);
+      await waitFor(() => expect(screen.getByText('Status: connected')).toBeTruthy());
+      expect(screen.queryByText('Connectors on this network')).toBeNull();
+      expect(browser.browseCalls).toHaveLength(0);
+      await act(async () => {
+        store.setState((prev) => ({ ...prev, state: 'disconnected' }));
+      });
+      await waitFor(() => expect(browser.browseCalls).toHaveLength(1));
+      expect(screen.getByText('Connectors on this network')).toBeTruthy();
+    });
+
+    it('explains that Expo Go needs the development build', async () => {
+      const { services, browser } = makeServices({}, createFakeServiceBrowser('needsDevBuild'));
+      await renderScreen(services);
+      await waitFor(() =>
+        expect(
+          screen.getByText('Connector discovery needs the Avionix development build.'),
+        ).toBeTruthy(),
+      );
+      expect(browser.browseCalls).toHaveLength(0);
+    });
+
+    it('shows a discovery error beneath the list', async () => {
+      const browser = createFakeServiceBrowser('available', {
+        failOnBrowse: new AvionixError({ code: 'DISCOVERY_ERROR', message: 'NSD failed' }),
+      });
+      const { services } = makeServices({}, browser);
+      await renderScreen(services);
+      await waitFor(() => expect(screen.getByText('Discovery failed: NSD failed')).toBeTruthy());
+      expect(screen.queryByText('Looking for connectors…')).toBeNull();
+      expect(screen.queryByText('No connectors found yet.')).toBeNull();
+    });
   });
 });
 

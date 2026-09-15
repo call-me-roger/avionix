@@ -3,8 +3,8 @@
 ## Prerequisites
 
 - Node.js 22 and npm 10.
-- Expo Go on a physical device (recommended for the MVP; no native modules are used, so no
-  development build is required).
+- Expo Go on a physical device for everything except connector discovery, which uses the native
+  module `react-native-zeroconf` and therefore needs a development build (see below).
 - An Expo account: Expo Go for SDK 57 on iOS requires the same account to be logged in with
   `npx expo login` and inside the Expo Go app (Home tab → avatar). Android Expo Go does not require
   this yet. Development builds never require it.
@@ -53,9 +53,11 @@ Xcode, Android Studio, simulators or emulators in CI.
 
 ## App config notes
 
-`app.json` already carries the settings a development or production build needs for LAN access:
-`NSLocalNetworkUsageDescription`, `NSAppTransportSecurity.NSAllowsLocalNetworking` (iOS) and
-`usesCleartextTraffic` through `expo-build-properties` (Android). They are not exercised by Expo Go.
+`app.json` already carries the settings a development or production build needs for LAN access and
+connector discovery: `NSLocalNetworkUsageDescription`, `NSBonjourServices`,
+`NSAppTransportSecurity.NSAllowsLocalNetworking` (iOS), `usesCleartextTraffic` through
+`expo-build-properties`, and `ACCESS_NETWORK_STATE`, `ACCESS_WIFI_STATE` and
+`CHANGE_WIFI_MULTICAST_STATE` (Android). They are not exercised by Expo Go.
 
 ## Quality gates
 
@@ -78,13 +80,15 @@ asynchronous, so UI tests `await` them.
 
 `createLogger(category)` in `src/infrastructure/logging/logger.ts` writes to the console in
 development and only warnings and errors in production builds. Categories: `connection`, `http`,
-`websocket`, `dataref`, `command`, `session`, `ui`.
+`websocket`, `dataref`, `command`, `session`, `discovery`, `ui`.
 
 ## Development builds (EAS)
 
-Expo Go is enough for the MVP, but a development build is required to verify the native LAN
-settings in `app.json` (iOS App Transport Security local networking, Android cleartext traffic)
-and to test on iOS without the Expo Go login requirement.
+Connector discovery (`_avionix._tcp` over mDNS) is the first feature that needs a development
+build: `react-native-zeroconf` is a native module that Expo Go does not contain. A development
+build is also the way to verify the native LAN settings in `app.json` (iOS App Transport Security
+local networking, `NSBonjourServices`, Android cleartext traffic and the Wi-Fi multicast
+permission) and to test on iOS without the Expo Go login requirement.
 
 Prerequisites: an Expo account (`npx eas-cli@latest login`) with access to the project
 (`extra.eas.projectId` in `app.json`). The `eas.json` `development` profile builds a dev client
@@ -107,3 +111,12 @@ Install the resulting build from the link, then start `npx expo start --dev-clie
 
 After the first development build, run the smoke test in `docs/testing/xplane-smoke-test.md` on
 it; that run confirms the LAN networking settings that Expo Go does not exercise.
+
+Two things to expect from `react-native-zeroconf` specifically. On Android, the library compiles
+a bundled mDNSResponder with the NDK, so the first Android build is noticeably slower than later
+ones; an NDK version mismatch is the most likely build failure (the library defaults to NDK
+27.1.12297006, so check that version is installed if the build fails there). The library is also
+a legacy bridge module, so on both platforms it runs under the new architecture's interop layer
+(`newArchEnabled` is `true` in `app.json`); if an iOS development build lists no connectors and
+never prompts for local-network permission, suspect the interop layer before suspecting the
+permission.

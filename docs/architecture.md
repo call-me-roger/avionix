@@ -4,10 +4,11 @@
 
 | Layer | Directory | Depends on | Contains |
 |---|---|---|---|
-| Domain | `src/domain` | nothing | `AvionixError`, connection config validation, URL derivation, the connection state table, API version negotiation, simulator types, the `SimulatorClient` port |
-| Infrastructure | `src/infrastructure` | domain | zod schemas and mappers for X-Plane payloads, `HttpTransport`, `WebSocketTransport` + `RequestManager`, `XPlaneClient`, `ConnectorClient`, name resolution caches, logging, AsyncStorage adapter |
-| Application | `src/application` | domain, infrastructure | `SimulatorSession` (connect flow, diagnostics, telemetry, reconnect), `PairingTokenStore`, `Store`, snapshot types, settings |
+| Domain | `src/domain` | nothing | `AvionixError`, connection config validation, URL derivation, the connection state table, API version negotiation, simulator types, the `SimulatorClient` port, the `ServiceBrowser` port and `DiscoveredConnector` |
+| Infrastructure | `src/infrastructure` | domain | zod schemas and mappers for X-Plane payloads, `HttpTransport`, `WebSocketTransport` + `RequestManager`, `XPlaneClient`, `ConnectorClient`, name resolution caches, logging, AsyncStorage adapter, `ZeroconfServiceBrowser` and the null browser |
+| Application | `src/application` | domain, infrastructure | `SimulatorSession` (connect flow, diagnostics, telemetry, reconnect), `PairingTokenStore`, `Store`, snapshot types, settings, `ConnectorDiscovery` |
 | UI | `src/app`, `src/hooks`, `src/features` | application | composition root, React context, hooks, plain React Native components |
+| Platform | `src/platform` | infrastructure | the only platform-specific code: the web connection default and the `ServiceBrowser` factory (`service-browser.ts` for native, `service-browser.web.ts` for the web) |
 
 Dependencies point downwards only. `src/domain` and `src/application` never import React or
 React Native; `tests/unit` and `tests/integration` run them in plain Node.
@@ -44,6 +45,29 @@ TextInput → MvpScreen → useSimulatorSession().connect(host, port)
 ```
 
 Every step updates `snapshot.diagnostics`, so a failure is visible at the exact step.
+
+## Connector discovery
+
+```
+MvpScreen → useConnectorDiscovery(sessionState)
+  → foreground && (disconnected | error) ? discovery.start() : discovery.stop()
+  → ConnectorDiscovery.browse('avionix')            (ServiceBrowser port)
+      resolved(service) → discoveredConnectorFrom   (domain: IPv4 first, else hostname; TXT pairing)
+      removed(name)     → drop the row
+      error             → snapshot.error, scanning = false, list kept
+  → Store<DiscoverySnapshot> → DiscoveredConnectors rows
+  tap → settings.setConnection(host, port) + session.connect(host, port)
+```
+
+`ServiceBrowser` is a port with two implementations. `ZeroconfServiceBrowser` wraps
+`react-native-zeroconf` and validates every resolved payload with zod; the null browser carries an
+availability tag (`needsDevBuild` in Expo Go, where the native module is absent; `unsupported` on
+the web) so the screen can explain itself. `src/platform/service-browser.ts` chooses at composition
+time by checking `NativeModules.RNZeroconf`; the `.web.ts` twin never imports the library, so the
+web bundle does not carry it. `ConnectorDiscovery` keys rows by DNS-SD instance name (removal events
+carry only the name), sorts them, clears the list on `stop()` (a PC that went away while the app was
+in the background must not look present), and guards every callback with a generation counter.
+Discovery never calls `/avionix/info`: the existing probe on connect remains the compatibility check.
 
 ## Connection state machine
 
@@ -109,8 +133,9 @@ the second persisted setting after host and port; nothing else is stored.
 ## Web and the bridge
 
 The application is platform-neutral: Expo builds it for iOS, Android and web, and `react-native-web`
-translates the React Native API surface to the web. `src/platform/default-connection.ts` is the only
-web-specific code; it prefills the connection form with the current page's host and port.
+translates the React Native API surface to the web. `src/platform/default-connection.ts` prefills the
+connection form with the current page's host and port on the web; the `ServiceBrowser` factory is
+`src/platform`'s other platform split (see Connector discovery above).
 
 The Avionix bridge (`scripts/avionix-bridge.js`) is infrastructure outside the app: a Node.js HTTP
 and WebSocket server that serves the exported web app and relays all `/api/*` requests from the

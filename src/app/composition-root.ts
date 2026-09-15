@@ -1,4 +1,5 @@
 import type { AppServices } from '@/app/services-context';
+import { ConnectorDiscovery } from '@/application/connector-discovery';
 import { createPairingTokenStore } from '@/application/pairing-token-store';
 import { SimulatorSession } from '@/application/simulator-session';
 import { httpOrigin } from '@/domain/connection/endpoints';
@@ -7,6 +8,7 @@ import { createLogger } from '@/infrastructure/logging/logger';
 import { createAsyncStorageSettings } from '@/infrastructure/storage/async-storage-settings';
 import { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
 import { XPlaneClient } from '@/infrastructure/xplane/xplane-client';
+import { createPlatformServiceBrowser } from '@/platform/service-browser';
 
 export function createAppServices(): AppServices {
   const settingsStorage = createAsyncStorageSettings();
@@ -24,5 +26,10 @@ export function createAppServices(): AppServices {
     tokenStore: createPairingTokenStore(settingsStorage),
     logger: createLogger('session'),
   });
-  return { session, settingsStorage };
+  const discoveryLogger = createLogger('discovery');
+  const discovery = new ConnectorDiscovery({
+    browser: createPlatformServiceBrowser(discoveryLogger),
+    logger: discoveryLogger,
+  });
+  return { session, discovery, settingsStorage };
 }

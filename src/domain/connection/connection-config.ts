@@ -18,7 +18,7 @@ function invalidPort(reason: string): AvionixError {
   return new AvionixError({ code: 'INVALID_PORT', message: `Invalid port: ${reason}` });
 }
 
-function isValidIpv4(host: string): boolean {
+export function isValidIpv4(host: string): boolean {
   const match = IPV4_PATTERN.exec(host);
   if (match === null) {
     return false;
