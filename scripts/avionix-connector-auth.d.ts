@@ -18,6 +18,7 @@ export class ConnectorAuth {
   readonly dataDir: string;
   get pairingRequired(): boolean;
   tokenCount(): number;
+  attemptTrackedClients(): number;
   isAuthorized(token: string | null | undefined): boolean;
   pair(code: string, clientKey: string): PairResult;
 }

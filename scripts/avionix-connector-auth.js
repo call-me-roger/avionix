@@ -21,13 +21,13 @@ function generateToken() {
 
 class ConnectorAuth {
   constructor(options = {}) {
-    this.dataDir = options.dataDir || defaultDataDir();
+    this.dataDir = options.dataDir ?? defaultDataDir();
     this.open = options.open === true;
-    this.code = options.code || generatePairingCode();
-    this.now = options.now || Date.now;
-    this.random = options.random || generateToken;
-    this.maxAttempts = options.maxAttempts || 5;
-    this.windowMs = options.windowMs || 60000;
+    this.code = options.code && options.code.length > 0 ? options.code : generatePairingCode();
+    this.now = options.now ?? Date.now;
+    this.random = options.random ?? generateToken;
+    this.maxAttempts = options.maxAttempts ?? 5;
+    this.windowMs = options.windowMs ?? 60000;
     this.attempts = new Map(); // clientKey -> number[] (timestamps)
     this.tokens = new Set(this.load());
   }
@@ -40,6 +40,10 @@ class ConnectorAuth {
     return this.tokens.size;
   }
 
+  attemptTrackedClients() {
+    return this.attempts.size;
+  }
+
   isAuthorized(token) {
     if (this.open) return true;
     return typeof token === 'string' && this.tokens.has(token);
@@ -47,6 +51,7 @@ class ConnectorAuth {
 
   pair(code, clientKey) {
     if (this.open) return { ok: false, reason: 'invalid_code' };
+    this.pruneAttempts();
     const now = this.now();
     const recent = (this.attempts.get(clientKey) || []).filter((t) => now - t < this.windowMs);
     if (recent.length >= this.maxAttempts) {
@@ -55,7 +60,7 @@ class ConnectorAuth {
     }
     if (typeof code !== 'string' || code !== this.code) {
       recent.push(now);
-      this.attempts.set(clientKey, recent);
+      this.attempts.set(clientKey, recent.slice(-this.maxAttempts));
       return { ok: false, reason: 'invalid_code' };
     }
     this.attempts.delete(clientKey);
@@ -63,6 +68,18 @@ class ConnectorAuth {
     this.tokens.add(token);
     this.save();
     return { ok: true, token };
+  }
+
+  pruneAttempts() {
+    const now = this.now();
+    for (const [key, timestamps] of this.attempts.entries()) {
+      const recent = timestamps.filter((t) => now - t < this.windowMs);
+      if (recent.length === 0) {
+        this.attempts.delete(key);
+      } else {
+        this.attempts.set(key, recent);
+      }
+    }
   }
 
   load() {
@@ -80,7 +97,7 @@ class ConnectorAuth {
 
   save() {
     try {
-      fs.mkdirSync(this.dataDir, { recursive: true });
+      fs.mkdirSync(this.dataDir, { recursive: true, mode: 0o700 });
       fs.writeFileSync(
         path.join(this.dataDir, TOKEN_FILE),
         JSON.stringify({ tokens: [...this.tokens] }, null, 2),
@@ -99,7 +116,6 @@ function extractToken(req) {
   if (typeof value === 'string') {
     const match = /^Bearer\s+(\S+)$/i.exec(value.trim());
     if (match) return match[1];
-    return null;
   }
   if (typeof req.url === 'string') {
     const query = req.url.split('?')[1];
@@ -115,10 +131,9 @@ function extractToken(req) {
 function stripTokenQuery(url) {
   const [pathname, query] = url.split('?');
   if (!query) return url;
-  const params = new URLSearchParams(query);
-  params.delete('token');
-  const rest = params.toString();
-  return rest ? `${pathname}?${rest}` : pathname;
+  const segments = query.split('&');
+  const remaining = segments.filter((seg) => seg !== 'token' && !seg.startsWith('token='));
+  return remaining.length > 0 ? `${pathname}?${remaining.join('&')}` : pathname;
 }
 
 module.exports = { ConnectorAuth, generatePairingCode, extractToken, stripTokenQuery, TOKEN_FILE };

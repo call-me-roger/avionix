@@ -87,6 +87,27 @@ describe('ConnectorAuth', () => {
     const auth = new ConnectorAuth({ dataDir });
     expect(auth.code).toMatch(/^\d{6}$/);
   });
+
+  it('treats empty string code as unset and generates one', () => {
+    const auth = new ConnectorAuth({ dataDir, code: '' });
+    expect(auth.code).toMatch(/^\d{6}$/);
+  });
+
+  it('bounds the attempts map and prunes expired entries', () => {
+    let now = 1_000_000;
+    const auth = new ConnectorAuth({ dataDir, code: '123456', now: () => now });
+    // Fail once from 200 different client keys
+    for (let i = 0; i < 200; i += 1) {
+      auth.pair('000000', `client-${i}`);
+    }
+    expect(auth.attemptTrackedClients()).toBe(200);
+    // Advance past the window
+    now += 61_000;
+    // Call pair once more from a new key (triggers pruning)
+    auth.pair('000000', 'client-new');
+    // Should prune expired entries, leaving only the new one
+    expect(auth.attemptTrackedClients()).toBe(1);
+  });
 });
 
 describe('extractToken / stripTokenQuery', () => {
@@ -96,11 +117,25 @@ describe('extractToken / stripTokenQuery', () => {
     expect(extractToken({ headers: {} })).toBeNull();
   });
 
+  it('falls through to query token when Authorization header is invalid', () => {
+    expect(extractToken({ headers: { authorization: 'Basic abc' }, url: '/x?token=q' })).toBe('q');
+    expect(extractToken({ headers: { authorization: 'Bearer' }, url: '/x?token=q' })).toBe('q');
+  });
+
   it('reads a token query parameter and strips it', () => {
     expect(extractToken({ headers: {}, url: '/api/v3?token=xyz' })).toBe('xyz');
     expect(stripTokenQuery('/api/v3?token=xyz')).toBe('/api/v3');
     expect(stripTokenQuery('/api/v3?a=1&token=xyz&b=2')).toBe('/api/v3?a=1&b=2');
     expect(stripTokenQuery('/api/v3')).toBe('/api/v3');
+  });
+
+  it('preserves bytes exactly when stripping token', () => {
+    expect(stripTokenQuery('/api/v3/datarefs?filter[name]=a%2Fb&token=x')).toBe(
+      '/api/v3/datarefs?filter[name]=a%2Fb',
+    );
+    expect(stripTokenQuery('/api?q=hello%20world&token=x&z=1')).toBe('/api?q=hello%20world&z=1');
+    expect(stripTokenQuery('/api?token=x')).toBe('/api');
+    expect(stripTokenQuery('/api?tokenx=1')).toBe('/api?tokenx=1');
   });
 
   it('prefers the header over the query', () => {
