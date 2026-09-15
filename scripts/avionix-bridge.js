@@ -225,27 +225,66 @@ function runAsyncHandler(promise, res, log) {
   });
 }
 
-function checkUpstream(options) {
-  return new Promise((resolve) => {
-    const request = http.get(
-      {
-        host: options.xplaneHost,
-        port: options.xplanePort,
-        path: '/api/capabilities',
-        timeout: 1000,
-      },
-      (res) => {
-        res.resume();
-        resolve(true);
-      },
-    );
-    request.on('timeout', () => request.destroy());
-    request.on('error', () => resolve(false));
-  });
+const UPSTREAM_PROBE_CACHE_MS = 2000;
+
+/**
+ * Probes X-Plane's reachability for `/avionix/info`, caching the result for a short window so
+ * a burst of status-page/info requests doesn't hammer X-Plane, and tracking the in-flight
+ * request so `close()` can abort it instead of leaving a socket open past shutdown.
+ */
+function createUpstreamProbe(options, cacheMs = UPSTREAM_PROBE_CACHE_MS) {
+  let cachedValue = null;
+  let cachedAt = -Infinity;
+  let activeRequest = null;
+  let pending = null;
+  let pendingResolve = null;
+
+  function settle(value) {
+    cachedValue = value;
+    cachedAt = Date.now();
+    activeRequest = null;
+    const resolve = pendingResolve;
+    pending = null;
+    pendingResolve = null;
+    if (resolve) resolve(value);
+  }
+
+  function check() {
+    if (cachedValue !== null && Date.now() - cachedAt < cacheMs) {
+      return Promise.resolve(cachedValue);
+    }
+    if (pending) return pending;
+    pending = new Promise((resolve) => {
+      pendingResolve = resolve;
+      const request = http.get(
+        {
+          host: options.xplaneHost,
+          port: options.xplanePort,
+          path: '/api/capabilities',
+          timeout: 1000,
+        },
+        (res) => {
+          res.resume();
+          settle(true);
+        },
+      );
+      activeRequest = request;
+      request.on('timeout', () => request.destroy());
+      request.on('error', () => settle(false));
+    });
+    return pending;
+  }
+
+  function abort() {
+    if (activeRequest) activeRequest.destroy();
+    if (pending) settle(false);
+  }
+
+  return { check, abort };
 }
 
-async function handleInfo(options, auth, name, version, res) {
-  const reachable = await checkUpstream(options);
+async function handleInfo(options, auth, name, version, checkReachable, res) {
+  const reachable = await checkReachable();
   sendJson(res, 200, {
     name,
     version,
@@ -299,6 +338,13 @@ async function handlePair(req, res, auth) {
     sendJson(res, 429, {
       error_code: 'pairing_rate_limited',
       error_message: 'Too many attempts, wait a minute',
+    });
+    return;
+  }
+  if (result.reason === 'too_many_attempts') {
+    sendJson(res, 429, {
+      error_code: 'too_many_attempts',
+      error_message: 'Too many pairing attempts across all devices, wait a minute',
     });
     return;
   }
@@ -423,7 +469,9 @@ function proxyHttp(options, req, res, log, pendingUpstreamRequests) {
       const responseHeaders = { ...stripHopByHop(upstreamRes.headers), ...CORS_HEADERS };
       res.writeHead(upstreamRes.statusCode || 502, responseHeaders);
       upstreamRes.on('error', (error) => {
-        log(`upstream response error ${req.method} ${req.url}: ${error.message}`);
+        log(
+          `upstream response error ${req.method} ${stripTokenQuery(req.url || '')}: ${error.message}`,
+        );
         if (!res.writableEnded) res.destroy();
       });
       upstreamRes.pipe(res);
@@ -433,7 +481,7 @@ function proxyHttp(options, req, res, log, pendingUpstreamRequests) {
   const forgetUpstream = () => pendingUpstreamRequests.delete(upstream);
   upstream.on('close', forgetUpstream);
   upstream.on('error', (error) => {
-    log(`upstream error ${req.method} ${req.url}: ${error.message}`);
+    log(`upstream error ${req.method} ${stripTokenQuery(req.url || '')}: ${error.message}`);
     if (res.headersSent || res.writableEnded) {
       // A response is already underway; we cannot send a fresh JSON error
       // without crashing on "headers already sent", so just tear it down.
@@ -468,9 +516,10 @@ function relayUpgrade(options, req, socket, head, log, relays, auth) {
 
   upstream.on('connect', () => {
     upstream.setNoDelay(true);
-    const lines = [`${req.method} ${stripTokenQuery(req.url)} HTTP/${req.httpVersion}`];
+    const lines = [`${req.method} ${stripTokenQuery(req.url || '')} HTTP/${req.httpVersion}`];
     for (let i = 0; i < req.rawHeaders.length; i += 2) {
       const headerName = req.rawHeaders[i];
+      if (headerName.toLowerCase() === 'authorization') continue;
       const value =
         headerName.toLowerCase() === 'host'
           ? `${options.xplaneHost}:${options.xplanePort}`
@@ -521,11 +570,17 @@ function startBridge(overrides = {}) {
   const advertise =
     options.advertiser ||
     (options.mdns === false ? createNullAdvertiser() : createBonjourAdvertiser(undefined, log));
+  const upstreamProbe = createUpstreamProbe(options);
   let urls = [];
 
   const server = http.createServer((req, res) => {
     const pathname = (req.url || '').split('?')[0];
     if (pathname === '/avionix/info') {
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, CORS_HEADERS);
+        res.end();
+        return;
+      }
       if (req.method !== 'GET') {
         sendJson(
           res,
@@ -535,10 +590,15 @@ function startBridge(overrides = {}) {
         );
         return;
       }
-      runAsyncHandler(handleInfo(options, auth, name, version, res), res, log);
+      runAsyncHandler(handleInfo(options, auth, name, version, upstreamProbe.check, res), res, log);
       return;
     }
     if (pathname === '/avionix/pair') {
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, CORS_HEADERS);
+        res.end();
+        return;
+      }
       if (req.method !== 'POST') {
         sendJson(
           res,
@@ -554,6 +614,11 @@ function startBridge(overrides = {}) {
     if (pathname === '/avionix' || pathname === '/avionix/') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       res.end(renderStatusPage(options, auth, name, version, urls));
+      return;
+    }
+    if (pathname.startsWith('/avionix/')) {
+      res.writeHead(404, { 'content-type': 'application/json; charset=utf-8', ...CORS_HEADERS });
+      res.end(JSON.stringify({ error: 'not_found' }));
       return;
     }
     if (isApiPath(pathname)) {
@@ -616,6 +681,7 @@ function startBridge(overrides = {}) {
         close: () => {
           if (closePromise) return closePromise;
           closePromise = (async () => {
+            upstreamProbe.abort();
             for (const entry of relays) {
               entry.socket.destroy();
               entry.upstream.destroy();

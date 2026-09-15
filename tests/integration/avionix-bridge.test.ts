@@ -198,7 +198,9 @@ function startRecordingUpstream(): Promise<{
         const headerEnd = buffered.indexOf('\r\n\r\n');
         if (headerEnd >= 0) {
           requests.push(buffered.slice(0, headerEnd));
-          socket.write('HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}');
+          // end() (not write()) so a raw byte-piping caller (the WebSocket relay path,
+          // which never parses HTTP) also observes the connection actually close.
+          socket.end('HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}');
         }
       });
     });
@@ -799,7 +801,7 @@ describe('Avionix connector (pairing, tokens, discovery)', () => {
     expect(res.status).toBe(204);
   });
 
-  it('I2: never logs the token used to open a WebSocket', async () => {
+  it('F1: never logs the token, on WebSocket connect or an upstream HTTP error', async () => {
     const paired = await fetch(`${base}/avionix/pair`, {
       method: 'POST',
       body: JSON.stringify({ code: '123456' }),
@@ -825,6 +827,14 @@ describe('Avionix connector (pairing, tokens, discovery)', () => {
     await until(() => xplane.connectionCount === 1);
     socket.close();
     await until(() => xplane.connectionCount === 0);
+
+    // Force the "upstream error" HTTP log line (a query token plus a dead upstream).
+    await xplane.stop();
+    const res = await fetch(`${base}/api/capabilities?token=${token}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(502);
+    xplane = await MockXPlaneServer.start();
 
     expect(logs.some((line) => line.includes(token))).toBe(false);
   });
@@ -886,6 +896,123 @@ describe('Avionix connector (pairing, tokens, discovery)', () => {
     expect(info.version).toBe('9.9.9');
     const page = await (await fetch(`${base}/avionix`)).text();
     expect(page).toContain('9.9.9');
+  });
+
+  it('F4: never forwards the Authorization header upstream on a WebSocket upgrade', async () => {
+    const paired = await fetch(`${base}/avionix/pair`, {
+      method: 'POST',
+      body: JSON.stringify({ code: '123456' }),
+    });
+    const { token } = (await paired.json()) as { token: string };
+
+    let upstream: Awaited<ReturnType<typeof startRecordingUpstream>> | undefined;
+    let upgradeBridge: Awaited<ReturnType<typeof startBridge>> | undefined;
+    try {
+      upstream = await startRecordingUpstream();
+      upgradeBridge = await startBridge({
+        port: 0,
+        host: '127.0.0.1',
+        xplaneHost: '127.0.0.1',
+        xplanePort: upstream.port,
+        staticDir,
+        dataDir,
+        advertiser: fakeAdvertiser(),
+        log: () => undefined,
+      });
+      await rawHttp(
+        upgradeBridge.port,
+        [
+          `GET /api/v3?token=${token} HTTP/1.1`,
+          `Host: 127.0.0.1:${upgradeBridge.port}`,
+          'Upgrade: websocket',
+          'Connection: Upgrade',
+          `Authorization: Bearer ${token}`,
+          'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
+          'Sec-WebSocket-Version: 13',
+          '',
+          '',
+        ].join('\r\n'),
+      );
+      await until(() => (upstream?.requests.length ?? 0) === 1);
+      const request = upstream.requests[0];
+      if (request === undefined) throw new Error('expected a recorded upstream request');
+      expect(request.toLowerCase()).not.toContain('authorization:');
+      expect(request).not.toContain(token);
+    } finally {
+      await upgradeBridge?.close();
+      await upstream?.close();
+    }
+  });
+
+  it('F9: caches the upstream reachability result for a couple of seconds', async () => {
+    const first = (await (await fetch(`${base}/avionix/info`)).json()) as {
+      xplane: { reachable: boolean };
+    };
+    expect(first.xplane.reachable).toBe(true);
+    await xplane.stop();
+    // Immediately after, still within the cache window: reports the stale (reachable) value.
+    const second = (await (await fetch(`${base}/avionix/info`)).json()) as {
+      xplane: { reachable: boolean };
+    };
+    expect(second.xplane.reachable).toBe(true);
+    xplane = await MockXPlaneServer.start();
+  });
+
+  it('F9: close() aborts an in-flight /avionix/info upstream probe instead of leaving it open', async () => {
+    let hung: net.Server | undefined;
+    let hungBridge: Awaited<ReturnType<typeof startBridge>> | undefined;
+    try {
+      const activeSockets = new Set<net.Socket>();
+      hung = net.createServer((socket) => {
+        activeSockets.add(socket);
+        socket.on('close', () => activeSockets.delete(socket));
+        socket.on('error', () => undefined);
+        socket.resume(); // never respond
+      });
+      hung.on('error', () => undefined);
+      const hungPort = await listenAndGetPort(hung);
+      hungBridge = await startBridge({
+        port: 0,
+        host: '127.0.0.1',
+        xplaneHost: '127.0.0.1',
+        xplanePort: hungPort,
+        staticDir,
+        dataDir,
+        open: true,
+        advertiser: fakeAdvertiser(),
+        log: () => undefined,
+      });
+      const hungBase = `http://127.0.0.1:${hungBridge.port}`;
+
+      fetch(`${hungBase}/avionix/info`).catch(() => undefined);
+      await until(() => activeSockets.size === 1);
+
+      const closed = hungBridge.close();
+      hungBridge = undefined;
+      await closed;
+      // The probe's own outbound socket must be torn down promptly by close(), well
+      // inside the request's 1s natural timeout, proving close() actively aborts it.
+      await until(() => activeSockets.size === 0, 300);
+    } finally {
+      await hungBridge?.close();
+      if (hung) await new Promise<void>((done) => hung?.close(() => done()));
+    }
+  });
+
+  it('F10: answers OPTIONS on /avionix/info and /avionix/pair with 204', async () => {
+    const info = await fetch(`${base}/avionix/info`, { method: 'OPTIONS' });
+    expect(info.status).toBe(204);
+    expect(info.headers.get('access-control-allow-origin')).toBe('*');
+
+    const pair = await fetch(`${base}/avionix/pair`, { method: 'OPTIONS' });
+    expect(pair.status).toBe(204);
+    expect(pair.headers.get('access-control-allow-origin')).toBe('*');
+  });
+
+  it('F11: answers 404 JSON for an unknown /avionix/* path instead of the SPA shell', async () => {
+    const res = await fetch(`${base}/avionix/pairr`);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'not_found' });
   });
 
   it('--no-mdns without an advertiser publishes nothing and still closes cleanly', async () => {
