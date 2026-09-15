@@ -873,11 +873,28 @@ describe('SimulatorSession on a plain X-Plane host', () => {
     await session.connect('192.168.1.100', 8080);
 
     expect(snapshot().diagnostics.connector).toBe('direct');
-    // The probe itself still carries the token: at that point the target was still unknown.
-    expect(sentTokens[requestedPaths.indexOf('/avionix/info')]).toBe('Bearer tok-stale');
-    // Everything after the verdict must be unauthenticated, the socket URL included.
+    // The probe runs unauthenticated: until it answers we do not know who is listening.
+    expect(sentTokens[requestedPaths.indexOf('/avionix/info')]).toBeUndefined();
+    // Everything after the verdict is unauthenticated too, the socket URL included.
     expect(sentTokens[requestedPaths.indexOf('/api/capabilities')]).toBeUndefined();
     expect(socketUrls).toEqual(['ws://192.168.1.100:8080/api/v3']);
+    // And the stale token is dropped from storage, not just from memory.
+    await expect(inner.get('192.168.1.100', 8080)).resolves.toBeNull();
+  });
+
+  it('keeps the probe unauthenticated but authenticates everything after it', async () => {
+    const inner = createPairingTokenStore(createMemorySettingsStorage());
+    await inner.set('192.168.1.100', 8080, 'tok-stored');
+    const { session, snapshot, requestedPaths, sentTokens } = setup({
+      tokenStore: inner,
+      routes: { '/avionix/info': { status: 200, body: CONNECTOR_INFO } },
+    });
+
+    await session.connect('192.168.1.100', 8080);
+
+    expect(snapshot().state).toBe('connected');
+    expect(sentTokens[requestedPaths.indexOf('/avionix/info')]).toBeUndefined();
+    expect(sentTokens[requestedPaths.indexOf('/api/capabilities')]).toBe('Bearer tok-stored');
   });
 });
 
@@ -928,6 +945,30 @@ describe('SimulatorSession when the token dies mid-session', () => {
     await expect(inner.get('192.168.1.100', 8080)).resolves.toBeNull();
   });
 
+  it('clears the live diagnostics so nothing still reads as connected', async () => {
+    const client = new FakeClient();
+    client.setDataRefValue = jest.fn(async (_id: number, _value: unknown) => {
+      throw unauthorized();
+    });
+    const { session, snapshot } = await connectedToConnector(client);
+    await session.connect('192.168.1.100', 8080);
+    expect(snapshot().diagnostics.websocket).toBe('ok');
+
+    await session.writeHeading(180);
+
+    expect(snapshot().state).toBe('pairing');
+    expect(snapshot().diagnostics).toMatchObject({
+      connector: 'pairing',
+      // What the connector already told us stays; what the revoked session had does not.
+      http: 'ok',
+      capabilities: 'ok',
+      websocket: 'idle',
+      command: 'idle',
+      subscription: 'idle',
+    });
+    expect(Object.values(snapshot().diagnostics.dataRefs)).toEqual(['idle', 'idle', 'idle']);
+  });
+
   it('returns to pairing when a command activation is rejected', async () => {
     const client = new FakeClient();
     client.activateCommand = jest.fn(async (_id: number) => {
@@ -942,5 +983,101 @@ describe('SimulatorSession when the token dies mid-session', () => {
     expect(snapshot().error?.code).toBe('UNAUTHORIZED');
     expect(snapshot().lastOperation).toMatchObject({ kind: 'command', ok: false });
     await expect(inner.get('192.168.1.100', 8080)).resolves.toBeNull();
+  });
+});
+
+describe('SimulatorSession pairing edge cases', () => {
+  it('fails with UNAUTHORIZED instead of pairing when the target is not a connector', async () => {
+    const { session, snapshot } = setup({
+      routes: {
+        '/api/capabilities': {
+          status: 401,
+          body: '{"error_code":"unauthorized","error_message":"No"}',
+        },
+      },
+    });
+
+    await session.connect('192.168.1.100', 8080);
+
+    // Nothing here can be paired with, so parking in `pairing` would strand the user.
+    expect(snapshot().state).toBe('error');
+    expect(snapshot().error?.code).toBe('UNAUTHORIZED');
+    expect(snapshot().connector).toBeNull();
+  });
+
+  it('accepts a new pair call while one from a cancelled session is still in flight', async () => {
+    const { session, snapshot, release } = setup({
+      routes: {
+        '/avionix/info': { status: 200, body: CONNECTOR_INFO },
+        '/avionix/pair': { status: 200, body: '{"token":"tok-xyz"}' },
+      },
+      holdPaths: ['/avionix/pair'],
+    });
+    await session.connect('192.168.1.100', 8080);
+    const abandoned = session.pair('123456');
+    await flush();
+
+    session.disconnect();
+    await session.connect('192.168.1.100', 8080);
+    expect(snapshot().state).toBe('pairing');
+    const retried = session.pair('123456');
+    await flush();
+    release('/avionix/pair');
+    release('/avionix/pair');
+    await Promise.all([abandoned, retried]);
+
+    expect(snapshot().state).toBe('connected');
+  });
+
+  it('waits for a queued token clear before reading the stored token', async () => {
+    const inner = createPairingTokenStore(createMemorySettingsStorage());
+    await inner.set('192.168.1.100', 8080, 'tok-stale');
+    const store = new ControllableTokenStore(inner);
+    const { session, snapshot } = setup({
+      tokenStore: store,
+      routes: {
+        '/avionix/info': { status: 200, body: CONNECTOR_INFO },
+        '/api/capabilities': [
+          { status: 401, body: '{"error_code":"unauthorized","error_message":"Pair again"}' },
+        ],
+      },
+    });
+    store.deferClear = true;
+    await session.connect('192.168.1.100', 8080);
+    expect(snapshot().state).toBe('pairing');
+    await flush();
+    expect(store.pendingClears.length).toBe(1);
+
+    // The user presses Connect again while the clear is still on its way to storage.
+    const reconnecting = session.connect('192.168.1.100', 8080);
+    await flush();
+    store.pendingClears[0]?.();
+    await reconnecting;
+
+    // The revoked token must not come back from storage and skip the pairing prompt.
+    expect(snapshot().state).toBe('pairing');
+  });
+
+  it('ignores a resolution that completes after the session was torn down', async () => {
+    const client = new FakeClient();
+    const gates: Array<() => void> = [];
+    client.findDataRef = jest.fn(async (name: string) => {
+      await new Promise<void>((resolve) => gates.push(resolve));
+      return { id: 1, name, valueType: 'float' as const };
+    });
+    const { session, snapshot } = setup({ clients: [client] });
+
+    const connecting = session.connect('192.168.1.100', 8080);
+    await flush();
+    expect(gates.length).toBe(3);
+    session.disconnect();
+    for (const gate of gates) {
+      gate();
+    }
+    await connecting;
+
+    expect(snapshot().state).toBe('disconnected');
+    expect(snapshot().diagnostics.command).toBe('idle');
+    expect(snapshot().diagnostics.dataRefs[MVP_DATAREFS.heartbeat]).toBe('idle');
   });
 });

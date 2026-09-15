@@ -24,7 +24,7 @@ import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simula
 import type { CommandDescriptor, DataRefDescriptor, DataRefUpdate } from '@/domain/simulator/types';
 import type { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { type Logger, silentLogger } from '@/infrastructure/logging/logger';
-import type { AuthProvider } from '@/infrastructure/xplane/auth';
+import { type AuthProvider, noAuth } from '@/infrastructure/xplane/auth';
 import { probeCapabilities } from '@/infrastructure/xplane/capabilities';
 import type { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
 import {
@@ -71,7 +71,8 @@ type FlowMode = 'initial' | 'reconnect';
 interface PendingPairing {
   generation: number;
   config: XPlaneConnectionConfig;
-  http: HttpTransport;
+  /** Unauthenticated: `/avionix/pair` is what produces a token, so it cannot need one. */
+  connectorHttp: HttpTransport;
 }
 
 interface ActiveConnection {
@@ -118,6 +119,7 @@ export class SimulatorSession {
       state: transition(this.settled(prev.state), 'connect'),
     }));
     this.pendingPairing = null;
+    this.pairInFlight = false;
     this.token = null;
     let config: XPlaneConnectionConfig;
     try {
@@ -130,8 +132,10 @@ export class SimulatorSession {
       return;
     }
     this.store.setState((prev) => ({ ...prev, config }));
-    // Assigned only after the guard: a read for a connect that a later connect or a
-    // disconnect has superseded must never publish its token into the live session.
+    // Behind the write queue: a clear that is still on its way to storage must not be read
+    // back as a live token. Assigned only after the guard below, so a read for a connect that
+    // a later connect or a disconnect has superseded never reaches the live session.
+    await this.tokenWrites;
     const storedToken = await this.deps.tokenStore.get(config.host, config.port);
     if (!this.isCurrent(generation)) {
       return;
@@ -144,6 +148,7 @@ export class SimulatorSession {
     this.teardown();
     this.nextGeneration();
     this.pendingPairing = null;
+    this.pairInFlight = false;
     // The stored token is kept: only the connector revokes it.
     this.token = null;
     this.store.setState((prev) => ({
@@ -172,9 +177,9 @@ export class SimulatorSession {
       });
     }
     this.pairInFlight = true;
-    const { generation, config, http } = pending;
+    const { generation, config, connectorHttp } = pending;
     try {
-      const token = await this.deps.createConnectorClient(http).pair(code);
+      const token = await this.deps.createConnectorClient(connectorHttp).pair(code);
       if (!this.isCurrent(generation)) {
         return;
       }
@@ -204,7 +209,13 @@ export class SimulatorSession {
     } finally {
       this.pairInFlight = false;
     }
-    await this.runSimulatorFlow(generation, config, http, 'initial');
+    // A fresh transport: the rest of the flow is authenticated with the token just issued.
+    await this.runSimulatorFlow(
+      generation,
+      config,
+      this.deps.createHttpTransport(config, () => this.token),
+      'initial',
+    );
   }
 
   async writeHeading(value: number): Promise<void> {
@@ -349,12 +360,14 @@ export class SimulatorSession {
    * Sends the session back to `pairing` when an authenticated request was rejected, and
    * reports whether it did. Only the three states that carry the `pairingRequired` edge are
    * eligible: a session that is already `pairing`, `disconnected` or in `error` has nothing
-   * live to interrupt.
+   * live to interrupt. A target that is not a known connector is not eligible either — there
+   * is no code to enter, so the failure belongs in `error` where the user can see it.
    */
   private returnToPairingIfUnauthorized(error: AvionixError): boolean {
-    const state = this.store.getSnapshot().state;
+    const { state, connector } = this.store.getSnapshot();
     if (
       error.code !== 'UNAUTHORIZED' ||
+      connector === null ||
       (state !== 'connecting' && state !== 'reconnecting' && state !== 'connected')
     ) {
       return false;
@@ -381,7 +394,7 @@ export class SimulatorSession {
         : {
             generation,
             config,
-            http: this.deps.createHttpTransport(config, () => this.token),
+            connectorHttp: this.deps.createHttpTransport(config, noAuth),
           };
     if (config !== null) {
       // Queued rather than awaited so the transition below stays synchronous; the queue is
@@ -391,7 +404,18 @@ export class SimulatorSession {
     this.store.setState((prev) => ({
       ...prev,
       state: transition(prev.state, 'pairingRequired'),
-      diagnostics: { ...prev.diagnostics, connector: 'pairing' },
+      // What the connector told us over HTTP still holds; everything the revoked session had
+      // running does not, so nothing reads as connected next to a pairing prompt.
+      diagnostics: {
+        ...prev.diagnostics,
+        connector: 'pairing',
+        websocket: 'idle',
+        command: 'idle',
+        subscription: 'idle',
+        dataRefs: Object.fromEntries(
+          Object.keys(prev.diagnostics.dataRefs).map((name) => [name, 'idle' as StepStatus]),
+        ),
+      },
       reconnectAttempt: 0,
       error,
     }));
@@ -402,13 +426,22 @@ export class SimulatorSession {
     config: XPlaneConnectionConfig,
     mode: FlowMode,
   ): Promise<boolean> {
-    const http = this.deps.createHttpTransport(config, () => this.token);
     // Only the initial connect probes: a reconnect reuses the verdict already in the snapshot,
-    // and a connector that has forgotten this device surfaces as UNAUTHORIZED instead.
-    if (mode === 'initial' && !(await this.runConnectorProbe(generation, config, http))) {
-      return false;
+    // and a connector that has forgotten this device surfaces as UNAUTHORIZED instead. The
+    // probe runs unauthenticated — until it answers we do not know whether the host is the
+    // connector the token belongs to, and a token must never be offered to a stranger.
+    if (mode === 'initial') {
+      const probeHttp = this.deps.createHttpTransport(config, noAuth);
+      if (!(await this.runConnectorProbe(generation, config, probeHttp))) {
+        return false;
+      }
     }
-    return this.runSimulatorFlow(generation, config, http, mode);
+    return this.runSimulatorFlow(
+      generation,
+      config,
+      this.deps.createHttpTransport(config, () => this.token),
+      mode,
+    );
   }
 
   /**
@@ -418,12 +451,12 @@ export class SimulatorSession {
   private async runConnectorProbe(
     generation: number,
     config: XPlaneConnectionConfig,
-    http: HttpTransport,
+    probeHttp: HttpTransport,
   ): Promise<boolean> {
     this.setStep((d) => ({ ...d, connector: 'pending' }));
     let info: ConnectorInfo | null;
     try {
-      info = await this.deps.createConnectorClient(http).getInfo();
+      info = await this.deps.createConnectorClient(probeHttp).getInfo();
     } catch (error) {
       if (!this.isCurrent(generation)) {
         return false;
@@ -446,17 +479,18 @@ export class SimulatorSession {
       return false;
     }
     if (info === null) {
-      // Plain X-Plane: forget any token stored for this host:port so it is never sent on.
+      // Plain X-Plane: forget any token stored for this host:port, in memory and in storage.
       // X-Plane would ignore the header, but the WebSocket URL would carry the token in its
       // `?token=` query, where it reaches logs and proxies for nothing.
       this.token = null;
+      void this.queueTokenWrite(() => this.deps.tokenStore.clear(config.host, config.port));
       this.setStep((d) => ({ ...d, connector: 'direct' }));
       return true;
     }
     const connectorInfo = info;
     this.store.setState((prev) => ({ ...prev, connector: connectorInfo }));
     if (connectorInfo.pairingRequired && this.token === null) {
-      this.pendingPairing = { generation, config, http };
+      this.pendingPairing = { generation, config, connectorHttp: probeHttp };
       this.store.setState((prev) => ({
         ...prev,
         state: transition(prev.state, 'pairingRequired'),
@@ -573,6 +607,11 @@ export class SimulatorSession {
           }
         }),
       );
+      if (!this.isCurrent(generation)) {
+        unsubscribeClose();
+        client.disconnectWebSocket();
+        return false;
+      }
       for (const descriptor of resolved) {
         dataRefsById.set(descriptor.id, descriptor);
         dataRefsByName.set(descriptor.name, descriptor);
