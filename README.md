@@ -18,7 +18,8 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
 - A diagnostics panel that shows exactly which step failed.
 - Light / dark theme with a system / light / dark toggle; the choice is persisted.
 
-Not in scope: any real avionics UI, device roles, pairing, accounts, cloud. See
+Not in scope: any real avionics UI, device roles, accounts, cloud. The bridge-side pairing protocol
+is implemented; the in-app pairing screen and discovery land in a follow-up. See
 `docs/superpowers/specs/2026-09-14-avionix-mvp-design.md` for the full design.
 
 ## Requirements
@@ -52,7 +53,7 @@ npm start
 Scan the QR code with Expo Go. On iOS, Expo Go for SDK 57 requires the same Expo account to be
 logged in both in the CLI (`npx expo login`) and in the app. See `docs/development.md`.
 
-For browsers and tablets, see `docs/web.md`: build the web export and serve it with the Avionix bridge.
+Run the Avionix Connector on the X-Plane PC (`npm run bridge`), then pair the app with the code it prints; see `docs/connector.md`.
 
 ## Connecting to X-Plane
 
