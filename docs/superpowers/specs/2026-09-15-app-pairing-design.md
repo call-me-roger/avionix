@@ -49,6 +49,7 @@ Error bodies use X-Plane's shape `{ error_code, error_message }`. X-Plane itself
 | --- | --- | --- |
 | connecting | pairingRequired | pairing |
 | reconnecting | pairingRequired | pairing |
+| connected | pairingRequired | pairing |
 | pairing | pair | connecting |
 | pairing | disconnect | disconnected |
 
@@ -195,8 +196,12 @@ Connect flow (`runConnectFlow`, initial mode):
 `UNAUTHORIZED` handling, both modes: when any step of the connect flow or a reconnect attempt
 fails with `UNAUTHORIZED`, the session clears the token (memory and store), sets
 `snapshot.error` to the `UNAUTHORIZED` error, transitions with `pairingRequired` (from
-`connecting` or `reconnecting`) and stops retrying. The reconnect scheduler is cancelled. The
-snapshot keeps `connector` so the UI can name the connector.
+`connecting`, `reconnecting` or `connected`) and stops retrying. The reconnect scheduler is
+cancelled. DataRef and command resolution, heading writes and command activations all run over
+authenticated HTTP after the session is already `connected`, so a connector that revokes the
+token mid-session is caught there too and returns the session to `pairing` from `connected`.
+The snapshot keeps `connector` so the UI can name the connector; a target that is not a known
+connector fails to `error` instead, since there is no code the user could enter.
 
 `disconnect()` from `pairing` transitions to `disconnected` and clears `connector`, the
 in-flight generation, and the in-memory token (the stored token is kept).

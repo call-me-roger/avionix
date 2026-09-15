@@ -27,7 +27,7 @@ Record results at the bottom.
 |---|---|---|---|
 | 1 | Open Avionix on device A, enter the IP and port 8080, press Connect, enter a wrong six-digit code, press Pair | Status stays `pairing`; "Wrong code, check the connector window."; the field is cleared | |
 | 2 | Enter the code printed by the connector and press Pair | Status `connected`; Connector row shows PAIRED; telemetry updates | |
-| 3 | Stop the connector, delete `~/.avionix/connector-tokens.json`, start it again, wait for the app to retry | The app returns to `pairing` with "The connector no longer accepts this device, pair again."; the new code connects | |
+| 3 | Stop the connector, delete `~/.avionix/connector-tokens.json`, start it again, wait for the app to retry | The app returns to `pairing` with "The connector no longer accepts this device, pair again."; the new code connects. If the connector is down long enough for the reconnect schedule (about 30 s) to run out first, the app lands in `error` instead — press Connect and it reaches `pairing` from there | |
 | 4 | Watch "Sim running time" | Increases about once per second (10 Hz updates) | |
 | 5 | Pause the sim (P key) | Running time stops; unpause → it continues | |
 | 6 | Enter heading 123 and press "Write heading" | Last operation OK; "Heading bug" shows 123; the HSI/heading bug in X-Plane moves to 123 | |
