@@ -135,13 +135,22 @@ function resolveStatic(staticDir, urlPath) {
     return path.join(root, 'index.html');
   try {
     const stat = fs.statSync(candidate);
-    if (stat.isFile()) return candidate;
-    if (stat.isDirectory()) {
+    let resolved;
+    if (stat.isFile()) {
+      resolved = candidate;
+    } else if (stat.isDirectory()) {
       const index = path.join(candidate, 'index.html');
-      if (fs.existsSync(index)) return index;
+      if (fs.existsSync(index)) resolved = index;
+    }
+    if (resolved !== undefined) {
+      const realRoot = fs.realpathSync(root);
+      const realResolved = fs.realpathSync(resolved);
+      if (realResolved === realRoot || realResolved.startsWith(realRoot + path.sep)) {
+        return resolved;
+      }
     }
   } catch {
-    // fall through to the SPA fallback
+    // fall through to the SPA fallback (also covers a dangling symlink)
   }
   return path.join(root, 'index.html');
 }
@@ -218,6 +227,10 @@ function relayUpgrade(options, req, socket, head, log, relays) {
   const entry = { socket, upstream };
   relays.add(entry);
   const forget = () => relays.delete(entry);
+  let handshaken = false;
+  upstream.once('data', () => {
+    handshaken = true;
+  });
 
   upstream.on('connect', () => {
     upstream.setNoDelay(true);
@@ -236,6 +249,11 @@ function relayUpgrade(options, req, socket, head, log, relays) {
   });
   upstream.on('error', (error) => {
     log(`websocket upstream error: ${error.message}`);
+    if (handshaken) {
+      socket.destroy();
+      upstream.destroy();
+      return;
+    }
     socket.write('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n');
     socket.destroy();
   });
@@ -281,6 +299,11 @@ function startBridge(overrides = {}) {
       log(
         `listening on http://${options.host}:${port}, serving ${path.resolve(options.staticDir)}, relaying /api to ${options.xplaneHost}:${options.xplanePort}`,
       );
+      if (options.host === '0.0.0.0') {
+        log(
+          "This exposes X-Plane's unauthenticated API to every device on the networks this computer is on; use --host <LAN IP> to restrict.",
+        );
+      }
       let closePromise = null;
       resolve({
         port,

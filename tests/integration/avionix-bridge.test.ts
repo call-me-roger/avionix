@@ -182,6 +182,7 @@ describe('Avionix bridge', () => {
   let bridge: Awaited<ReturnType<typeof startBridge>>;
   let staticDir: string;
   let base: string;
+  let outsideDir: string | undefined;
 
   beforeEach(async () => {
     xplane = await MockXPlaneServer.start({ updateIntervalMs: 10 });
@@ -204,6 +205,10 @@ describe('Avionix bridge', () => {
     await bridge.close();
     await xplane.stop();
     fs.rmSync(staticDir, { recursive: true, force: true });
+    if (outsideDir !== undefined) {
+      fs.rmSync(outsideDir, { recursive: true, force: true });
+      outsideDir = undefined;
+    }
   });
 
   it('serves the static site with an index.html fallback and content types', async () => {
@@ -237,6 +242,31 @@ describe('Avionix bridge', () => {
     expect(encoded).toContain(' 200 ');
     expect(encoded).toContain('Avionix');
     expect(encoded).not.toContain('"name": "avionix"');
+  });
+
+  it('falls back to index.html for a symlinked file that escapes the static dir', async () => {
+    outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'avionix-outside-'));
+    const secretFile = path.join(outsideDir, 'secret.txt');
+    fs.writeFileSync(secretFile, 'TOP-SECRET');
+    fs.symlinkSync(secretFile, path.join(staticDir, 'link.txt'));
+
+    const response = await fetch(`${base}/link.txt`);
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain('Avionix');
+    expect(body).not.toContain('TOP-SECRET');
+  });
+
+  it('falls back to index.html for a symlinked directory that escapes the static dir', async () => {
+    outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'avionix-outside-'));
+    fs.writeFileSync(path.join(outsideDir, 'secret.txt'), 'TOP-SECRET');
+    fs.symlinkSync(outsideDir, path.join(staticDir, 'outdir'));
+
+    const response = await fetch(`${base}/outdir/secret.txt`);
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain('Avionix');
+    expect(body).not.toContain('TOP-SECRET');
   });
 
   it('C1: falls back to index.html for a malformed percent-escape instead of crashing', async () => {

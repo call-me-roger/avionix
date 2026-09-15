@@ -67,6 +67,21 @@ describe('connection defaults on web', () => {
     expect(platformDefaultConnection()).toEqual({ host: 'localhost', port: 80 });
   });
 
+  it('returns null on https pages', () => {
+    expect(platformDefaultConnection({ hostname: 'pc.local', port: '', protocol: 'https:' })).toBe(
+      null,
+    );
+    expect(
+      platformDefaultConnection({ hostname: 'pc.local', port: '8443', protocol: 'https:' }),
+    ).toBe(null);
+  });
+
+  it('uses an explicit port on http pages', () => {
+    expect(
+      platformDefaultConnection({ hostname: '192.168.1.5', port: '8080', protocol: 'http:' }),
+    ).toEqual({ host: '192.168.1.5', port: 8080 });
+  });
+
   it('prefills the form from the page origin when nothing is stored', async () => {
     const handle = await renderProbe(services());
     expect(handle.container.textContent).toBe('ready|localhost|80');

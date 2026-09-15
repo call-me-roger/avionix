@@ -67,9 +67,10 @@ npm test
 npm run build:validate
 ```
 
-Jest runs two projects: `node` (tests/unit, tests/contract, tests/integration; uses the in-process
-mock X-Plane in `tests/mock-xplane`) and `expo` (tests/ui with @testing-library/react-native).
-The `web` project renders with react-dom in jsdom (no Testing Library). Run one with `npx jest --selectProjects node`.
+Jest runs three projects: `node` (tests/unit, tests/contract, tests/integration; uses the
+in-process mock X-Plane in `tests/mock-xplane`), `expo` (tests/ui with
+@testing-library/react-native), and `web` (tests/web/**/*.web.test.tsx, jest-expo/web, rendering
+with react-dom in jsdom; no Testing Library). Run one with `npx jest --selectProjects node`.
 @testing-library/react-native is at major version 14, where `render`, `renderHook`, `fireEvent` and `act` are all
 asynchronous, so UI tests `await` them.
 

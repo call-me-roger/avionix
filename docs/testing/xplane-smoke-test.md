@@ -36,7 +36,7 @@ Record results at the bottom.
 | 13 | Press Disconnect | Status `disconnected`, telemetry cleared, no reconnect attempts | |
 | 14 | Restart X-Plane, press Connect | Connects; DataRef ids were re-resolved (no stale-id errors) | |
 | 15 | Kill and relaunch Avionix | Host and port fields are prefilled with the last values | |
-| 16 | Open `http://<pc-ip>:8080` in a tablet browser (Avionix bridge is running) | Connects to the same relay; steps 2, 4 and 5 behave the same as on the phone | |
+| 16 | If you chose the Avionix bridge in setup step 3, open `http://<pc-ip>:8080` in a tablet browser | Connects to the same relay; steps 2, 4 and 5 behave the same as on the phone | |
 
 ## Failure hints
 

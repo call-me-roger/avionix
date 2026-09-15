@@ -15,8 +15,10 @@ npm run bridge                # node scripts/avionix-bridge.js, listens on 0.0.0
 Then open `http://<x-plane-pc-ip>:8080` from any device on the LAN. The connection form is
 prefilled with the page's own host and port; press Connect.
 
-Flags: `--port 8080`, `--host 0.0.0.0` (bind address; use the PC's LAN IP to restrict),
-`--xplane 127.0.0.1:8086` (X-Plane or another relay), `--static dist/web`, `--help`.
+Flags (npm needs the `--` separator, e.g. `npm run bridge -- --port 9000`): `--port 8080`,
+`--host 0.0.0.0` (bind address; use the PC's LAN IP to restrict), `--xplane 127.0.0.1:8086`
+(X-Plane or another relay), `--static dist/web` (resolved relative to the current directory; run
+from the repo root or pass an absolute path), `--help`.
 
 Native apps can use the bridge too: enter the PC's IP and the bridge port instead of 8086.
 
@@ -28,7 +30,8 @@ directory; only `/api` matters for development) and enter its host and port in t
 
 ## Constraints
 
-- Plain `http` only: a page served over `https` cannot open `http://` or `ws://` connections.
+- Plain `http` only: a page served over `https` cannot open `http://` or `ws://` connections, so
+  the connection form is not prefilled on an `https` page.
 - The bridge exposes X-Plane's unauthenticated API to everyone on the network it binds to. Use it
   on trusted networks only and stop it when not needed.
 - No PWA, no offline support, no HTTPS termination.
