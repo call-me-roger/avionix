@@ -16,6 +16,7 @@ const legal: Array<[ConnectionState, ConnectionEvent, ConnectionState]> = [
   ['pairing', 'disconnect', 'disconnected'],
   ['connected', 'socketLost', 'reconnecting'],
   ['connected', 'failed', 'error'],
+  ['connected', 'pairingRequired', 'pairing'],
   ['connected', 'disconnect', 'disconnected'],
   ['reconnecting', 'connected', 'connected'],
   ['reconnecting', 'retryExhausted', 'error'],

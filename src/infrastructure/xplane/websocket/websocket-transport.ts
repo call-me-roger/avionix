@@ -86,6 +86,13 @@ export class WebSocketTransport {
     return this.socket !== null && this.socket.readyState === READY_STATE_OPEN;
   }
 
+  /**
+   * Opens the socket. Note that a connector which refuses the token answers 401 to the
+   * upgrade, but the WebSocket API gives the client no status code — the rejection arrives
+   * here as a bare error or an early close, so it surfaces as WEBSOCKET_ERROR and never as
+   * UNAUTHORIZED. The session's authenticated capabilities call runs before this and is what
+   * actually catches a token the connector no longer accepts.
+   */
   connect(): Promise<void> {
     if (this.socket !== null) {
       return Promise.reject(

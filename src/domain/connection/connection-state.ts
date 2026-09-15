@@ -32,7 +32,14 @@ const TABLE: Readonly<Record<ConnectionState, Partial<Record<ConnectionEvent, Co
       pairingRequired: 'pairing',
     },
     pairing: { pair: 'connecting', disconnect: 'disconnected' },
-    connected: { socketLost: 'reconnecting', failed: 'error', disconnect: 'disconnected' },
+    connected: {
+      socketLost: 'reconnecting',
+      failed: 'error',
+      disconnect: 'disconnected',
+      // The datarefs, commands and writes that follow a successful connect still run over
+      // authenticated HTTP, so a connector can reject this device after `connected`.
+      pairingRequired: 'pairing',
+    },
     reconnecting: {
       connected: 'connected',
       retryExhausted: 'error',

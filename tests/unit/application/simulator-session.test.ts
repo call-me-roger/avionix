@@ -880,3 +880,67 @@ describe('SimulatorSession on a plain X-Plane host', () => {
     expect(socketUrls).toEqual(['ws://192.168.1.100:8080/api/v3']);
   });
 });
+
+describe('SimulatorSession when the token dies mid-session', () => {
+  async function connectedToConnector(client: FakeClient) {
+    const inner = createPairingTokenStore(createMemorySettingsStorage());
+    await inner.set('192.168.1.100', 8080, 'tok-live');
+    const fixture = setup({
+      tokenStore: inner,
+      clients: [client],
+      routes: { '/avionix/info': { status: 200, body: CONNECTOR_INFO } },
+    });
+    return { ...fixture, inner };
+  }
+
+  const unauthorized = () =>
+    new AvionixError({ code: 'UNAUTHORIZED', message: 'Pair this device again' });
+
+  it('returns to pairing when dataref resolution is rejected after connecting', async () => {
+    const client = new FakeClient();
+    client.findDataRef = jest.fn(async (_name: string) => {
+      throw unauthorized();
+    });
+    const { session, snapshot, inner } = await connectedToConnector(client);
+
+    await session.connect('192.168.1.100', 8080);
+
+    expect(snapshot().state).toBe('pairing');
+    expect(snapshot().error?.code).toBe('UNAUTHORIZED');
+    expect(snapshot().connector?.name).toBe('Sim PC');
+    await expect(inner.get('192.168.1.100', 8080)).resolves.toBeNull();
+  });
+
+  it('returns to pairing when a heading write is rejected', async () => {
+    const client = new FakeClient();
+    client.setDataRefValue = jest.fn(async (_id: number, _value: unknown) => {
+      throw unauthorized();
+    });
+    const { session, snapshot, inner } = await connectedToConnector(client);
+    await session.connect('192.168.1.100', 8080);
+    expect(snapshot().state).toBe('connected');
+
+    await session.writeHeading(180);
+
+    expect(snapshot().state).toBe('pairing');
+    expect(snapshot().error?.code).toBe('UNAUTHORIZED');
+    expect(snapshot().lastOperation).toMatchObject({ kind: 'write', ok: false });
+    await expect(inner.get('192.168.1.100', 8080)).resolves.toBeNull();
+  });
+
+  it('returns to pairing when a command activation is rejected', async () => {
+    const client = new FakeClient();
+    client.activateCommand = jest.fn(async (_id: number) => {
+      throw unauthorized();
+    });
+    const { session, snapshot, inner } = await connectedToConnector(client);
+    await session.connect('192.168.1.100', 8080);
+
+    await session.activateHeadingUp();
+
+    expect(snapshot().state).toBe('pairing');
+    expect(snapshot().error?.code).toBe('UNAUTHORIZED');
+    expect(snapshot().lastOperation).toMatchObject({ kind: 'command', ok: false });
+    await expect(inner.get('192.168.1.100', 8080)).resolves.toBeNull();
+  });
+});

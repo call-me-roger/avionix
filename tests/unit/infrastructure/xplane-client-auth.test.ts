@@ -1,4 +1,4 @@
-import { createLogger, createMemorySink } from '@/infrastructure/logging/logger';
+import { createLogger, createMemorySink, silentLogger } from '@/infrastructure/logging/logger';
 import { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
 import type {
   SocketCloseEvent,
@@ -37,6 +37,39 @@ function clientWith(auth: () => string | null) {
   });
   return { client, urls, sink, socket };
 }
+
+function rejectingClient() {
+  return new XPlaneClient({
+    config: { host: 'pc.local', port: 8080 },
+    apiVersion: 'v3',
+    http: new HttpTransport({
+      origin: 'http://pc.local:8080',
+      fetchImpl: async () => ({
+        status: 401,
+        ok: false,
+        text: async () => '{"error_code":"unauthorized","error_message":"Pair again"}',
+      }),
+    }),
+    auth: () => 'stale-token',
+    logger: silentLogger,
+  });
+}
+
+describe('XPlaneClient when the connector rejects the token', () => {
+  // The session re-pairs on UNAUTHORIZED, so the code must survive the per-operation wrapping
+  // that otherwise turns every failure into WRITE_FAILED or COMMAND_FAILED.
+  it('keeps UNAUTHORIZED on a rejected write', async () => {
+    await expect(rejectingClient().setDataRefValue(1, 5)).rejects.toMatchObject({
+      code: 'UNAUTHORIZED',
+    });
+  });
+
+  it('keeps UNAUTHORIZED on a rejected command', async () => {
+    await expect(rejectingClient().activateCommand(9)).rejects.toMatchObject({
+      code: 'UNAUTHORIZED',
+    });
+  });
+});
 
 describe('XPlaneClient WebSocket authentication', () => {
   it('builds the plain URL when no token is available', async () => {

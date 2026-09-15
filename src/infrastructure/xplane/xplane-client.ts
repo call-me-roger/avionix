@@ -45,6 +45,12 @@ export interface XPlaneClientOptions {
 
 function wrap(error: unknown, code: AvionixErrorCode, message: string): AvionixError {
   const inner = toAvionixError(error, { code: 'UNKNOWN', message });
+  if (inner.code === 'UNAUTHORIZED') {
+    // The connector refused the request before the operation could fail on its own terms.
+    // Reporting it as WRITE_FAILED would hide the one thing the session can act on: the
+    // token is gone and the device has to pair again.
+    return inner;
+  }
   return new AvionixError({
     code,
     message: `${message}: ${inner.message}`,

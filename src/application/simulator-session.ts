@@ -235,6 +235,8 @@ export class SimulatorSession {
     } catch (error) {
       const avionixError = toAvionixError(error, { code: 'WRITE_FAILED', message: 'Write failed' });
       this.recordOperation({ kind: 'write', ok: false, message: avionixError.message });
+      // Writes go over authenticated HTTP, so this is a place the connector can disown us.
+      this.returnToPairingIfUnauthorized(avionixError);
     }
   }
 
@@ -256,6 +258,7 @@ export class SimulatorSession {
         message: 'Command failed',
       });
       this.recordOperation({ kind: 'command', ok: false, message: avionixError.message });
+      this.returnToPairingIfUnauthorized(avionixError);
     }
   }
 
@@ -331,9 +334,7 @@ export class SimulatorSession {
    * `reconnecting`; `runReconnectAttempt` decides whether to retry or exhaust.
    */
   private markFailure(error: AvionixError, mode: FlowMode): void {
-    const state = this.store.getSnapshot().state;
-    if (error.code === 'UNAUTHORIZED' && (state === 'connecting' || state === 'reconnecting')) {
-      this.handleUnauthorized(error);
+    if (this.returnToPairingIfUnauthorized(error)) {
       return;
     }
     this.logger.warn('session failure', { code: error.code, message: error.message, mode });
@@ -342,6 +343,24 @@ export class SimulatorSession {
       state: mode === 'initial' ? transition(prev.state, 'failed') : prev.state,
       error,
     }));
+  }
+
+  /**
+   * Sends the session back to `pairing` when an authenticated request was rejected, and
+   * reports whether it did. Only the three states that carry the `pairingRequired` edge are
+   * eligible: a session that is already `pairing`, `disconnected` or in `error` has nothing
+   * live to interrupt.
+   */
+  private returnToPairingIfUnauthorized(error: AvionixError): boolean {
+    const state = this.store.getSnapshot().state;
+    if (
+      error.code !== 'UNAUTHORIZED' ||
+      (state !== 'connecting' && state !== 'reconnecting' && state !== 'connected')
+    ) {
+      return false;
+    }
+    this.handleUnauthorized(error);
+    return true;
   }
 
   /**
