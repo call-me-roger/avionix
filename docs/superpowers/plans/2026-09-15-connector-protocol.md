@@ -350,7 +350,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Test: `tests/unit/bridge/connector-mdns.test.ts`
 
 **Interfaces:**
-- Produces: `interface AdvertiserSpec { name: string; port: number; txt: Record<string, string> }`; `interface Advertisement { stop(): Promise<void> }`; `type Advertiser = (spec: AdvertiserSpec) => Advertisement`; `createBonjourAdvertiser(): Advertiser` (lazy `require('bonjour-service')`); `createNullAdvertiser(): Advertiser`; `SERVICE_TYPE = 'avionix'`.
+- Produces: `interface AdvertiserSpec { name: string; port: number; txt: Record<string, string> }`; `interface Advertisement { stop(): Promise<void> }`; `type Advertiser = (spec: AdvertiserSpec) => Advertisement`; `createBonjourAdvertiser(factory?, log?): Advertiser` (lazy `require('bonjour-service')`; async mDNS errors go to `log`; `stop()` bounded to 2 s and idempotent); `createNullAdvertiser(): Advertiser`; `SERVICE_TYPE = 'avionix'`.
 
 - [ ] **Step 1: Install and test**
 
@@ -702,7 +702,7 @@ Changes, in order:
 8. Status page: `text/html` with the connector name, version, `Pairing: required` or `Pairing: open`, the X-Plane target, and the list of URLs (`urls`), never the code.
 9. `relayUpgrade`: before connecting upstream, `if (!auth.isAuthorized(extractToken(req))) { socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n'); socket.destroy(); return; }`; when rebuilding the request line use `stripTokenQuery(req.url)`.
 10. `urls`: from `os.networkInterfaces()`, IPv4, non-internal addresses when host is `0.0.0.0`, else the bound host; `http://<ip>:<port>`.
-11. Advertising: `const advertise = options.advertiser || (options.mdns === false ? createNullAdvertiser() : createBonjourAdvertiser())`; after listen, `advertisement = advertise({ name, port, txt: { v: '1', pairing: auth.pairingRequired ? '1' : '0' } })` inside try/catch (log on failure); `close()` awaits `advertisement.stop()` (catch and log).
+11. Advertising: `const advertise = options.advertiser || (options.mdns === false ? createNullAdvertiser() : createBonjourAdvertiser(undefined, log))` (the advertiser routes asynchronous mDNS errors to the bridge log instead of throwing); after listen, `advertisement = advertise({ name, port, txt: { v: '1', pairing: auth.pairingRequired ? '1' : '0' } })` inside try/catch (log on failure); `close()` awaits `advertisement.stop()` (it is bounded to 2 s internally; still catch and log).
 12. Console (via `log`): the listening line as today, then one `open http://<ip>:<port>` line per URL, then `Pairing code: <code>` or `Pairing disabled (--open)`, then the LAN-exposure warning only in open mode.
 13. Return handle fields `pairingCode: auth.pairingRequired ? auth.code : null`, `pairingRequired: auth.pairingRequired`, `urls`.
 
