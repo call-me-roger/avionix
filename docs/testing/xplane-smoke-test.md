@@ -10,11 +10,17 @@ Record results at the bottom.
    and Avionix reports `SIMULATOR_NOT_READY`; that is expected until a flight is loaded.
 2. Settings → Network: "Disable Incoming Traffic" is **not** selected. Note the computer's LAN IP.
 3. X-Plane 12.4.3 only accepts connections from the same machine (see `docs/xplane.md`), so run a
-   relay on the X-Plane PC (either `xplane-proxy` on port 8087, or the Avionix bridge on port 8080;
-   see `docs/web.md` for the bridge) and use the relay's port in Avionix. From another computer,
-   open `http://<ip>:<relay port>/api/capabilities`. Expect JSON with `api.versions` and
-   `x-plane.version`. If you get 403, fix step 2. If nothing answers, fix the relay, firewall or
-   network.
+   relay on the X-Plane PC. For the Avionix bridge (port 8080), start it with `--open` until the
+   app's pairing screen ships: `npm run bridge -- --open` (or `node scripts/avionix-bridge.js --open`).
+   With `--open`, any web page open on a device on the LAN can read and write X-Plane through the
+   connector, so use it only on trusted networks and stop the connector when done. Alternatively use
+   `xplane-proxy` on port 8087 (see `docs/web.md`). From another computer, verify
+   the relay is reachable: for the bridge, open `http://<ip>:<relay port>/avionix/info` and check the
+   JSON's `xplane.reachable` field; for xplane-proxy, open `http://<ip>:<relay port>/api/capabilities`
+   (check for JSON with `api.versions`). If you get 403 from xplane-proxy, fix step 2 (X-Plane network
+   settings). For the bridge, if `xplane.reachable` is false, X-Plane is down or misconfigured; check
+   with `curl -s http://127.0.0.1:8086/api/capabilities` on the X-Plane PC. If nothing answers, fix
+   the relay, firewall or network.
 4. Two physical devices with Expo Go on the same Wi-Fi; `npm start` running on the dev machine.
 
 ## Procedure
@@ -36,7 +42,7 @@ Record results at the bottom.
 | 13 | Press Disconnect | Status `disconnected`, telemetry cleared, no reconnect attempts | |
 | 14 | Restart X-Plane, press Connect | Connects; DataRef ids were re-resolved (no stale-id errors) | |
 | 15 | Kill and relaunch Avionix | Host and port fields are prefilled with the last values | |
-| 16 | If you chose the Avionix bridge in setup step 3, open `http://<pc-ip>:8080` in a tablet browser | Connects to the same relay; steps 2, 4 and 5 behave the same as on the phone | |
+| 16 | If you chose the Avionix bridge in setup step 3 (with `--open`), open `http://<pc-ip>:8080` in a tablet browser | Connects to the relay without a pairing prompt (since `--open` disables pairing); steps 2, 4 and 5 behave the same as on the phone | |
 
 ## Failure hints
 

@@ -8,6 +8,9 @@ const transformIgnorePatterns = [
 
 /** @type {import('jest').Config} */
 module.exports = {
+  // The first React Native render in a run pays the transform cost; on a cold CI runner that
+  // alone exceeded Jest's 5 s default (run 34934435119). testTimeout is global, not per project.
+  testTimeout: 20000,
   projects: [
     {
       displayName: 'node',

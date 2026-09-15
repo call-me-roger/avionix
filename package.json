@@ -23,6 +23,7 @@
   "dependencies": {
     "@expo/metro-runtime": "~57.0.15",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "bonjour-service": "^1.4.4",
     "expo": "~57.0.22",
     "expo-build-properties": "~57.0.17",
     "expo-dev-client": "~57.0.19",
