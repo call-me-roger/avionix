@@ -87,6 +87,17 @@ describe('SimulatorSession against the mock X-Plane', () => {
     expect(session.store.getSnapshot().error?.code).toBe('INCOMING_TRAFFIC_DISABLED');
   });
 
+  it('reports SIMULATOR_NOT_READY when X-Plane exposes no datarefs (main menu)', async () => {
+    await server.stop();
+    server = await MockXPlaneServer.start({ dataRefs: [] });
+    const session = createSession();
+    await session.connect(server.host, server.port);
+    const snap = session.store.getSnapshot();
+    expect(snap.state).toBe('error');
+    expect(snap.error?.code).toBe('SIMULATOR_NOT_READY');
+    expect(snap.diagnostics.dataRefs[MVP_DATAREFS.heartbeat]).toBe('failed');
+  });
+
   it('reports UNSUPPORTED_API for a v1-only simulator', async () => {
     await server.stop();
     server = await MockXPlaneServer.start({ apiVersions: ['v1'], xplaneVersion: '12.1.1' });

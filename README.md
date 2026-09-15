@@ -76,6 +76,11 @@ emulator specifics and `docs/testing/xplane-smoke-test.md` for the manual verifi
 
 ## Current limitations
 
+- X-Plane 12.4.3 accepts Web API connections only from the same machine. Run a relay such as
+  `xplane-proxy` on the X-Plane PC and enter the relay's port in Avionix; see `docs/xplane.md`.
+- At the main menu X-Plane exposes no DataRefs; Avionix reports `SIMULATOR_NOT_READY` until a
+  flight is loaded.
+
 - Only the three MVP DataRefs and one command are wired up.
 - iOS App Transport Security for plain `http://` to an IP literal is only exercised in Expo Go;
   a development build must confirm the `NSAllowsLocalNetworking` setting in `app.json`.

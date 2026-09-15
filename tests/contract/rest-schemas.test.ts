@@ -17,6 +17,7 @@ import {
 import capabilitiesFixture from '../fixtures/capabilities.json';
 import commandFixture from '../fixtures/command.json';
 import dataRefListFixture from '../fixtures/dataref-list.json';
+import dataRef1243Fixture from '../fixtures/dataref-12.4.3.json';
 import dataRefFixture from '../fixtures/dataref.json';
 import errorFixture from '../fixtures/error.json';
 
@@ -68,6 +69,22 @@ describe('dataref contract', () => {
       name: 'sim/cockpit2/gauges/actuators/radio_altimeter_bug_ft_pilot',
       valueType: 'float',
     });
+  });
+
+  it('parses the X-Plane 12.4.3 payload with is_writable and maps it to isWritable', () => {
+    const raw = parseWith(dataRefListResponseSchema, dataRef1243Fixture, 'datarefs');
+    expect(raw.data[0]?.is_writable).toBe(true);
+    expect(toDataRefDescriptor(raw.data[0]!)).toEqual({
+      id: 1450448715800,
+      name: 'sim/time/total_running_time_sec',
+      valueType: 'float',
+      isWritable: true,
+    });
+  });
+
+  it('omits isWritable when X-Plane does not send is_writable', () => {
+    const raw = parseWith(dataRefSchema, dataRefFixture, 'dataref');
+    expect('isWritable' in toDataRefDescriptor(raw)).toBe(false);
   });
 
   it('parses a list response with large ids', () => {

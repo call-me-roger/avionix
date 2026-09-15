@@ -35,7 +35,11 @@ export function toSimulatorCapabilities(raw: RawCapabilities): SimulatorCapabili
 }
 
 export function toDataRefDescriptor(raw: RawDataRef): DataRefDescriptor {
-  return { id: raw.id, name: raw.name, valueType: raw.value_type };
+  const descriptor: DataRefDescriptor = { id: raw.id, name: raw.name, valueType: raw.value_type };
+  if (raw.is_writable !== undefined) {
+    descriptor.isWritable = raw.is_writable;
+  }
+  return descriptor;
 }
 
 export function toCommandDescriptor(raw: RawCommand): CommandDescriptor {

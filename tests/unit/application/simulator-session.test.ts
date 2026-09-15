@@ -43,6 +43,10 @@ class FakeClient implements SimulatorClient {
 
   getDataRefValue = jest.fn(async () => 0);
 
+  dataRefCount = 3;
+
+  getDataRefCount = jest.fn(async () => this.dataRefCount);
+
   setDataRefValue = jest.fn(async (id: number, value: unknown) => {
     this.writes.push({ id, value });
   });
@@ -238,6 +242,28 @@ describe('SimulatorSession connect flow', () => {
     expect(snapshot().diagnostics.dataRefs[MVP_DATAREFS.airspeed]).toBe('failed');
     expect(snapshot().diagnostics.dataRefs[MVP_DATAREFS.heartbeat]).toBe('ok');
     expect(snapshot().diagnostics.command).toBe('idle');
+  });
+
+  it('reports SIMULATOR_NOT_READY when a dataref is missing and X-Plane has no datarefs', async () => {
+    const client = new FakeClient();
+    client.missingDataRef = MVP_DATAREFS.heartbeat;
+    client.dataRefCount = 0;
+    const { session, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    expect(snapshot().state).toBe('error');
+    expect(snapshot().error?.code).toBe('SIMULATOR_NOT_READY');
+    expect(snapshot().error?.message).toContain('Load a flight');
+    expect(snapshot().error?.retryable).toBe(true);
+    expect(snapshot().diagnostics.dataRefs[MVP_DATAREFS.heartbeat]).toBe('failed');
+  });
+
+  it('keeps DATAREF_NOT_FOUND when the count check itself fails', async () => {
+    const client = new FakeClient();
+    client.missingDataRef = MVP_DATAREFS.heartbeat;
+    client.getDataRefCount.mockRejectedValueOnce(new Error('network'));
+    const { session, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    expect(snapshot().error?.code).toBe('DATAREF_NOT_FOUND');
   });
 
   it('marks subscription failed', async () => {

@@ -5,12 +5,16 @@ Record results at the bottom.
 
 ## Setup
 
-1. X-Plane 12.1.4 or newer is running with any Laminar aircraft loaded (a Cessna 172 is fine),
-   on the ground, engine running or not.
+1. X-Plane 12.1.4 or newer is running **with a flight loaded** (any Laminar aircraft, a Cessna 172
+   is fine, on the ground, engine running or not). At the main menu X-Plane exposes zero DataRefs
+   and Avionix reports `SIMULATOR_NOT_READY`; that is expected until a flight is loaded.
 2. Settings → Network: "Disable Incoming Traffic" is **not** selected. Note the computer's LAN IP.
-3. From another computer or the phone's browser, open `http://<ip>:8086/api/capabilities`. Expect
-   JSON with `api.versions` and `x-plane.version`. If you get 403, fix step 2. If nothing answers,
-   fix the firewall or network.
+3. X-Plane 12.4.3 only accepts connections from the same machine (see `docs/xplane.md`), so run a
+   relay on the X-Plane PC (for example `xplane-proxy`, which listens on 8087 and forwards to 8086)
+   and use the relay's port in Avionix. From another computer, open
+   `http://<ip>:<relay port>/api/capabilities`. Expect JSON with `api.versions` and
+   `x-plane.version`. If you get 403, fix step 2. If nothing answers, fix the relay, firewall or
+   network.
 4. Two physical devices with Expo Go on the same Wi-Fi; `npm start` running on the dev machine.
 
 ## Procedure
@@ -40,6 +44,7 @@ Record results at the bottom.
 - `INCOMING_TRAFFIC_DISABLED`: X-Plane network settings.
 - `UNSUPPORTED_API`: X-Plane older than 12.1.4.
 - `WEBSOCKET_ERROR` with HTTP YES: a proxy or firewall blocks WebSocket upgrades.
+- `SIMULATOR_NOT_READY`: X-Plane reports zero DataRefs; load a flight and press Connect again.
 - `DATAREF_NOT_FOUND`: a plugin removed a standard DataRef, or the name changed; check `docs/xplane.md`.
 
 ## Results

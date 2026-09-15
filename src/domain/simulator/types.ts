@@ -21,6 +21,8 @@ export interface DataRefDescriptor {
   id: number;
   name: string;
   valueType: DataRefValueType;
+  /** Reported by X-Plane 12.4.3 and newer; absent on older versions. */
+  isWritable?: boolean;
 }
 
 export interface CommandDescriptor {

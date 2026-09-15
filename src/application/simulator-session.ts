@@ -368,10 +368,11 @@ export class SimulatorSession {
       // command only reaches 'pending' once the DataRefs resolved; a DataRef failure
       // rejects Promise.all before the command lookup ever runs, so command stays 'idle'.
       this.setStep((d) => ({ ...d, command: d.command === 'pending' ? 'failed' : d.command }));
-      this.markFailure(
-        toAvionixError(error, { code: 'DATAREF_NOT_FOUND', message: 'Resolution failed' }),
-        mode,
-      );
+      const resolutionError = toAvionixError(error, {
+        code: 'DATAREF_NOT_FOUND',
+        message: 'Resolution failed',
+      });
+      this.markFailure(await this.explainLookupMiss(client, resolutionError), mode);
       return false;
     }
 
@@ -425,6 +426,38 @@ export class SimulatorSession {
       );
       return false;
     }
+  }
+
+  /**
+   * A name lookup miss usually means X-Plane has not registered any DataRefs yet
+   * (main menu, flight still loading). Turn that case into SIMULATOR_NOT_READY so the
+   * user is told to load a flight instead of chasing a "missing" DataRef.
+   */
+  private async explainLookupMiss(
+    client: SimulatorClient,
+    error: AvionixError,
+  ): Promise<AvionixError> {
+    if (error.code !== 'DATAREF_NOT_FOUND' && error.code !== 'COMMAND_NOT_FOUND') {
+      return error;
+    }
+    let count: number;
+    try {
+      count = await client.getDataRefCount();
+    } catch (countError) {
+      this.logger.debug('dataref count check failed', { message: String(countError) });
+      return error;
+    }
+    if (count > 0) {
+      return error;
+    }
+    return new AvionixError({
+      code: 'SIMULATOR_NOT_READY',
+      message:
+        'X-Plane has no DataRefs registered yet (count is 0). Load a flight in X-Plane, ' +
+        'then connect again.',
+      retryable: true,
+      cause: error,
+    });
   }
 
   private applyUpdates(

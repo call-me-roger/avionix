@@ -12,6 +12,7 @@ export const dataRefSchema = z.object({
   id: idSchema,
   name: z.string().min(1),
   value_type: z.enum(['float', 'double', 'int', 'int_array', 'float_array', 'data']),
+  is_writable: z.boolean().optional(),
 });
 export type RawDataRef = z.infer<typeof dataRefSchema>;
 
