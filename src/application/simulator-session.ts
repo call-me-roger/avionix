@@ -135,6 +135,8 @@ export class SimulatorSession {
     // Behind the write queue: a clear that is still on its way to storage must not be read
     // back as a live token. Assigned only after the guard below, so a read for a connect that
     // a later connect or a disconnect has superseded never reaches the live session.
+    // The write chain never rejects, so this only waits; a storage whose setItem never settles
+    // would hold every later connect here (not reachable with AsyncStorage or localStorage).
     await this.tokenWrites;
     const storedToken = await this.deps.tokenStore.get(config.host, config.port);
     if (!this.isCurrent(generation)) {
@@ -383,6 +385,7 @@ export class SimulatorSession {
    * kept so the UI can still name the connector.
    */
   private handleUnauthorized(error: AvionixError): void {
+    const idleStep: StepStatus = 'idle';
     this.logger.warn('the connector rejected this device, pairing again');
     this.teardown();
     const generation = this.nextGeneration();
@@ -413,7 +416,7 @@ export class SimulatorSession {
         command: 'idle',
         subscription: 'idle',
         dataRefs: Object.fromEntries(
-          Object.keys(prev.diagnostics.dataRefs).map((name) => [name, 'idle' as StepStatus]),
+          Object.keys(prev.diagnostics.dataRefs).map((name) => [name, idleStep]),
         ),
       },
       reconnectAttempt: 0,

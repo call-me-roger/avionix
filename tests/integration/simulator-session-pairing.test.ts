@@ -149,11 +149,11 @@ describe('SimulatorSession pairing against the mock connector', () => {
     // No retry is waiting: another attempt would be rejected the same way, so the session
     // must sit in `pairing` until the user enters a code rather than re-arm the scheduler.
     expect(scheduler.pending).toBe(0);
-    const armedAtPairing = scheduler.armed;
     const attemptsAfter = server.issuedTokens.length;
     await until(() => server.connectionCount === 0);
     expect(session.store.getSnapshot().state).toBe('pairing');
-    expect(scheduler.armed).toBe(armedAtPairing);
+    // Exactly the one attempt that met the 401 was ever armed; nothing re-armed after it.
+    expect(scheduler.armed).toBe(1);
     expect(server.issuedTokens.length).toBe(attemptsAfter);
     session.disconnect();
   });

@@ -46,7 +46,8 @@ function PairingFields(props: {
     void props.onPair(code).finally(() => {
       setBusy(false);
       // However it ended, the next attempt starts from an empty field. On success this
-      // component is unmounted before either update is applied.
+      // component is unmounted before either update is applied; React drops state updates
+      // on an unmounted component without warning, so no mounted-ref guard is needed.
       setCode('');
     });
   };

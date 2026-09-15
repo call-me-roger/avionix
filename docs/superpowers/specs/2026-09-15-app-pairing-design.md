@@ -225,7 +225,11 @@ stays 8086; only the default for first launch changes.
   `pairing-code`.
 - **Pair** button, disabled unless the code has exactly six digits or while a pair call is in
   flight. **Cancel** button calls `onDisconnect`.
-- New props: `connectorName: string | null`, `onPair(code: string): void`, `pairing: boolean`
+- New props: `connectorName: string | null`, `onPair(code: string): Promise<void>` (never rejects).
+  The code input, the in-flight flag and the Pair/Cancel buttons live in a `PairingFields`
+  component that is mounted only while the state is `pairing`, so the code and the flag reset by
+  unmounting (the repo's `react-hooks/set-state-in-effect` lint rule forbids resetting them in an
+  effect). Superseded wording: `pairing: boolean`
   (a pair call in flight, tracked in `MvpScreen`).
 
 `ConnectionStatus` maps the new codes to plain text before showing the error line:
@@ -240,8 +244,9 @@ stays 8086; only the default for first launch changes.
 Other codes keep the existing `code: message` rendering. The diagnostics list shows the new
 `connector` step with the same styling as the others.
 
-`MvpScreen`: `onPair(code)` sets `pairing = true`, calls `session.pair(code)`, and resets the
-flag in `finally`. The code input is cleared after a failed attempt.
+`MvpScreen`: `onPair(code)` calls `session.pair(code)` and swallows the rejection (only `INTERNAL`,
+which the disabled button prevents); user-visible failures arrive through `snapshot.error`. The
+code input is cleared by `PairingFields` after a failed attempt and by unmounting otherwise.
 
 ## Testing
 

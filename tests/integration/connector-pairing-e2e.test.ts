@@ -121,6 +121,9 @@ function createSession(storage: SettingsStorage): SimulatorSession {
   });
 }
 
+/** Mirrors `maxAttempts` in scripts/avionix-connector-auth.js (per client, per minute). */
+const WRONG_CODES_PER_MINUTE = 5;
+
 describe('pairing through the real Avionix Connector', () => {
   let xplane: MockXPlaneServer;
   let child: ChildProcessByStdio<null, Readable, Readable>;
@@ -194,9 +197,8 @@ describe('pairing through the real Avionix Connector', () => {
     await session.connect('127.0.0.1', bridgePort);
     expect(snap().state).toBe('pairing');
 
-    // The connector allows five wrong codes per client per minute; this bridge is fresh, so
-    // the count starts at zero.
-    for (let attempt = 1; attempt <= 5; attempt += 1) {
+    // This bridge is fresh, so the per-client count starts at zero.
+    for (let attempt = 1; attempt <= WRONG_CODES_PER_MINUTE; attempt += 1) {
       await session.pair('000000');
       expect(snap().error?.code).toBe('PAIRING_FAILED');
     }
