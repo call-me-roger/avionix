@@ -1,13 +1,17 @@
 import React, { act } from 'react';
 import { type Root, createRoot } from 'react-dom/client';
 
+import { ConnectorDiscovery } from '@/application/connector-discovery';
 import { MVP_DATAREF_NAMES } from '@/application/mvp-bindings';
 import { initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
 import { MvpScreen } from '@/features/mvp/MvpScreen';
+import { silentLogger } from '@/infrastructure/logging/logger';
 import { ThemeProvider } from '@/theme/theme-context';
+
+import { createFakeServiceBrowser } from '../support/fake-service-browser';
 
 declare global {
   // React reads this flag to enable act() in non-RTL environments.
@@ -18,6 +22,10 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 function services(): AppServices {
   return {
     settingsStorage: createMemorySettingsStorage(),
+    discovery: new ConnectorDiscovery({
+      browser: createFakeServiceBrowser('unsupported'),
+      logger: silentLogger,
+    }),
     session: {
       store: new Store(initialSnapshot(MVP_DATAREF_NAMES)),
       connect: async () => undefined,

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import React from 'react';
 
+import { ConnectorDiscovery } from '@/application/connector-discovery';
 import { MVP_DATAREFS, MVP_DATAREF_NAMES } from '@/application/mvp-bindings';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
@@ -8,11 +9,17 @@ import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import { MvpScreen } from '@/features/mvp/MvpScreen';
+import { silentLogger } from '@/infrastructure/logging/logger';
 import { ThemeProvider } from '@/theme/theme-context';
 import { saveThemePreference } from '@/theme/theme-preference';
 import { darkTheme, lightTheme } from '@/theme/tokens';
 
-function makeServices(snapshot: Partial<SessionSnapshot> = {}) {
+import { type FakeServiceBrowser, createFakeServiceBrowser } from '../support/fake-service-browser';
+
+function makeServices(
+  snapshot: Partial<SessionSnapshot> = {},
+  browser: FakeServiceBrowser = createFakeServiceBrowser(),
+) {
   const store = new Store<SessionSnapshot>({ ...initialSnapshot(MVP_DATAREF_NAMES), ...snapshot });
   const session = {
     store,
@@ -24,8 +31,13 @@ function makeServices(snapshot: Partial<SessionSnapshot> = {}) {
     writeHeading: jest.fn(async () => undefined),
     activateHeadingUp: jest.fn(async () => undefined),
   };
-  const services: AppServices = { session, settingsStorage: createMemorySettingsStorage() };
-  return { services, session, store };
+  const discovery = new ConnectorDiscovery({ browser, logger: silentLogger });
+  const services: AppServices = {
+    session,
+    discovery,
+    settingsStorage: createMemorySettingsStorage(),
+  };
+  return { services, session, store, browser };
 }
 
 async function renderScreen(services: AppServices, systemScheme: 'light' | 'dark' = 'light') {

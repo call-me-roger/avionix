@@ -1,5 +1,6 @@
 import React, { createContext, useContext } from 'react';
 
+import type { ConnectorDiscovery } from '@/application/connector-discovery';
 import type { SettingsStorage } from '@/application/settings-store';
 import type { SimulatorSession } from '@/application/simulator-session';
 
@@ -8,8 +9,11 @@ export type SessionApi = Pick<
   'store' | 'connect' | 'disconnect' | 'pair' | 'writeHeading' | 'activateHeadingUp'
 >;
 
+export type DiscoveryApi = Pick<ConnectorDiscovery, 'store' | 'start' | 'stop'>;
+
 export interface AppServices {
   session: SessionApi;
+  discovery: DiscoveryApi;
   settingsStorage: SettingsStorage;
 }
 
