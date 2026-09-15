@@ -10,9 +10,9 @@ Record results at the bottom.
    and Avionix reports `SIMULATOR_NOT_READY`; that is expected until a flight is loaded.
 2. Settings → Network: "Disable Incoming Traffic" is **not** selected. Note the computer's LAN IP.
 3. X-Plane 12.4.3 only accepts connections from the same machine (see `docs/xplane.md`), so run a
-   relay on the X-Plane PC (for example `xplane-proxy`, which listens on 8087 and forwards to 8086)
-   and use the relay's port in Avionix. From another computer, open
-   `http://<ip>:<relay port>/api/capabilities`. Expect JSON with `api.versions` and
+   relay on the X-Plane PC (either `xplane-proxy` on port 8087, or the Avionix bridge on port 8080;
+   see `docs/web.md` for the bridge) and use the relay's port in Avionix. From another computer,
+   open `http://<ip>:<relay port>/api/capabilities`. Expect JSON with `api.versions` and
    `x-plane.version`. If you get 403, fix step 2. If nothing answers, fix the relay, firewall or
    network.
 4. Two physical devices with Expo Go on the same Wi-Fi; `npm start` running on the dev machine.
@@ -36,6 +36,7 @@ Record results at the bottom.
 | 13 | Press Disconnect | Status `disconnected`, telemetry cleared, no reconnect attempts | |
 | 14 | Restart X-Plane, press Connect | Connects; DataRef ids were re-resolved (no stale-id errors) | |
 | 15 | Kill and relaunch Avionix | Host and port fields are prefilled with the last values | |
+| 16 | Open `http://<pc-ip>:8080` in a tablet browser (Avionix bridge is running) | Connects to the same relay; steps 2, 4 and 5 behave the same as on the phone | |
 
 ## Failure hints
 

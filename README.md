@@ -31,7 +31,7 @@ Not in scope: any real avionics UI, device roles, pairing, accounts, cloud. See
 ## Stack
 
 Expo SDK 57, React Native 0.86, React 19.2, TypeScript 6 (strict), zod 4, Jest 29 (jest-expo),
-@testing-library/react-native, ESLint (eslint-config-expo, flat config), Prettier.
+@testing-library/react-native, react-native-web, ESLint (eslint-config-expo, flat config), Prettier.
 
 ## Architecture in one picture
 
@@ -52,6 +52,8 @@ npm start
 Scan the QR code with Expo Go. On iOS, Expo Go for SDK 57 requires the same Expo account to be
 logged in both in the CLI (`npx expo login`) and in the app. See `docs/development.md`.
 
+For browsers and tablets, see `docs/web.md`: build the web export and serve it with the Avionix bridge.
+
 ## Connecting to X-Plane
 
 1. Start X-Plane 12.1.4+ on a computer on the same Wi-Fi network as the phone.
@@ -68,6 +70,9 @@ emulator specifics and `docs/testing/xplane-smoke-test.md` for the manual verifi
 | Command                                   | Purpose                                                                                         |
 | ----------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `npm start`                               | Expo dev server                                                                                 |
+| `npm run web`                             | Metro dev server for the browser (`expo start --web`)                                           |
+| `npm run build:web`                       | Export web app to `dist/web` (`expo export --platform web --output-dir dist/web`)               |
+| `npm run bridge`                          | Avionix bridge: serves the web app and relays to X-Plane (`node scripts/avionix-bridge.js`)     |
 | `npm run typecheck`                       | `tsc --noEmit`                                                                                  |
 | `npm run lint`                            | ESLint via `expo lint` (includes Prettier rules)                                                |
 | `npm run format` / `npm run format:check` | Prettier                                                                                        |
@@ -76,8 +81,8 @@ emulator specifics and `docs/testing/xplane-smoke-test.md` for the manual verifi
 
 ## Current limitations
 
-- X-Plane 12.4.3 accepts Web API connections only from the same machine. Run a relay such as
-  `xplane-proxy` on the X-Plane PC and enter the relay's port in Avionix; see `docs/xplane.md`.
+- X-Plane 12.4.3 accepts Web API connections only from the same machine; see the notes in `docs/xplane.md`.
+  For browsers, use the Avionix bridge; native apps can use a relay like `xplane-proxy`. See `docs/web.md`.
 - At the main menu X-Plane exposes no DataRefs; Avionix reports `SIMULATOR_NOT_READY` until a
   flight is loaded.
 
