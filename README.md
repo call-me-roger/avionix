@@ -21,7 +21,8 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
 - Light / dark theme with a system / light / dark toggle; the choice is persisted.
 
 Not in scope: any real avionics UI, device roles, accounts, cloud. See
-`docs/superpowers/specs/2026-09-14-avionix-mvp-design.md` for the full design.
+`docs/superpowers/specs/2026-09-14-avionix-mvp-design.md` for the full design. The staged product
+roadmap and the competitor research behind it live in `docs/roadmap/ROADMAP.md`.
 
 ## Requirements
 
