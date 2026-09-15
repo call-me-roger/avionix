@@ -114,38 +114,43 @@ describe('connector mDNS advertiser', () => {
   it('with fake timers, stop() without callback resolves after 2001 ms and logs timeout', async () => {
     jest.useFakeTimers();
 
-    const logs: string[] = [];
-    let stopCalled = false;
+    try {
+      const logs: string[] = [];
+      let stopCalled = false;
+      let destroyCallCount = 0;
 
-    const fakeBonjour = {
-      publish() {
-        return {
-          stop: (cb: () => void) => {
-            stopCalled = true;
-            // Intentionally never call cb to simulate timeout
-          },
-        };
-      },
-      destroy(cb?: () => void) {
-        // Also never call cb
-      },
-    };
+      const fakeBonjour = {
+        publish() {
+          return {
+            stop: (cb: () => void) => {
+              stopCalled = true;
+              // Intentionally never call cb to simulate timeout
+            },
+          };
+        },
+        destroy(cb?: () => void) {
+          destroyCallCount += 1;
+          // Also never call cb
+        },
+      };
 
-    const advertise = createBonjourAdvertiser(
-      (onError) => fakeBonjour,
-      (line) => logs.push(line),
-    );
+      const advertise = createBonjourAdvertiser(
+        (onError) => fakeBonjour,
+        (line) => logs.push(line),
+      );
 
-    const ad = advertise({ name: 'test', port: 1234, txt: {} });
-    const stopPromise = ad.stop();
+      const ad = advertise({ name: 'test', port: 1234, txt: {} });
+      const stopPromise = ad.stop();
 
-    jest.advanceTimersByTime(2001);
-    await stopPromise;
+      jest.advanceTimersByTime(2001);
+      await stopPromise;
 
-    expect(logs).toContainEqual(expect.stringContaining('timed out'));
-    expect(stopCalled).toBe(true);
-
-    jest.useRealTimers();
+      expect(logs).toContainEqual(expect.stringContaining('timed out'));
+      expect(stopCalled).toBe(true);
+      expect(destroyCallCount).toBe(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('stop() twice returns the same promise and stops once', async () => {
@@ -179,5 +184,82 @@ describe('connector mDNS advertiser', () => {
 
     expect(stopCallCount).toBe(1);
     expect(destroyCallCount).toBe(1);
+  });
+
+  it('service.stop calls back but destroy never calls back, resolves after timeout', async () => {
+    jest.useFakeTimers();
+
+    try {
+      const logs: string[] = [];
+      let stopCallCount = 0;
+      let destroyCallCount = 0;
+
+      const fakeBonjour = {
+        publish() {
+          return {
+            stop: (cb: () => void) => {
+              stopCallCount += 1;
+              cb(); // Calls back, but destroy won't
+            },
+          };
+        },
+        destroy(cb?: () => void) {
+          destroyCallCount += 1;
+          // Intentionally never call cb to simulate destroy hang
+        },
+      };
+
+      const advertise = createBonjourAdvertiser(
+        (onError) => fakeBonjour,
+        (line) => logs.push(line),
+      );
+
+      const ad = advertise({ name: 'test', port: 1234, txt: {} });
+      const stopPromise = ad.stop();
+
+      jest.advanceTimersByTime(2001);
+      await stopPromise;
+
+      expect(logs).toContainEqual(expect.stringContaining('timed out'));
+      expect(stopCallCount).toBe(1);
+      expect(destroyCallCount).toBe(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('error-path stop() resolves after timeout when destroy never calls back', async () => {
+    jest.useFakeTimers();
+
+    try {
+      const logs: string[] = [];
+      let destroyCallCount = 0;
+
+      const fakeBonjour = {
+        publish() {
+          throw new Error('publish error');
+        },
+        destroy(cb?: () => void) {
+          destroyCallCount += 1;
+          // Intentionally never call cb
+        },
+      };
+
+      const advertise = createBonjourAdvertiser(
+        (onError) => fakeBonjour,
+        (line) => logs.push(line),
+      );
+
+      const ad = advertise({ name: 'test', port: 1234, txt: {} });
+      const stopPromise = ad.stop();
+
+      jest.advanceTimersByTime(2001);
+      await stopPromise;
+
+      expect(logs).toContainEqual(expect.stringContaining('timed out'));
+      expect(destroyCallCount).toBe(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

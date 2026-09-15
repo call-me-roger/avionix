@@ -8,6 +8,60 @@ function defaultBonjourFactory(onError) {
   return new Bonjour(undefined, onError);
 }
 
+function boundedShutdown(instance, service, log, timeoutMs = 2000) {
+  let stopPromise;
+
+  return function stop() {
+    if (stopPromise) {
+      return stopPromise;
+    }
+
+    stopPromise = new Promise((resolve) => {
+      let resolved = false;
+      let destroyed = false;
+
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          if (!destroyed) {
+            destroyed = true;
+            try {
+              instance.destroy(() => undefined);
+            } catch {
+              // Ignore errors during forced destroy
+            }
+          }
+          log('mDNS stop timed out; destroyed instance');
+          resolve();
+        }
+      }, timeoutMs);
+
+      const attemptDestroy = () => {
+        if (!destroyed) {
+          destroyed = true;
+          instance.destroy(() => {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timer);
+              resolve();
+            }
+          });
+        }
+      };
+
+      if (service) {
+        service.stop(() => {
+          attemptDestroy();
+        });
+      } else {
+        attemptDestroy();
+      }
+    });
+
+    return stopPromise;
+  };
+}
+
 function createBonjourAdvertiser(factory = defaultBonjourFactory, log = () => undefined) {
   return function advertise(spec) {
     let instance;
@@ -30,50 +84,12 @@ function createBonjourAdvertiser(factory = defaultBonjourFactory, log = () => un
       log(`mDNS error: ${message}`);
       const errorInstance = instance;
       return {
-        stop() {
-          return new Promise((resolve) => {
-            if (errorInstance) {
-              errorInstance.destroy(() => {
-                resolve();
-              });
-            } else {
-              resolve();
-            }
-          });
-        },
+        stop: boundedShutdown(errorInstance, null, log),
       };
     }
 
-    let stopPromise;
     return {
-      stop() {
-        if (stopPromise) {
-          return stopPromise;
-        }
-
-        stopPromise = new Promise((resolve) => {
-          let resolved = false;
-          const timer = setTimeout(() => {
-            if (!resolved) {
-              resolved = true;
-              log('mDNS stop timed out');
-              resolve();
-            }
-          }, 2000);
-
-          service.stop(() => {
-            instance.destroy(() => {
-              if (!resolved) {
-                resolved = true;
-                clearTimeout(timer);
-                resolve();
-              }
-            });
-          });
-        });
-
-        return stopPromise;
-      },
+      stop: boundedShutdown(instance, service, log),
     };
   };
 }
