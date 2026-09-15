@@ -1012,7 +1012,10 @@ describe('Avionix connector (pairing, tokens, discovery)', () => {
   it('F11: answers 404 JSON for an unknown /avionix/* path instead of the SPA shell', async () => {
     const res = await fetch(`${base}/avionix/pairr`);
     expect(res.status).toBe(404);
-    expect(await res.json()).toEqual({ error: 'not_found' });
+    expect(await res.json()).toEqual({
+      error_code: 'not_found',
+      error_message: 'Unknown connector endpoint.',
+    });
   });
 
   it('--no-mdns without an advertiser publishes nothing and still closes cleanly', async () => {

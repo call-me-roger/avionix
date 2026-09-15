@@ -16,7 +16,7 @@ Disable with `--no-mdns`; name the instance with `--name "Sim PC"` (default `Avi
 | `GET /avionix/info` | none | `{ name, version, pairingRequired, xplane: { host, port, reachable } }` (`reachable` is cached for 2s); `OPTIONS` answers 204; `405 method_not_allowed` for other non-GET methods |
 | `POST /avionix/pair` body `{ "code": "123456" }` | none | `200 { token }`; `401 pairing_invalid_code`; `429 pairing_rate_limited` (five wrong attempts per minute per client) or `429 too_many_attempts` (twenty wrong attempts per minute across all clients); `400 invalid_body`; `413 payload_too_large`; `OPTIONS` answers 204; `405 method_not_allowed` for other non-POST methods |
 | `GET /avionix` | none | human-readable status page (never shows the code) |
-| any other `/avionix/*` | none | `404 { error: 'not_found' }` |
+| any other `/avionix/*` | none | `404 not_found` |
 | `/api/*` | bearer token | relayed to X-Plane; `401 unauthorized` without a valid token |
 | `ws://…/api/vN?token=<token>` | token query | relayed WebSocket; the `token` parameter is removed before forwarding |
 

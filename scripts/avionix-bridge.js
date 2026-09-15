@@ -617,8 +617,7 @@ function startBridge(overrides = {}) {
       return;
     }
     if (pathname.startsWith('/avionix/')) {
-      res.writeHead(404, { 'content-type': 'application/json; charset=utf-8', ...CORS_HEADERS });
-      res.end(JSON.stringify({ error: 'not_found' }));
+      sendJson(res, 404, { error_code: 'not_found', error_message: 'Unknown connector endpoint.' });
       return;
     }
     if (isApiPath(pathname)) {

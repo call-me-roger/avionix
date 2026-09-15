@@ -167,6 +167,19 @@ describe('ConnectorAuth', () => {
     expect(auth.pair('123456', b)).toEqual({ ok: false, reason: 'rate_limited' });
   });
 
+  it('F5: treats zero-compressed IPv6 addresses in the same /64 as one client', () => {
+    const now = 1_000_000;
+    const auth = new ConnectorAuth({ dataDir, code: '123456', now: () => now });
+    const a = 'fe80::1111:2222:3333:4444';
+    const b = 'fe80::5555:6666:7777:8888';
+    const c = '2001:db8::1';
+    for (let i = 0; i < 3; i += 1) auth.pair('000000', a);
+    for (let i = 0; i < 2; i += 1) auth.pair('000000', b);
+    expect(auth.pair('123456', b)).toEqual({ ok: false, reason: 'rate_limited' });
+    // A different /64 still has its own budget.
+    expect(auth.pair('000000', c)).toEqual({ ok: false, reason: 'invalid_code' });
+  });
+
   it('F8: compares the pairing code safely, without throwing on a length mismatch', () => {
     const auth = new ConnectorAuth({ dataDir, code: '123456' });
     expect(auth.pair('12345', 'x')).toEqual({ ok: false, reason: 'invalid_code' });

@@ -36,8 +36,23 @@ function codesMatch(a, b) {
 function attemptsKeyFor(clientKey) {
   if (typeof clientKey !== 'string' || !clientKey.includes(':')) return clientKey;
   if (clientKey.startsWith('::ffff:')) return clientKey.slice('::ffff:'.length);
-  const hextets = clientKey.split(':').slice(0, 4);
+  const hextets = expandIpv6(clientKey).slice(0, 4);
   return `${hextets.join(':')}/64`;
+}
+
+/**
+ * Expands a possibly zero-compressed IPv6 address (`fe80::1`) into its eight hextets so the
+ * /64 prefix can be sliced positionally. Addresses without `::` are split as-is.
+ */
+function expandIpv6(address) {
+  const zone = address.indexOf('%');
+  const bare = zone === -1 ? address : address.slice(0, zone);
+  if (!bare.includes('::')) return bare.split(':');
+  const [head, tail] = bare.split('::');
+  const left = head ? head.split(':') : [];
+  const right = tail ? tail.split(':') : [];
+  const missing = Math.max(0, 8 - left.length - right.length);
+  return [...left, ...new Array(missing).fill('0'), ...right];
 }
 
 class ConnectorAuth {
