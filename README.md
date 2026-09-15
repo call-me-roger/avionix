@@ -10,6 +10,8 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
 ## MVP scope
 
 - Enter the connector (or X-Plane) host and port (default 8080), connect and disconnect.
+- Find Avionix Connectors on the local network (mDNS) and connect to one with a tap. Needs a
+  development build; Expo Go and the web keep the typed host and port.
 - Detect the X-Plane version and the supported Web API versions; use the highest of v2/v3.
 - Resolve DataRefs and commands by name (ids are session-specific and never stored).
 - Subscribe to three DataRefs over WebSocket and display live values.
@@ -18,7 +20,7 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
 - A diagnostics panel that shows exactly which step failed.
 - Light / dark theme with a system / light / dark toggle; the choice is persisted.
 
-Not in scope: any real avionics UI, device roles, accounts, cloud, device discovery. See
+Not in scope: any real avionics UI, device roles, accounts, cloud. See
 `docs/superpowers/specs/2026-09-14-avionix-mvp-design.md` for the full design.
 
 ## Requirements
@@ -26,7 +28,8 @@ Not in scope: any real avionics UI, device roles, accounts, cloud, device discov
 - X-Plane 12.1.4 or newer (Web API v2). Network settings must not be set to
   "Disable Incoming Traffic".
 - Node.js 22, npm 10.
-- Expo Go on a physical iPhone or Android device (same Wi-Fi as the X-Plane computer).
+- Expo Go on a physical iPhone or Android device (same Wi-Fi as the X-Plane computer), or an
+  Avionix development build (`docs/development.md`) for connector discovery.
 
 ## Stack
 
@@ -91,7 +94,8 @@ emulator specifics and `docs/testing/xplane-smoke-test.md` for the manual verifi
 - Only the three MVP DataRefs and one command are wired up.
 - iOS App Transport Security for plain `http://` to an IP literal is only exercised in Expo Go;
   a development build must confirm the `NSAllowsLocalNetworking` setting in `app.json`.
-- No automatic discovery of the X-Plane host; the IP must be typed.
+- Connector discovery needs the development build (`react-native-zeroconf` is a native module);
+  in Expo Go and on the web the host must be typed.
 - Base64 `data` DataRefs are displayed raw.
 - `npm run build:validate` prints an informational "Using src/app as the root directory for Expo
   Router" line; this is a cosmetic log from the Expo CLI noticing the `src/app` folder name,
