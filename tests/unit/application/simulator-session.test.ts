@@ -14,6 +14,12 @@ import type { DataRefUpdate, SimulatorCapabilities } from '@/domain/simulator/ty
 import { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
+import type {
+  SocketCloseEvent,
+  SocketMessageEvent,
+  WebSocketLike,
+} from '@/infrastructure/xplane/websocket/websocket-transport';
+import { XPlaneClient } from '@/infrastructure/xplane/xplane-client';
 
 const caps: SimulatorCapabilities = {
   simulatorVersion: '12.4.0',
@@ -107,6 +113,19 @@ class FakeClient implements SimulatorClient {
     for (const listener of this.closeListeners) {
       listener(info);
     }
+  }
+}
+
+/** Opens as soon as it is created, which is all the connector-token tests need from it. */
+class FakeSocket implements WebSocketLike {
+  readyState = 1;
+  onopen: ((event: unknown) => void) | null = null;
+  onclose: ((event: SocketCloseEvent) => void) | null = null;
+  onerror: ((event: unknown) => void) | null = null;
+  onmessage: ((event: SocketMessageEvent) => void) | null = null;
+  send(): void {}
+  close(): void {
+    this.onclose?.({ code: 1000, reason: '', wasClean: true });
   }
 }
 
@@ -825,5 +844,39 @@ describe('SimulatorSession token lifetime', () => {
 
     expect(snapshot().state).toBe('connected');
     await expect(inner.get('192.168.1.100', 8080)).resolves.toBe('tok-fresh');
+  });
+});
+
+describe('SimulatorSession on a plain X-Plane host', () => {
+  it('forgets a stored connector token once the probe says the target is X-Plane', async () => {
+    const inner = createPairingTokenStore(createMemorySettingsStorage());
+    await inner.set('192.168.1.100', 8080, 'tok-stale');
+    const socketUrls: string[] = [];
+    const socket = new FakeSocket();
+    const { session, snapshot, requestedPaths, sentTokens } = setup({
+      tokenStore: inner,
+      createClient: (config, apiVersion, http, auth) =>
+        new XPlaneClient({
+          config,
+          apiVersion,
+          http,
+          auth,
+          createSocket: (url: string) => {
+            socketUrls.push(url);
+            queueMicrotask(() => socket.onopen?.({}));
+            return socket;
+          },
+          logger: silentLogger,
+        }),
+    });
+
+    await session.connect('192.168.1.100', 8080);
+
+    expect(snapshot().diagnostics.connector).toBe('direct');
+    // The probe itself still carries the token: at that point the target was still unknown.
+    expect(sentTokens[requestedPaths.indexOf('/avionix/info')]).toBe('Bearer tok-stale');
+    // Everything after the verdict must be unauthenticated, the socket URL included.
+    expect(sentTokens[requestedPaths.indexOf('/api/capabilities')]).toBeUndefined();
+    expect(socketUrls).toEqual(['ws://192.168.1.100:8080/api/v3']);
   });
 });

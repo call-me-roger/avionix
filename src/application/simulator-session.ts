@@ -427,7 +427,10 @@ export class SimulatorSession {
       return false;
     }
     if (info === null) {
-      // A stale token for a host that is now plain X-Plane is harmless: X-Plane ignores the header.
+      // Plain X-Plane: forget any token stored for this host:port so it is never sent on.
+      // X-Plane would ignore the header, but the WebSocket URL would carry the token in its
+      // `?token=` query, where it reaches logs and proxies for nothing.
+      this.token = null;
       this.setStep((d) => ({ ...d, connector: 'direct' }));
       return true;
     }
