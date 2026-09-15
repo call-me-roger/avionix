@@ -89,4 +89,20 @@ describe('useConnectionSettings', () => {
     expect(result.current.host).toBe('');
     expect(result.current.port).toBe('8080');
   });
+
+  it('setConnection updates the form values and persists exactly those values', async () => {
+    const storage = createMemorySettingsStorage();
+    const { result } = await renderHook(() => useConnectionSettings(), {
+      wrapper: wrapperFor(services(storage)),
+    });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => {
+      await result.current.setConnection('192.168.1.20', 8080);
+    });
+    expect(result.current.host).toBe('192.168.1.20');
+    expect(result.current.port).toBe('8080');
+    expect(await storage.getItem('avionix.connection')).toBe(
+      JSON.stringify({ host: '192.168.1.20', port: 8080 }),
+    );
+  });
 });

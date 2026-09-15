@@ -44,5 +44,15 @@ export function useConnectionSettings() {
     await saveConnectionSettings(settingsStorage, { host: host.trim(), port: parsedPort });
   }, [host, port, settingsStorage]);
 
-  return { host, setHost, port, setPort, ready, persist };
+  const setConnection = useCallback(
+    async (nextHost: string, nextPort: number) => {
+      setHost(nextHost);
+      setPort(String(nextPort));
+      // Saves the given values, not the closure's state, which still holds the previous form.
+      await saveConnectionSettings(settingsStorage, { host: nextHost, port: nextPort });
+    },
+    [settingsStorage],
+  );
+
+  return { host, setHost, port, setPort, ready, persist, setConnection };
 }
