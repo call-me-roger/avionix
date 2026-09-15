@@ -11,8 +11,10 @@ Record results at the bottom.
 2. Settings → Network: "Disable Incoming Traffic" is **not** selected. Note the computer's LAN IP.
 3. X-Plane 12.4.3 only accepts connections from the same machine (see `docs/xplane.md`), so run a
    relay on the X-Plane PC. For the Avionix bridge (port 8080), start it with `--open` until the
-   app's pairing screen ships: `npm run bridge -- --open` (or `node scripts/avionix-bridge.js --open`);
-   alternatively use `xplane-proxy` on port 8087 (see `docs/web.md`). From another computer, verify
+   app's pairing screen ships: `npm run bridge -- --open` (or `node scripts/avionix-bridge.js --open`).
+   With `--open`, any web page open on a device on the LAN can read and write X-Plane through the
+   connector, so use it only on trusted networks and stop the connector when done. Alternatively use
+   `xplane-proxy` on port 8087 (see `docs/web.md`). From another computer, verify
    the relay is reachable: for the bridge, open `http://<ip>:<relay port>/avionix/info` and check the
    JSON's `xplane.reachable` field; for xplane-proxy, open `http://<ip>:<relay port>/api/capabilities`
    (check for JSON with `api.versions`). If you get 403 from xplane-proxy, fix step 2 (X-Plane network

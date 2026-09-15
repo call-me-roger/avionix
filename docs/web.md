@@ -14,8 +14,10 @@ npm run bridge                # node scripts/avionix-bridge.js, listens on 0.0.0
 
 Then open `http://<x-plane-pc-ip>:8080` from any device on the LAN. The in-app pairing screen is not
 yet implemented (coming in a follow-up), so start the bridge with `--open` for now: run
-`npm run bridge -- --open` on the X-Plane PC. The connection form is prefilled with the page's own
-host and port; press Connect. See `docs/connector.md` for the full pairing protocol.
+`npm run bridge -- --open` on the X-Plane PC. With `--open`, any web page open on a device on the
+LAN can read and write X-Plane through the connector, so use it only on trusted networks and stop
+the connector when done. The connection form is prefilled with the page's own host and port; press
+Connect. See `docs/connector.md` for the full pairing protocol.
 
 For the full list of flags, see `docs/connector.md`. (npm needs the `--` separator, e.g.
 `npm run bridge -- --port 9000` or `npm run bridge -- --open`).
