@@ -5,6 +5,10 @@ export type AvionixErrorCode =
   | 'TIMEOUT'
   | 'HTTP_ERROR'
   | 'INCOMING_TRAFFIC_DISABLED'
+  | 'PAIRING_REQUIRED'
+  | 'PAIRING_FAILED'
+  | 'PAIRING_RATE_LIMITED'
+  | 'UNAUTHORIZED'
   | 'UNSUPPORTED_API'
   | 'INVALID_RESPONSE'
   | 'WEBSOCKET_ERROR'
@@ -25,6 +29,8 @@ export interface AvionixErrorInit {
   message: string;
   retryable?: boolean;
   simulatorErrorCode?: string;
+  /** The HTTP status that produced this error, when it came from an HTTP response. */
+  httpStatus?: number;
   cause?: unknown;
 }
 
@@ -32,6 +38,7 @@ export class AvionixError extends Error {
   readonly code: AvionixErrorCode;
   readonly retryable: boolean;
   readonly simulatorErrorCode: string | undefined;
+  readonly httpStatus: number | undefined;
   override readonly cause: unknown;
 
   constructor(init: AvionixErrorInit) {
@@ -40,6 +47,7 @@ export class AvionixError extends Error {
     this.code = init.code;
     this.retryable = init.retryable ?? false;
     this.simulatorErrorCode = init.simulatorErrorCode;
+    this.httpStatus = init.httpStatus;
     this.cause = init.cause;
   }
 }
