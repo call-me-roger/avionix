@@ -2,6 +2,10 @@ const moduleNameMapper = {
   '^@/(.*)$': '<rootDir>/src/$1',
 };
 
+const transformIgnorePatterns = [
+  'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg)',
+];
+
 /** @type {import('jest').Config} */
 module.exports = {
   projects: [
@@ -23,18 +27,15 @@ module.exports = {
       preset: 'jest-expo',
       testMatch: ['<rootDir>/tests/ui/**/*.test.tsx'],
       moduleNameMapper,
-      transformIgnorePatterns: [
-        'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg)',
-      ],
+      transformIgnorePatterns,
     },
     {
       displayName: 'web',
       preset: 'jest-expo/web',
       testMatch: ['<rootDir>/tests/web/**/*.web.test.tsx'],
       moduleNameMapper,
-      transformIgnorePatterns: [
-        'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg)',
-      ],
+      transformIgnorePatterns,
+      setupFilesAfterEnv: ['<rootDir>/tests/web/setup.ts'],
     },
   ],
 };
