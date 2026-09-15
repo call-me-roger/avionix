@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { startBridge } from '../../scripts/avionix-bridge';
+import { createNullAdvertiser } from '../../scripts/avionix-connector-mdns';
+import type { Advertiser } from '../../scripts/avionix-connector-mdns';
 import { MockXPlaneServer } from '../mock-xplane/mock-xplane-server';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -196,6 +198,8 @@ describe('Avionix bridge', () => {
       xplaneHost: xplane.host,
       xplanePort: xplane.port,
       staticDir,
+      open: true,
+      advertiser: createNullAdvertiser(),
       log: () => undefined,
     });
     base = `http://127.0.0.1:${bridge.port}`;
@@ -325,6 +329,8 @@ describe('Avionix bridge', () => {
         xplaneHost: '127.0.0.1',
         xplanePort: broken.port,
         staticDir,
+        open: true,
+        advertiser: createNullAdvertiser(),
         log: () => undefined,
       });
       const brokenBase = `http://127.0.0.1:${brokenBridge.port}`;
@@ -411,6 +417,8 @@ describe('Avionix bridge', () => {
         xplaneHost: '127.0.0.1',
         xplanePort: stuckPort,
         staticDir,
+        open: true,
+        advertiser: createNullAdvertiser(),
         log: () => undefined,
       });
       const stuckBase = `http://127.0.0.1:${stuckBridge.port}`;
@@ -434,6 +442,256 @@ describe('Avionix bridge', () => {
     const response = await fetch(`${base}/api/capabilities`);
     expect(response.status).toBe(502);
     expect(await response.json()).toMatchObject({ error_code: 'bridge_upstream_unreachable' });
+    xplane = await MockXPlaneServer.start();
+  });
+});
+
+describe('Avionix connector (pairing, tokens, discovery)', () => {
+  let xplane: MockXPlaneServer;
+  let bridge: Awaited<ReturnType<typeof startBridge>>;
+  let staticDir: string;
+  let dataDir: string;
+  let base: string;
+  let published: { name: string; port: number; txt: Record<string, string> }[];
+  let stopped: number;
+
+  function fakeAdvertiser(): Advertiser {
+    return (spec) => {
+      published.push(spec);
+      return {
+        stop: async () => {
+          stopped += 1;
+        },
+      };
+    };
+  }
+
+  beforeEach(async () => {
+    published = [];
+    stopped = 0;
+    xplane = await MockXPlaneServer.start({ updateIntervalMs: 10 });
+    staticDir = fs.mkdtempSync(path.join(os.tmpdir(), 'avionix-web-'));
+    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'avionix-data-'));
+    fs.writeFileSync(path.join(staticDir, 'index.html'), '<!doctype html><title>Avionix</title>');
+    bridge = await startBridge({
+      port: 0,
+      host: '127.0.0.1',
+      xplaneHost: xplane.host,
+      xplanePort: xplane.port,
+      staticDir,
+      dataDir,
+      code: '123456',
+      name: 'Test Connector',
+      advertiser: fakeAdvertiser(),
+      log: () => undefined,
+    });
+    base = `http://127.0.0.1:${bridge.port}`;
+  });
+
+  afterEach(async () => {
+    await bridge.close();
+    await xplane.stop();
+    fs.rmSync(staticDir, { recursive: true, force: true });
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  it('exposes public info and advertises itself', async () => {
+    const info = await fetch(`${base}/avionix/info`);
+    expect(info.status).toBe(200);
+    expect(await info.json()).toEqual({
+      name: 'Test Connector',
+      version: expect.any(String),
+      pairingRequired: true,
+      xplane: { host: xplane.host, port: xplane.port, reachable: true },
+    });
+    expect(bridge.pairingRequired).toBe(true);
+    expect(bridge.pairingCode).toBe('123456');
+    expect(published).toEqual([
+      { name: 'Test Connector', port: bridge.port, txt: { v: '1', pairing: '1' } },
+    ]);
+  });
+
+  it('protects /api until paired, then accepts the bearer token', async () => {
+    const denied = await fetch(`${base}/api/capabilities`, {
+      headers: { Origin: 'http://tablet.local' },
+    });
+    expect(denied.status).toBe(401);
+    expect(denied.headers.get('access-control-allow-origin')).toBe('*');
+    expect(await denied.json()).toMatchObject({ error_code: 'unauthorized' });
+
+    const wrong = await fetch(`${base}/avionix/pair`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: '000000' }),
+    });
+    expect(wrong.status).toBe(401);
+    expect(await wrong.json()).toMatchObject({ error_code: 'pairing_invalid_code' });
+
+    const paired = await fetch(`${base}/avionix/pair`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: '123456' }),
+    });
+    expect(paired.status).toBe(200);
+    const { token } = (await paired.json()) as { token: string };
+    expect(token).toMatch(/^[0-9a-f]{64}$/);
+
+    const allowed = await fetch(`${base}/api/capabilities`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(allowed.status).toBe(200);
+    expect(await allowed.json()).toMatchObject({ 'x-plane': { version: '12.4.0' } });
+
+    const bad = await fetch(`${base}/api/capabilities`, {
+      headers: { Authorization: 'Bearer nope' },
+    });
+    expect(bad.status).toBe(401);
+  });
+
+  it('rate-limits pairing after five wrong attempts', async () => {
+    for (let i = 0; i < 5; i += 1) {
+      const r = await fetch(`${base}/avionix/pair`, {
+        method: 'POST',
+        body: JSON.stringify({ code: '111111' }),
+      });
+      expect(r.status).toBe(401);
+    }
+    const limited = await fetch(`${base}/avionix/pair`, {
+      method: 'POST',
+      body: JSON.stringify({ code: '123456' }),
+    });
+    expect(limited.status).toBe(429);
+    expect(await limited.json()).toMatchObject({ error_code: 'pairing_rate_limited' });
+  });
+
+  it('rejects a malformed pairing body', async () => {
+    const r = await fetch(`${base}/avionix/pair`, { method: 'POST', body: '{nope' });
+    expect(r.status).toBe(400);
+    expect(await r.json()).toMatchObject({ error_code: 'invalid_body' });
+  });
+
+  it('requires a token on WebSocket upgrades and strips it before relaying', async () => {
+    const paired = await fetch(`${base}/avionix/pair`, {
+      method: 'POST',
+      body: JSON.stringify({ code: '123456' }),
+    });
+    const { token } = (await paired.json()) as { token: string };
+
+    const denied = await rawHttp(
+      bridge.port,
+      [
+        'GET /api/v3 HTTP/1.1',
+        `Host: 127.0.0.1:${bridge.port}`,
+        'Upgrade: websocket',
+        'Connection: Upgrade',
+        'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
+        'Sec-WebSocket-Version: 13',
+        '',
+        '',
+      ].join('\r\n'),
+    );
+    expect(denied).toContain(' 401 ');
+    expect(xplane.connectionCount).toBe(0);
+
+    const { socket, next } = await openSocket(
+      `ws://127.0.0.1:${bridge.port}/api/v3?token=${token}`,
+    );
+    await until(() => xplane.connectionCount === 1);
+    socket.send(
+      JSON.stringify({
+        req_id: 1,
+        type: 'dataref_subscribe_values',
+        params: { datarefs: [{ id: 1001 }] },
+      }),
+    );
+    expect(await next((m) => hasType(m, 'result'))).toEqual({
+      req_id: 1,
+      type: 'result',
+      success: true,
+    });
+    socket.close();
+    await until(() => xplane.connectionCount === 0);
+  });
+
+  it('keeps tokens across restarts', async () => {
+    const paired = await fetch(`${base}/avionix/pair`, {
+      method: 'POST',
+      body: JSON.stringify({ code: '123456' }),
+    });
+    const { token } = (await paired.json()) as { token: string };
+    await bridge.close();
+    bridge = await startBridge({
+      port: 0,
+      host: '127.0.0.1',
+      xplaneHost: xplane.host,
+      xplanePort: xplane.port,
+      staticDir,
+      dataDir,
+      code: '654321',
+      advertiser: fakeAdvertiser(),
+      log: () => undefined,
+    });
+    base = `http://127.0.0.1:${bridge.port}`;
+    const allowed = await fetch(`${base}/api/capabilities`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(allowed.status).toBe(200);
+  });
+
+  it('serves a public status page without the code and reports reachability', async () => {
+    const page = await fetch(`${base}/avionix`);
+    expect(page.status).toBe(200);
+    expect(page.headers.get('content-type')).toContain('text/html');
+    const html = await page.text();
+    expect(html).toContain('Test Connector');
+    expect(html).toContain('Pairing: required');
+    expect(html).not.toContain('123456');
+  });
+
+  it('stops the advertisement on close', async () => {
+    await bridge.close();
+    expect(stopped).toBe(1);
+    bridge = await startBridge({
+      port: 0,
+      host: '127.0.0.1',
+      xplaneHost: xplane.host,
+      xplanePort: xplane.port,
+      staticDir,
+      dataDir,
+      open: true,
+      advertiser: fakeAdvertiser(),
+      log: () => undefined,
+    });
+  });
+
+  it('open mode disables pairing and advertises pairing=0', async () => {
+    await bridge.close();
+    published = [];
+    bridge = await startBridge({
+      port: 0,
+      host: '127.0.0.1',
+      xplaneHost: xplane.host,
+      xplanePort: xplane.port,
+      staticDir,
+      dataDir,
+      open: true,
+      advertiser: fakeAdvertiser(),
+      log: () => undefined,
+    });
+    base = `http://127.0.0.1:${bridge.port}`;
+    expect(bridge.pairingRequired).toBe(false);
+    expect(bridge.pairingCode).toBeNull();
+    expect((await (await fetch(`${base}/avionix/info`)).json()).pairingRequired).toBe(false);
+    expect((await fetch(`${base}/api/capabilities`)).status).toBe(200);
+    expect(published[0]?.txt).toEqual({ v: '1', pairing: '0' });
+  });
+
+  it('reports X-Plane as unreachable in info when it is down', async () => {
+    await xplane.stop();
+    const info = (await (await fetch(`${base}/avionix/info`)).json()) as {
+      xplane: { reachable: boolean };
+    };
+    expect(info.xplane.reachable).toBe(false);
     xplane = await MockXPlaneServer.start();
   });
 });
