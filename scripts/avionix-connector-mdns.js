@@ -3,7 +3,9 @@
 const SERVICE_TYPE = 'avionix';
 
 function defaultBonjourFactory(onError) {
-  // Loaded lazily so the bridge still starts (with --no-mdns) if the package is missing.
+  // Loaded lazily, and any failure here is caught by advertise()'s try/catch below, so a
+  // missing or broken bonjour-service package can never stop the bridge from starting
+  // (with or without --no-mdns).
   const { Bonjour } = require('bonjour-service');
   return new Bonjour(undefined, onError);
 }
