@@ -13,18 +13,24 @@
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
-    "build:validate": "expo export --platform ios --platform android --output-dir dist",
+    "web": "expo start --web",
+    "build:web": "expo export --platform web --output-dir dist/web",
+    "bridge": "node scripts/avionix-bridge.js",
+    "build:validate": "expo export --platform ios --platform android --platform web --output-dir dist",
     "build:dev:android": "eas build --profile development --platform android",
     "build:dev:ios": "eas build --profile development --platform ios"
   },
   "dependencies": {
+    "@expo/metro-runtime": "~57.0.15",
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~57.0.22",
     "expo-build-properties": "~57.0.17",
     "expo-dev-client": "~57.0.19",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
+    "react-dom": "19.2.3",
     "react-native": "0.86.3",
+    "react-native-web": "^0.21.2",
     "zod": "^4.6.5"
   },
   "devDependencies": {

@@ -89,3 +89,17 @@ and `useThemedStyles(factory)`. Components never hold colour literals; they use 
 `primitives.tsx` (`Section`, `SectionTitle`, `BodyText`, `ThemedTextInput`) or build styles from
 the theme. The toggle (`ThemeToggle.tsx`) sits under the Avionix heading. The theme preference is
 the second persisted setting after host and port; nothing else is stored.
+
+## Web and the bridge
+
+The application is platform-neutral: Expo builds it for iOS, Android and web, and `react-native-web`
+translates the React Native API surface to the web. `src/platform/default-connection.ts` is the only
+web-specific code; it prefills the connection form with the current page's host and port.
+
+The Avionix bridge (`scripts/avionix-bridge.js`) is infrastructure outside the app: a Node.js HTTP
+and WebSocket server that serves the exported web app and relays all `/api/*` requests from the
+browser to X-Plane. It preserves request paths and headers, answers OPTIONS itself with 204, adds
+CORS headers to every response, and returns 502 `bridge_upstream_unreachable` (JSON) when X-Plane is
+down. The bridge solves the same-origin and CORS problems that arise when a web client on another
+machine tries to reach X-Plane's web server (which listens on localhost only and rejects CORS
+preflight with 403). This was the "local bridge" infrastructure anticipated in the MVP design.

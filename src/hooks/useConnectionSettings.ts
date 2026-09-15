@@ -7,6 +7,7 @@ import {
   saveConnectionSettings,
 } from '@/application/settings-store';
 import { validatePort } from '@/domain/connection/connection-config';
+import { platformDefaultConnection } from '@/platform/default-connection';
 
 export function useConnectionSettings() {
   const { settingsStorage } = useServices();
@@ -20,8 +21,12 @@ export function useConnectionSettings() {
       if (cancelled) {
         return;
       }
-      setHost(settings.host);
-      setPort(String(settings.port));
+      const isUnset =
+        settings.host === DEFAULT_CONNECTION_SETTINGS.host &&
+        settings.port === DEFAULT_CONNECTION_SETTINGS.port;
+      const effective = isUnset ? (platformDefaultConnection() ?? settings) : settings;
+      setHost(effective.host);
+      setPort(String(effective.port));
       setReady(true);
     });
     return () => {

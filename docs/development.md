@@ -43,6 +43,10 @@ Computer running X-Plane 12 (web server on port 8086)
 | Android emulator, X-Plane on the same machine | `10.0.2.2` |
 | Android emulator, X-Plane on another machine | that machine's LAN IP |
 | iOS simulator, X-Plane on the same Mac | `127.0.0.1` |
+| Browser (web build) | the bridge's host and port (prefilled) |
+
+`npm run web` needs the bridge for API access; start it with `--static dist/web` or any directory
+(only `/api` matters for development) and enter its host and port in the form.
 
 The user of this repository performs all device verification manually; this project does not run
 Xcode, Android Studio, simulators or emulators in CI.
@@ -63,11 +67,12 @@ npm test
 npm run build:validate
 ```
 
-Jest runs two projects: `node` (tests/unit, tests/contract, tests/integration; uses the in-process
-mock X-Plane in `tests/mock-xplane`) and `expo` (tests/ui with @testing-library/react-native).
-Run one with `npx jest --selectProjects node`. @testing-library/react-native is at major version
-14, where `render`, `renderHook`, `fireEvent` and `act` are all asynchronous, so UI tests `await`
-them.
+Jest runs three projects: `node` (tests/unit, tests/contract, tests/integration; uses the
+in-process mock X-Plane in `tests/mock-xplane`), `expo` (tests/ui with
+@testing-library/react-native), and `web` (tests/web/**/*.web.test.tsx, jest-expo/web, rendering
+with react-dom in jsdom; no Testing Library). Run one with `npx jest --selectProjects node`.
+@testing-library/react-native is at major version 14, where `render`, `renderHook`, `fireEvent` and `act` are all
+asynchronous, so UI tests `await` them.
 
 ## Logging
 

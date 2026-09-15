@@ -71,4 +71,13 @@ describe('useConnectionSettings', () => {
     });
     expect(await storage.getItem('avionix.connection')).toBeNull();
   });
+
+  it('keeps the empty default host on native when nothing is stored', async () => {
+    const { result } = await renderHook(() => useConnectionSettings(), {
+      wrapper: wrapperFor(services()),
+    });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.host).toBe('');
+    expect(result.current.port).toBe('8086');
+  });
 });
