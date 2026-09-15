@@ -139,7 +139,9 @@ fake emitter and never load the library. `availability` is `'available'`.
    `[]`, `txt` record of strings defaulting to `{}`; unknown keys ignored). A payload that fails
    is logged at `warn` and dropped. A valid payload is forwarded as `BrowsedService` unchanged.
 4. `remove` forwards the name. `error` forwards `new AvionixError({ code: 'DISCOVERY_ERROR',
-   message: 'Connector discovery failed', cause })`.
+   message: 'Connector discovery failed: <library message>', cause })`. The library message is
+   appended rather than a constant string because the UI prefixes it with "Discovery failed: ";
+   a constant there would read as a tautology ("Discovery failed: Connector discovery failed").
 5. The stop function is idempotent: it calls `stop('NSD')`, removes the handlers and calls
    `removeDeviceListeners()`. Library exceptions from `scan` or `stop` are caught, logged and
    reported as `DISCOVERY_ERROR` (a missing native module can only be reached by bypassing the

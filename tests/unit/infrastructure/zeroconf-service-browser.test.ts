@@ -137,7 +137,7 @@ describe('createZeroconfServiceBrowser', () => {
     expect(error?.code).toBe('DISCOVERY_ERROR');
     expect(error?.retryable).toBe(false);
     expect(error?.cause).toBe(cause);
-    expect(error?.message).toBe('Connector discovery failed');
+    expect(error?.message).toBe('Connector discovery failed: NSD failed');
   });
 
   it('stop is idempotent, stops the scan once and removes every listener', () => {

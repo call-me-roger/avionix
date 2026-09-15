@@ -115,6 +115,17 @@ describe('ConnectorDiscovery', () => {
     expect(discovery.store.getSnapshot()).toMatchObject({ scanning: true, error: null });
   });
 
+  it('stop after an error clears the stale list without stopping the browse again', () => {
+    const { browser, discovery } = setup();
+    discovery.start();
+    browser.listener().resolved(service('alpha'));
+    browser.listener().error(new AvionixError({ code: 'DISCOVERY_ERROR', message: 'NSD failed' }));
+    expect(browser.stopCalls).toBe(1);
+    discovery.stop();
+    expect(discovery.store.getSnapshot()).toMatchObject({ connectors: [], scanning: false });
+    expect(browser.stopCalls).toBe(1);
+  });
+
   it('handles an error reported synchronously inside browse', () => {
     const error = new AvionixError({ code: 'DISCOVERY_ERROR', message: 'scan threw' });
     const { browser, discovery } = setup(

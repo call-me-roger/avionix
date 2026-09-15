@@ -81,14 +81,16 @@ export class ConnectorDiscovery {
   }
 
   stop(): void {
-    if (this.stopBrowse === null) {
+    const prev = this.store.getSnapshot();
+    if (this.stopBrowse === null && !prev.scanning && prev.connectors.length === 0) {
       return;
     }
     this.generation += 1;
     this.releaseBrowse();
     // Cleared on purpose: a PC that went away while the app was in the background must not be
-    // shown as present when the app comes back.
-    this.store.setState((prev) => ({ ...prev, scanning: false, connectors: [] }));
+    // shown as present when the app comes back. Guarding on state rather than the handle means
+    // an error that already cleared `stopBrowse` still gets the stale list cleared here.
+    this.store.setState((s) => ({ ...s, scanning: false, connectors: [] }));
   }
 
   private releaseBrowse(): void {

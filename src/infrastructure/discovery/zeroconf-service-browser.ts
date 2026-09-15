@@ -47,7 +47,7 @@ function reason(cause: unknown): string {
 function discoveryError(cause: unknown): AvionixError {
   return new AvionixError({
     code: 'DISCOVERY_ERROR',
-    message: 'Connector discovery failed',
+    message: `Connector discovery failed: ${reason(cause)}`,
     cause,
   });
 }
