@@ -31,7 +31,8 @@ TextInput → MvpScreen → useSimulatorSession().connect(host, port)
   → SimulatorSession.connect
       1. validate host/port                       (domain)
       2. GET /avionix/info                        (ConnectorClient)
-         → no connector: continue; pairing needed: state = pairing until pair(code)
+         → no connector: continue (connector: direct); pairing needed: state = pairing until pair(code);
+           connector ready: continue (connector: paired)
       3. GET /api/capabilities                    (HttpTransport)
       4. negotiateApiVersion                      (domain)
       5. XPlaneClient.connectWebSocket            (WebSocketTransport)
@@ -57,13 +58,16 @@ connected --disconnect--> disconnected   error --connect--> connecting
 connected --failed--> error
 error --disconnect--> disconnected
 connecting --pairingRequired--> pairing --pair--> connecting
-reconnecting --pairingRequired--> pairing   pairing --disconnect--> disconnected
+reconnecting --pairingRequired--> pairing   connected --pairingRequired--> pairing
+pairing --disconnect--> disconnected
 ```
 
-`pairing` is reached when the target is an Avionix Connector that requires a code and the app holds
-no token for it, and when a connector rejects the token the app does hold (the `UNAUTHORIZED` path,
-which also clears the stored token and cancels the reconnect scheduler). It is left by
-`SimulatorSession.pair(code)` or by `disconnect()`.
+`pairing` is reached in two cases: when the target is an Avionix Connector that requires a code and
+the app holds no token for it (reached from `connecting` or `reconnecting`), and when a connector
+rejects the token the app does hold after connection is established (the `UNAUTHORIZED` path from
+`connected`; this happens when an authenticated write or command fails). In the second case, the
+session clears the stored token and cancels the reconnect scheduler. Both cases leave the session
+waiting for `SimulatorSession.pair(code)` or `disconnect()`.
 
 The `connected → error` edge exists because the session reports `connected` as soon as the socket
 opens (spec step 9); DataRef resolution and subscription happen afterwards and can still fail.

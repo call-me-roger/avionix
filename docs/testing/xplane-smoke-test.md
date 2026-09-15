@@ -41,7 +41,7 @@ Record results at the bottom.
 | 14 | Turn the phone's Wi-Fi off for 10 s, then on | Device goes to `reconnecting`, then `connected` again on its own | |
 | 15 | Press Disconnect | Status `disconnected`, telemetry cleared, no reconnect attempts | |
 | 16 | Restart X-Plane, press Connect (re-enter the code if prompted) | Connects; DataRef ids were re-resolved (no stale-id errors) | |
-| 17 | Kill and relaunch Avionix | Host and port fields are prefilled; if the token is still valid, status goes straight to `connected` | |
+| 17 | Kill and relaunch Avionix, press Connect | Host and port fields are prefilled; if the token is still valid, status goes straight to `connected` without asking for a code | |
 | 18 | Direct X-Plane: enter port 8086 (no connector) and press Connect | Status `connected` without a code prompt; Connector row shows DIRECT | |
 
 ## Failure hints
