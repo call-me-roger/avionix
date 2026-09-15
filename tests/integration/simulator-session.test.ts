@@ -1,5 +1,8 @@
 import { MVP_DATAREFS } from '@/application/mvp-bindings';
+import { createPairingTokenStore } from '@/application/pairing-token-store';
+import { createMemorySettingsStorage } from '@/application/settings-store';
 import { SimulatorSession } from '@/application/simulator-session';
+import { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
 import { XPlaneClient } from '@/infrastructure/xplane/xplane-client';
@@ -17,21 +20,25 @@ async function until(predicate: () => boolean, timeoutMs = 3000): Promise<void> 
 
 function createSession(): SimulatorSession {
   return new SimulatorSession({
-    createHttpTransport: (config) =>
+    createHttpTransport: (config, auth) =>
       new HttpTransport({
         origin: `http://${config.host}:${config.port}`,
+        auth,
         logger: silentLogger,
         defaultTimeoutMs: 2000,
       }),
-    createClient: (config, apiVersion, http) =>
+    createClient: (config, apiVersion, http, auth) =>
       new XPlaneClient({
         config,
         apiVersion,
         http,
+        auth,
         logger: silentLogger,
         requestTimeoutMs: 2000,
         connectTimeoutMs: 2000,
       }),
+    createConnectorClient: (http) => new ConnectorClient({ http, logger: silentLogger }),
+    tokenStore: createPairingTokenStore(createMemorySettingsStorage()),
     reconnectPolicy: {
       maxAttempts: 3,
       baseDelayMs: 20,

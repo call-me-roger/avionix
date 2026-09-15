@@ -5,7 +5,7 @@ export interface XPlaneConnectionConfig {
   port: number;
 }
 
-export const DEFAULT_PORT = 8086;
+export const DEFAULT_PORT = 8080;
 
 const IPV4_PATTERN = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 const HOSTNAME_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;

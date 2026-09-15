@@ -3,6 +3,7 @@ import {
   MVP_DATAREFS,
   MVP_DATAREF_NAMES,
 } from '@/application/mvp-bindings';
+import type { PairingTokenStore } from '@/application/pairing-token-store';
 import {
   type LastOperation,
   type SessionSnapshot,
@@ -16,11 +17,14 @@ import {
   createConnectionConfig,
 } from '@/domain/connection/connection-config';
 import { type ConnectionState, transition } from '@/domain/connection/connection-state';
+import type { ConnectorInfo } from '@/domain/connector/connector-info';
 import { AvionixError, toAvionixError } from '@/domain/errors/avionix-error';
 import { type ApiVersion, negotiateApiVersion } from '@/domain/simulator/api-version';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
 import type { CommandDescriptor, DataRefDescriptor, DataRefUpdate } from '@/domain/simulator/types';
+import type { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { type Logger, silentLogger } from '@/infrastructure/logging/logger';
+import type { AuthProvider } from '@/infrastructure/xplane/auth';
 import { probeCapabilities } from '@/infrastructure/xplane/capabilities';
 import type { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
 import {
@@ -45,12 +49,15 @@ export const realScheduler: Scheduler = {
 };
 
 export interface SimulatorSessionDeps {
-  createHttpTransport: (config: XPlaneConnectionConfig) => HttpTransport;
+  createHttpTransport: (config: XPlaneConnectionConfig, auth: AuthProvider) => HttpTransport;
   createClient: (
     config: XPlaneConnectionConfig,
     apiVersion: ApiVersion,
     http: HttpTransport,
+    auth: AuthProvider,
   ) => SimulatorClient;
+  createConnectorClient: (http: HttpTransport) => ConnectorClient;
+  tokenStore: PairingTokenStore;
   scheduler?: Scheduler;
   reconnectPolicy?: ReconnectPolicy;
   random?: () => number;
@@ -59,6 +66,13 @@ export interface SimulatorSessionDeps {
 }
 
 type FlowMode = 'initial' | 'reconnect';
+
+/** A connect flow parked in `pairing`, waiting for `pair(code)` to resume it. */
+interface PendingPairing {
+  generation: number;
+  config: XPlaneConnectionConfig;
+  http: HttpTransport;
+}
 
 interface ActiveConnection {
   generation: number;
@@ -80,6 +94,9 @@ export class SimulatorSession {
   private generation = 0;
   private active: ActiveConnection | null = null;
   private cancelReconnect: (() => void) | null = null;
+  private token: string | null = null;
+  private pendingPairing: PendingPairing | null = null;
+  private pairInFlight = false;
 
   constructor(private readonly deps: SimulatorSessionDeps) {
     this.store = new Store(initialSnapshot(MVP_DATAREF_NAMES));
@@ -98,6 +115,8 @@ export class SimulatorSession {
       ...initialSnapshot(MVP_DATAREF_NAMES),
       state: transition(this.settled(prev.state), 'connect'),
     }));
+    this.pendingPairing = null;
+    this.token = null;
     let config: XPlaneConnectionConfig;
     try {
       config = createConnectionConfig(host, port);
@@ -109,20 +128,78 @@ export class SimulatorSession {
       return;
     }
     this.store.setState((prev) => ({ ...prev, config }));
+    this.token = await this.deps.tokenStore.get(config.host, config.port);
+    if (!this.isCurrent(generation)) {
+      return;
+    }
     await this.runConnectFlow(generation, config, 'initial');
   }
 
   disconnect(): void {
     this.teardown();
     this.nextGeneration();
+    this.pendingPairing = null;
+    // The stored token is kept: only the connector revokes it.
+    this.token = null;
     this.store.setState((prev) => ({
       ...prev,
       state: this.settled(prev.state),
+      connector: null,
       diagnostics: initialDiagnostics(MVP_DATAREF_NAMES),
       telemetry: {},
       reconnectAttempt: 0,
       error: null,
     }));
+  }
+
+  /**
+   * Exchanges the six-digit code for a token and resumes the connect flow that parked in
+   * `pairing`. Rejects with INTERNAL when the session is not pairing or another pair call is
+   * already in flight; every other failure lands in `snapshot.error` and leaves the session
+   * in `pairing` so the user can try another code.
+   */
+  async pair(code: string): Promise<void> {
+    const pending = this.pendingPairing;
+    if (pending === null || this.pairInFlight || this.store.getSnapshot().state !== 'pairing') {
+      throw new AvionixError({
+        code: 'INTERNAL',
+        message: 'pair() is only available while the session is waiting for a pairing code',
+      });
+    }
+    this.pairInFlight = true;
+    const { generation, config, http } = pending;
+    try {
+      const token = await this.deps.createConnectorClient(http).pair(code);
+      if (!this.isCurrent(generation)) {
+        return;
+      }
+      this.token = token;
+      await this.deps.tokenStore.set(config.host, config.port, token);
+      if (!this.isCurrent(generation)) {
+        return;
+      }
+      this.pendingPairing = null;
+      this.store.setState((prev) => ({
+        ...prev,
+        state: transition(prev.state, 'pair'),
+        diagnostics: { ...prev.diagnostics, connector: 'paired' },
+        error: null,
+      }));
+    } catch (error) {
+      if (!this.isCurrent(generation)) {
+        return;
+      }
+      const avionixError = toAvionixError(error, {
+        code: 'UNKNOWN',
+        message: 'Pairing failed',
+      });
+      this.logger.warn('pairing rejected', { code: avionixError.code });
+      this.store.setState((prev) => ({ ...prev, error: avionixError }));
+      return;
+    } finally {
+      this.pairInFlight = false;
+    }
+    await this.runSimulatorFlow(generation, config, http, 'initial');
   }
 
   async writeHeading(value: number): Promise<void> {
@@ -235,6 +312,11 @@ export class SimulatorSession {
    * `reconnecting`; `runReconnectAttempt` decides whether to retry or exhaust.
    */
   private markFailure(error: AvionixError, mode: FlowMode): void {
+    const state = this.store.getSnapshot().state;
+    if (error.code === 'UNAUTHORIZED' && (state === 'connecting' || state === 'reconnecting')) {
+      this.handleUnauthorized(error);
+      return;
+    }
     this.logger.warn('session failure', { code: error.code, message: error.message, mode });
     this.store.setState((prev) => ({
       ...prev,
@@ -244,18 +326,119 @@ export class SimulatorSession {
   }
 
   /**
-   * Runs the full connect flow: capabilities → version → WebSocket → resolution → subscription.
-   * Returns true on success. In `initial` mode the state becomes `connected` as soon as the
-   * socket is open (later steps are visible in diagnostics). In `reconnect` mode the state
-   * becomes `connected` only when the whole flow has succeeded.
+   * The connector no longer accepts the token we hold (it was restarted with its token file
+   * deleted, or the token expired). Forget it, stop retrying — a retry would fail the same
+   * way — and park in `pairing` so the user can enter a fresh code. `snapshot.connector` is
+   * kept so the UI can still name the connector.
    */
+  private handleUnauthorized(error: AvionixError): void {
+    this.logger.warn('the connector rejected this device, pairing again');
+    this.teardown();
+    const generation = this.nextGeneration();
+    const config = this.store.getSnapshot().config;
+    this.token = null;
+    this.pendingPairing =
+      config === null
+        ? null
+        : {
+            generation,
+            config,
+            http: this.deps.createHttpTransport(config, () => this.token),
+          };
+    if (config !== null) {
+      void this.deps.tokenStore.clear(config.host, config.port);
+    }
+    this.store.setState((prev) => ({
+      ...prev,
+      state: transition(prev.state, 'pairingRequired'),
+      diagnostics: { ...prev.diagnostics, connector: 'pairing' },
+      reconnectAttempt: 0,
+      error,
+    }));
+  }
+
   private async runConnectFlow(
     generation: number,
     config: XPlaneConnectionConfig,
     mode: FlowMode,
   ): Promise<boolean> {
-    const http = this.deps.createHttpTransport(config);
+    const http = this.deps.createHttpTransport(config, () => this.token);
+    // Only the initial connect probes: a reconnect reuses the verdict already in the snapshot,
+    // and a connector that has forgotten this device surfaces as UNAUTHORIZED instead.
+    if (mode === 'initial' && !(await this.runConnectorProbe(generation, config, http))) {
+      return false;
+    }
+    return this.runSimulatorFlow(generation, config, http, mode);
+  }
 
+  /**
+   * Returns true when the flow may continue. Returns false when the session parked in
+   * `pairing` or when the probe itself failed (an unreachable or blocked host).
+   */
+  private async runConnectorProbe(
+    generation: number,
+    config: XPlaneConnectionConfig,
+    http: HttpTransport,
+  ): Promise<boolean> {
+    this.setStep((d) => ({ ...d, connector: 'pending' }));
+    let info: ConnectorInfo | null;
+    try {
+      info = await this.deps.createConnectorClient(http).getInfo();
+    } catch (error) {
+      if (!this.isCurrent(generation)) {
+        return false;
+      }
+      // The probe is the session's first HTTP request, so its failure is the same news as a
+      // failed capabilities call: the target could not be reached or refused us.
+      this.setStep((d) => ({
+        ...d,
+        connector: 'idle',
+        http: 'failed',
+        capabilities: 'failed',
+      }));
+      this.markFailure(
+        toAvionixError(error, { code: 'NETWORK_ERROR', message: 'Connector probe failed' }),
+        'initial',
+      );
+      return false;
+    }
+    if (!this.isCurrent(generation)) {
+      return false;
+    }
+    if (info === null) {
+      // A stale token for a host that is now plain X-Plane is harmless: X-Plane ignores the header.
+      this.setStep((d) => ({ ...d, connector: 'direct' }));
+      return true;
+    }
+    const connectorInfo = info;
+    this.store.setState((prev) => ({ ...prev, connector: connectorInfo }));
+    if (connectorInfo.pairingRequired && this.token === null) {
+      this.pendingPairing = { generation, config, http };
+      this.store.setState((prev) => ({
+        ...prev,
+        state: transition(prev.state, 'pairingRequired'),
+        diagnostics: { ...prev.diagnostics, connector: 'pairing' },
+        error: null,
+      }));
+      this.logger.info('connector requires pairing', { name: connectorInfo.name });
+      return false;
+    }
+    this.setStep((d) => ({ ...d, connector: 'paired' }));
+    return true;
+  }
+
+  /**
+   * Capabilities → version → WebSocket → resolution → subscription. Returns true on success.
+   * In `initial` mode the state becomes `connected` as soon as the socket is open (later steps
+   * are visible in diagnostics). In `reconnect` mode it becomes `connected` only when the whole
+   * flow has succeeded.
+   */
+  private async runSimulatorFlow(
+    generation: number,
+    config: XPlaneConnectionConfig,
+    http: HttpTransport,
+    mode: FlowMode,
+  ): Promise<boolean> {
     this.setStep((d) => ({ ...d, http: 'pending', capabilities: 'pending' }));
     let apiVersion: ApiVersion;
     try {
@@ -284,7 +467,7 @@ export class SimulatorSession {
       return false;
     }
 
-    const client = this.deps.createClient(config, apiVersion, http);
+    const client = this.deps.createClient(config, apiVersion, http, () => this.token);
     this.setStep((d) => ({ ...d, websocket: 'pending' }));
     let unsubscribeClose: () => void;
     try {
@@ -516,7 +699,10 @@ export class SimulatorSession {
       const generation = this.nextGeneration();
       this.store.setState((prev) => ({
         ...prev,
-        diagnostics: initialDiagnostics(MVP_DATAREF_NAMES),
+        diagnostics: {
+          ...initialDiagnostics(MVP_DATAREF_NAMES),
+          connector: prev.connector === null ? 'direct' : 'paired',
+        },
         telemetry: {},
       }));
       void this.runReconnectAttempt(generation, config, attempt);

@@ -9,7 +9,7 @@ describe('connection settings', () => {
   it('returns defaults when nothing is stored', async () => {
     const storage = createMemorySettingsStorage();
     await expect(loadConnectionSettings(storage)).resolves.toEqual(DEFAULT_CONNECTION_SETTINGS);
-    expect(DEFAULT_CONNECTION_SETTINGS).toEqual({ host: '', port: 8086 });
+    expect(DEFAULT_CONNECTION_SETTINGS).toEqual({ host: '', port: 8080 });
   });
 
   it('round-trips host and port', async () => {

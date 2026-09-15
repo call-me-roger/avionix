@@ -22,6 +22,7 @@ function services(): AppServices {
       store: new Store(initialSnapshot(MVP_DATAREF_NAMES)),
       connect: async () => undefined,
       disconnect: () => undefined,
+      pair: async () => undefined,
       writeHeading: async () => undefined,
       activateHeadingUp: async () => undefined,
     },

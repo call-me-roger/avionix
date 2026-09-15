@@ -1,9 +1,12 @@
 import { MVP_COMMAND_HEADING_UP, MVP_DATAREFS } from '@/application/mvp-bindings';
+import { createPairingTokenStore } from '@/application/pairing-token-store';
+import { createMemorySettingsStorage } from '@/application/settings-store';
 import { type Scheduler, SimulatorSession } from '@/application/simulator-session';
 import type { XPlaneConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
 import type { DataRefUpdate, SimulatorCapabilities } from '@/domain/simulator/types';
+import { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
 
@@ -120,18 +123,53 @@ class ManualScheduler implements Scheduler {
   }
 }
 
+// Drains the microtask queue. The connect flow awaits the token store and the connector
+// probe before the simulator flow starts, so this needs enough turns to reach the
+// subscription step.
 async function flush(): Promise<void> {
-  for (let i = 0; i < 20; i += 1) {
+  for (let i = 0; i < 100; i += 1) {
     await Promise.resolve();
   }
 }
 
-function setup(options: { capsError?: AvionixError; clients?: FakeClient[] } = {}) {
+interface Route {
+  status: number;
+  body: string;
+}
+
+function setup(
+  options: {
+    capsError?: AvionixError;
+    clients?: FakeClient[];
+    routes?: Record<string, Route | Route[]>;
+  } = {},
+) {
   const clients = options.clients ?? [new FakeClient()];
   let clientIndex = 0;
   const scheduler = new ManualScheduler();
   const capsError = options.capsError;
-  const fetchImpl = async () => {
+  const routes = options.routes ?? {};
+  const requestedPaths: string[] = [];
+  const storage = createMemorySettingsStorage();
+  const tokenStore = createPairingTokenStore(storage);
+  const sentTokens: (string | undefined)[] = [];
+  const fetchImpl = async (url: string, init: { headers: Record<string, string> }) => {
+    const path = url.slice(url.indexOf('/', 'http://'.length));
+    requestedPaths.push(path);
+    sentTokens.push(init.headers.Authorization);
+    const route = routes[path];
+    const next = Array.isArray(route) ? route.shift() : route;
+    if (next !== undefined) {
+      return {
+        status: next.status,
+        ok: next.status >= 200 && next.status < 300,
+        text: async () => next.body,
+      };
+    }
+    if (path === '/avionix/info') {
+      // No connector: the probe must fall through to the plain X-Plane flow.
+      return { status: 404, ok: false, text: async () => 'Not Found' };
+    }
     if (capsError !== undefined) {
       throw capsError;
     }
@@ -146,10 +184,11 @@ function setup(options: { capsError?: AvionixError; clients?: FakeClient[] } = {
     };
   };
   const session = new SimulatorSession({
-    createHttpTransport: (config: XPlaneConnectionConfig) =>
+    createHttpTransport: (config: XPlaneConnectionConfig, auth) =>
       new HttpTransport({
         origin: `http://${config.host}:${config.port}`,
         fetchImpl,
+        auth,
         logger: silentLogger,
       }),
     createClient: () => {
@@ -160,12 +199,23 @@ function setup(options: { capsError?: AvionixError; clients?: FakeClient[] } = {
       }
       return client;
     },
+    createConnectorClient: (http) => new ConnectorClient({ http, logger: silentLogger }),
+    tokenStore,
     scheduler,
     random: () => 0.5,
     logger: silentLogger,
     now: () => 1234,
   });
-  return { session, scheduler, clients, snapshot: () => session.store.getSnapshot() };
+  return {
+    session,
+    scheduler,
+    clients,
+    storage,
+    tokenStore,
+    requestedPaths,
+    sentTokens,
+    snapshot: () => session.store.getSnapshot(),
+  };
 }
 
 describe('SimulatorSession connect flow', () => {
@@ -488,5 +538,156 @@ describe('SimulatorSession reconnect', () => {
 
     await scheduler.runNext();
     expect(snapshot().state).toBe('connected');
+  });
+});
+
+const CONNECTOR_INFO = JSON.stringify({
+  name: 'Sim PC',
+  version: '0.1.0',
+  pairingRequired: true,
+  xplane: { host: '127.0.0.1', port: 8086, reachable: true },
+});
+
+const OPEN_CONNECTOR_INFO = JSON.stringify({
+  name: 'Sim PC',
+  version: '0.1.0',
+  pairingRequired: false,
+  xplane: { host: '127.0.0.1', port: 8086, reachable: true },
+});
+
+describe('SimulatorSession pairing', () => {
+  it('stops in pairing when a connector needs a code and no token is stored', async () => {
+    const { session, snapshot } = setup({
+      routes: { '/avionix/info': { status: 200, body: CONNECTOR_INFO } },
+    });
+    await session.connect('192.168.1.100', 8080);
+    expect(snapshot().state).toBe('pairing');
+    expect(snapshot().error).toBeNull();
+    expect(snapshot().connector).toEqual({
+      name: 'Sim PC',
+      version: '0.1.0',
+      pairingRequired: true,
+      xplane: { host: '127.0.0.1', port: 8086, reachable: true },
+    });
+    expect(snapshot().diagnostics.connector).toBe('pairing');
+    expect(snapshot().diagnostics.capabilities).toBe('idle');
+  });
+
+  it('pair stores the token, resumes the connect flow and sends the bearer header', async () => {
+    const { session, snapshot, tokenStore, sentTokens } = setup({
+      routes: {
+        '/avionix/info': { status: 200, body: CONNECTOR_INFO },
+        '/avionix/pair': { status: 200, body: '{"token":"tok-xyz"}' },
+      },
+    });
+    await session.connect('192.168.1.100', 8080);
+    await session.pair('123456');
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().diagnostics.connector).toBe('paired');
+    expect(snapshot().error).toBeNull();
+    await expect(tokenStore.get('192.168.1.100', 8080)).resolves.toBe('tok-xyz');
+    expect(sentTokens).toContain('Bearer tok-xyz');
+  });
+
+  it('a wrong code keeps the session in pairing and reports PAIRING_FAILED', async () => {
+    const { session, snapshot } = setup({
+      routes: {
+        '/avionix/info': { status: 200, body: CONNECTOR_INFO },
+        '/avionix/pair': [
+          {
+            status: 401,
+            body: '{"error_code":"pairing_invalid_code","error_message":"Wrong pairing code"}',
+          },
+          { status: 200, body: '{"token":"tok-ok"}' },
+        ],
+      },
+    });
+    await session.connect('192.168.1.100', 8080);
+    await session.pair('000000');
+    expect(snapshot().state).toBe('pairing');
+    expect(snapshot().error?.code).toBe('PAIRING_FAILED');
+    await session.pair('123456');
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().error).toBeNull();
+  });
+
+  it('rejects pair outside the pairing state with INTERNAL', async () => {
+    const { session } = setup();
+    await expect(session.pair('123456')).rejects.toMatchObject({ code: 'INTERNAL' });
+  });
+
+  it('rejects a concurrent pair call with INTERNAL', async () => {
+    const { session } = setup({
+      routes: {
+        '/avionix/info': { status: 200, body: CONNECTOR_INFO },
+        '/avionix/pair': { status: 200, body: '{"token":"tok-xyz"}' },
+      },
+    });
+    await session.connect('192.168.1.100', 8080);
+    const first = session.pair('123456');
+    await expect(session.pair('123456')).rejects.toMatchObject({ code: 'INTERNAL' });
+    await first;
+  });
+
+  it('skips pairing when the stored token is reused', async () => {
+    const { session, snapshot, tokenStore, requestedPaths } = setup({
+      routes: { '/avionix/info': { status: 200, body: CONNECTOR_INFO } },
+    });
+    await tokenStore.set('192.168.1.100', 8080, 'tok-stored');
+    await session.connect('192.168.1.100', 8080);
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().diagnostics.connector).toBe('paired');
+    expect(requestedPaths).not.toContain('/avionix/pair');
+  });
+
+  it('connects straight through a connector that does not require pairing', async () => {
+    const { session, snapshot } = setup({
+      routes: { '/avionix/info': { status: 200, body: OPEN_CONNECTOR_INFO } },
+    });
+    await session.connect('192.168.1.100', 8080);
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().diagnostics.connector).toBe('paired');
+    expect(snapshot().connector?.pairingRequired).toBe(false);
+  });
+
+  it('marks the connector step direct when the target is plain X-Plane', async () => {
+    const { session, snapshot } = setup();
+    await session.connect('192.168.1.100', 8080);
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().diagnostics.connector).toBe('direct');
+    expect(snapshot().connector).toBeNull();
+  });
+
+  it('clears the token and returns to pairing when the connector rejects it', async () => {
+    const { session, snapshot, tokenStore } = setup({
+      routes: {
+        '/avionix/info': { status: 200, body: CONNECTOR_INFO },
+        '/api/capabilities': {
+          status: 401,
+          body: '{"error_code":"unauthorized","error_message":"Pair again"}',
+        },
+      },
+    });
+    await tokenStore.set('192.168.1.100', 8080, 'tok-stale');
+    await session.connect('192.168.1.100', 8080);
+    expect(snapshot().state).toBe('pairing');
+    expect(snapshot().error?.code).toBe('UNAUTHORIZED');
+    expect(snapshot().connector?.name).toBe('Sim PC');
+    await expect(tokenStore.get('192.168.1.100', 8080)).resolves.toBeNull();
+  });
+
+  it('disconnect from pairing returns to disconnected and clears the connector', async () => {
+    const { session, snapshot, tokenStore } = setup({
+      routes: { '/avionix/info': { status: 200, body: CONNECTOR_INFO } },
+    });
+    await session.connect('192.168.1.100', 8080);
+    expect(snapshot().state).toBe('pairing');
+    session.disconnect();
+    expect(snapshot().state).toBe('disconnected');
+    expect(snapshot().connector).toBeNull();
+    expect(snapshot().diagnostics.connector).toBe('idle');
+    // The stored token (none here) is deliberately kept across a disconnect.
+    await expect(tokenStore.get('192.168.1.100', 8080)).resolves.toBeNull();
+    await expect(session.pair('123456')).rejects.toMatchObject({ code: 'INTERNAL' });
   });
 });

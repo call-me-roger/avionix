@@ -18,6 +18,9 @@ function makeServices(snapshot: Partial<SessionSnapshot> = {}) {
     store,
     connect: jest.fn(async () => undefined),
     disconnect: jest.fn(),
+    pair: jest.fn(async (code: string) => {
+      void code;
+    }),
     writeHeading: jest.fn(async () => undefined),
     activateHeadingUp: jest.fn(async () => undefined),
   };
@@ -39,11 +42,11 @@ describe('MvpScreen', () => {
   it('shows the disconnected state with the default port and connects with the entered host', async () => {
     const { services, session } = makeServices();
     await renderScreen(services);
-    await waitFor(() => expect(screen.getByDisplayValue('8086')).toBeTruthy());
+    await waitFor(() => expect(screen.getByDisplayValue('8080')).toBeTruthy());
     expect(screen.getByText('Status: disconnected')).toBeTruthy();
     await fireEvent.changeText(screen.getByLabelText('X-Plane host'), '192.168.1.100');
     await fireEvent.press(screen.getByText('Connect'));
-    await waitFor(() => expect(session.connect).toHaveBeenCalledWith('192.168.1.100', '8086'));
+    await waitFor(() => expect(session.connect).toHaveBeenCalledWith('192.168.1.100', '8080'));
   });
 
   it('renders connected status, versions, diagnostics and telemetry from the snapshot', async () => {
@@ -57,6 +60,7 @@ describe('MvpScreen', () => {
       },
       config: { host: '192.168.1.100', port: 8086 },
       diagnostics: {
+        connector: 'direct',
         http: 'ok',
         capabilities: 'ok',
         websocket: 'ok',
@@ -92,6 +96,7 @@ describe('MvpScreen', () => {
         message: 'X-Plane refused the request (HTTP 403).',
       }),
       diagnostics: {
+        connector: 'direct',
         http: 'ok',
         capabilities: 'failed',
         websocket: 'idle',
