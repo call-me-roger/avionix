@@ -67,4 +67,34 @@ describe('MvpScreen on react-native-web', () => {
     expect(container.querySelector('[aria-label="Theme Dark"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="mvp-screen"]')).not.toBeNull();
   });
+
+  it('renders the pairing mode as DOM', async () => {
+    const s = services();
+    s.session.store.setState((prev) => ({
+      ...prev,
+      state: 'pairing',
+      connector: {
+        name: 'Sim PC',
+        version: '0.1.0',
+        pairingRequired: true,
+        xplane: { host: '127.0.0.1', port: 8086, reachable: true },
+      },
+    }));
+    await act(async () => {
+      root.render(
+        <ServicesProvider services={s}>
+          <ThemeProvider storage={s.settingsStorage} systemSchemeOverride="light">
+            <MvpScreen />
+          </ThemeProvider>
+        </ServicesProvider>,
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const text = container.textContent ?? '';
+    expect(text).toContain('Status: pairing');
+    expect(text).toContain('Sim PC needs pairing.');
+    expect(container.querySelector('[data-testid="pairing-code"]')).not.toBeNull();
+  });
 });

@@ -184,3 +184,104 @@ describe('MvpScreen', () => {
     );
   });
 });
+
+describe('MvpScreen pairing mode', () => {
+  const connector = {
+    name: 'Sim PC',
+    version: '0.1.0',
+    pairingRequired: true,
+    xplane: { host: '127.0.0.1', port: 8086, reachable: true },
+  };
+
+  it('names the connector and enables Pair only for six digits', async () => {
+    const { services, session } = makeServices({ state: 'pairing', connector });
+    await renderScreen(services);
+    await waitFor(() =>
+      expect(
+        screen.getByText('Sim PC needs pairing. Enter the code shown in the connector window.'),
+      ).toBeTruthy(),
+    );
+    const input = screen.getByTestId('pairing-code');
+    await fireEvent.changeText(input, '12345');
+    await fireEvent.press(screen.getByText('Pair'));
+    expect(session.pair).not.toHaveBeenCalled();
+    await fireEvent.changeText(input, '123456');
+    await fireEvent.press(screen.getByText('Pair'));
+    await waitFor(() => expect(session.pair).toHaveBeenCalledWith('123456'));
+  });
+
+  it('falls back to a generic name when the connector is unknown', async () => {
+    const { services } = makeServices({ state: 'pairing', connector: null });
+    await renderScreen(services);
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'This connector needs pairing. Enter the code shown in the connector window.',
+        ),
+      ).toBeTruthy(),
+    );
+  });
+
+  it('Cancel disconnects', async () => {
+    const { services, session } = makeServices({ state: 'pairing', connector });
+    await renderScreen(services);
+    await fireEvent.press(screen.getByText('Cancel'));
+    expect(session.disconnect).toHaveBeenCalled();
+  });
+
+  it('clears the code after a failed attempt', async () => {
+    const { services, session, store } = makeServices({ state: 'pairing', connector });
+    session.pair.mockImplementation(async (code: string) => {
+      void code;
+      store.setState((prev) => ({
+        ...prev,
+        error: new AvionixError({ code: 'PAIRING_FAILED', message: 'Wrong pairing code' }),
+      }));
+    });
+    await renderScreen(services);
+    await fireEvent.changeText(screen.getByTestId('pairing-code'), '000000');
+    await fireEvent.press(screen.getByText('Pair'));
+    await waitFor(() =>
+      expect(screen.getByText('Wrong code, check the connector window.')).toBeTruthy(),
+    );
+    await waitFor(() => expect(screen.getByTestId('pairing-code').props.value).toBe(''));
+  });
+
+  it.each([
+    ['PAIRING_FAILED', 'Wrong code, check the connector window.'],
+    ['PAIRING_RATE_LIMITED', 'Too many attempts, wait a minute and try again.'],
+    ['UNAUTHORIZED', 'The connector no longer accepts this device, pair again.'],
+    ['PAIRING_REQUIRED', 'This connector needs pairing.'],
+  ] as const)('renders plain text for %s', async (code, text) => {
+    const { services } = makeServices({
+      state: 'pairing',
+      connector,
+      error: new AvionixError({ code, message: 'raw protocol message' }),
+    });
+    await renderScreen(services);
+    await waitFor(() => expect(screen.getByText(text)).toBeTruthy());
+    expect(screen.queryByText(`${code}: raw protocol message`)).toBeNull();
+  });
+
+  it('shows the connector diagnostics row', async () => {
+    const { services } = makeServices({
+      state: 'connected',
+      connector,
+      diagnostics: {
+        connector: 'paired',
+        http: 'ok',
+        capabilities: 'ok',
+        websocket: 'ok',
+        command: 'ok',
+        subscription: 'ok',
+        dataRefs: {
+          [MVP_DATAREFS.heartbeat]: 'ok',
+          [MVP_DATAREFS.airspeed]: 'ok',
+          [MVP_DATAREFS.heading]: 'ok',
+        },
+      },
+    });
+    await renderScreen(services);
+    await waitFor(() => expect(screen.getByText('Connector: PAIRED')).toBeTruthy());
+  });
+});
