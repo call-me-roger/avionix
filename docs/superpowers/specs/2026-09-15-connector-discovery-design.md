@@ -218,8 +218,10 @@ export function useConnectorDiscovery(sessionState: ConnectionState): DiscoveryS
 
 Subscribes to `discovery.store` with `useSyncExternalStore`. An effect computes
 `shouldScan = appActive && (sessionState === 'disconnected' || sessionState === 'error')`, where
-`appActive` follows `AppState` (`'active'` only; the initial value is
-`AppState.currentState === 'active'`, and on the web `AppState` reports `active`). The effect
+`appActive` follows `AppState` (the initial value is `AppState.currentState !== 'background'`,
+and on the web `AppState` reports `active`). `!== 'background'` rather than `=== 'active'`
+because iOS reports `inactive` during app switching and the control centre, and treating that as
+background would clear and restart the list on every swipe. The effect
 calls `discovery.start()` when `shouldScan` becomes true and `discovery.stop()` when it becomes
 false or the hook unmounts. No state is set inside the effect (the repo's
 `react-hooks/set-state-in-effect` rule): the `AppState` value is read through

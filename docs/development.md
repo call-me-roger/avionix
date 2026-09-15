@@ -111,3 +111,12 @@ Install the resulting build from the link, then start `npx expo start --dev-clie
 
 After the first development build, run the smoke test in `docs/testing/xplane-smoke-test.md` on
 it; that run confirms the LAN networking settings that Expo Go does not exercise.
+
+Two things to expect from `react-native-zeroconf` specifically. On Android, the library compiles
+a bundled mDNSResponder with the NDK, so the first Android build is noticeably slower than later
+ones; an NDK version mismatch is the most likely build failure (the library defaults to NDK
+27.1.12297006, so check that version is installed if the build fails there). The library is also
+a legacy bridge module, so on both platforms it runs under the new architecture's interop layer
+(`newArchEnabled` is `true` in `app.json`); if an iOS development build lists no connectors and
+never prompts for local-network permission, suspect the interop layer before suspecting the
+permission.

@@ -52,6 +52,7 @@ Record results at the bottom.
 | 23 | Background the app, restart the connector without `--no-mdns`, foreground the app | The list is empty for a moment, then shows the connector again | |
 | 24 | Expo Go device, disconnected | The section shows "Connector discovery needs the Avionix development build." and no rows | |
 | 25 | iOS only: Settings → Avionix → Local Network off, reopen the app | No rows and no error; turning the toggle back on and reopening the app lists the connector again | |
+| 26 | Android, if "Discovery failed" ever appears: background the app, then foreground it | The section shows "Looking for connectors…" and lists the connector again | |
 
 ## Failure hints
 
@@ -65,6 +66,12 @@ Record results at the bottom.
 - Nothing is ever listed on Android: some routers block multicast between clients (AP isolation);
   the same setting blocks the connection itself, so check that a typed IP works first.
 - Nothing is listed on iOS but a typed IP works: check Settings → Avionix → Local Network.
+- Android: "Discovery failed: …" after a few seconds is usually a transient NSD resolve failure;
+  background and foreground the app (or press Connect and Disconnect) to rescan.
+- A development build on iOS lists nothing and never prompts for local-network permission: before
+  suspecting the permission, suspect the new architecture's interop layer, since
+  `react-native-zeroconf` is a legacy bridge module running under it (`newArchEnabled` is true in
+  `app.json`).
 
 ## Results
 

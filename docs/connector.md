@@ -9,12 +9,14 @@ find it and pair with it.
 The connector advertises `_avionix._tcp` over mDNS with TXT records `v=1` and `pairing=1|0`.
 Disable with `--no-mdns`; name the instance with `--name "Sim PC"` (default `Avionix Connector (<hostname>)`).
 
-The app browses `_avionix._tcp` while it is in the foreground and not connected, and lists every
-connector it resolves under the connection form: the instance name, `host:port` (the first IPv4
-address the connector advertises, else its hostname) and "Needs pairing" or "Open" from the
-`pairing` TXT record. Tapping a row fills the form, saves it and connects; a connector that needs
-pairing then shows the usual code prompt. The list clears when the app connects or goes to the
-background, and fills again within a few seconds when it returns.
+The app browses `_avionix._tcp` while it is in the foreground and disconnected (or after a failed
+connection), and lists every connector it resolves under the connection form: the instance name,
+`host:port` (the first IPv4 address the connector advertises, else its hostname) and "Needs
+pairing" or "Open" from the `pairing` TXT record. Tapping a row fills the form, saves it and
+connects; a connector that needs pairing then shows the usual code prompt. The list clears when
+the app connects or goes to the background, and fills again within a few seconds when it returns.
+A discovery error stops scanning until the app returns to the foreground or the session state
+changes; the app does not retry on its own.
 
 Discovery needs a development build: `react-native-zeroconf` is a native module, so Expo Go shows
 "Connector discovery needs the Avionix development build." and the web never shows the section.
