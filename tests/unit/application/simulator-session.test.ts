@@ -373,17 +373,21 @@ describe('SimulatorSession connect flow', () => {
     expect(snapshot().diagnostics.command).toBe('idle');
   });
 
-  it('reports SIMULATOR_NOT_READY when a dataref is missing and X-Plane has no datarefs', async () => {
+  it('reports SIMULATOR_NOT_READY when a dataref is missing and X-Plane has no datarefs, holding the link open', async () => {
     const client = new FakeClient();
     client.missingDataRef = MVP_DATAREFS.heartbeat;
     client.dataRefCount = 0;
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
-    expect(snapshot().state).toBe('error');
+    // Task 5: SIMULATOR_NOT_READY no longer fails the connect. The socket is genuinely
+    // healthy, so the session stays connected and retries resolution instead.
+    expect(snapshot().state).toBe('connected');
     expect(snapshot().error?.code).toBe('SIMULATOR_NOT_READY');
     expect(snapshot().error?.message).toContain('Load a flight');
     expect(snapshot().error?.retryable).toBe(true);
     expect(snapshot().diagnostics.dataRefs[MVP_DATAREFS.heartbeat]).toBe('failed');
+    expect(snapshot().health.readinessRetryAt).not.toBeNull();
+    expect(client.socketOpen).toBe(true);
   });
 
   it('keeps DATAREF_NOT_FOUND when the count check itself fails', async () => {
@@ -1234,5 +1238,98 @@ describe('health facts', () => {
     expect(snapshot.health.lastConnectedAt).not.toBeNull();
     expect(snapshot.health.lastEndedAt).not.toBeNull();
     expect(snapshot.diagnostics.websocket).toBe('ok');
+  });
+});
+
+describe('no flight loaded', () => {
+  it('keeps the link open and retries instead of failing the connect', async () => {
+    const client = new FakeClient();
+    client.dataRefCount = 0;
+    client.missingDataRef = MVP_DATAREFS.airspeed;
+    const { session, scheduler, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.10', '8086');
+    await flush();
+
+    const held = snapshot();
+    expect(held.state).toBe('connected');
+    expect(held.health.flightLoaded).toBe(false);
+    expect(held.health.readinessRetryAt).not.toBeNull();
+    expect(held.error?.code).toBe('SIMULATOR_NOT_READY');
+    expect(client.socketOpen).toBe(true);
+
+    client.dataRefCount = 3;
+    client.missingDataRef = null;
+    await scheduler.runNext();
+
+    const ready = snapshot();
+    expect(ready.state).toBe('connected');
+    expect(ready.health.flightLoaded).toBe(true);
+    expect(ready.health.readinessRetryAt).toBeNull();
+    expect(ready.error).toBeNull();
+    expect(client.connectWebSocket).toHaveBeenCalledTimes(1);
+  });
+
+  it('still fails the connect when a name is genuinely missing and a flight is loaded', async () => {
+    const client = new FakeClient();
+    client.dataRefCount = 3;
+    client.missingDataRef = MVP_DATAREFS.airspeed;
+    const { session, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.10', '8086');
+
+    expect(snapshot().state).toBe('error');
+    expect(snapshot().health.readinessRetryAt).toBeNull();
+  });
+
+  it('cancels the readiness retry on disconnect', async () => {
+    const client = new FakeClient();
+    client.dataRefCount = 0;
+    client.missingDataRef = MVP_DATAREFS.airspeed;
+    const { session, scheduler, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.10', '8086');
+    await flush();
+
+    session.disconnect();
+    expect(scheduler.queue.filter((entry) => !entry.cancelled).length).toBe(0);
+    expect(snapshot().health.readinessRetryAt).toBeNull();
+  });
+
+  it('completes a readiness retry that started during a reconnect without illegal transition', async () => {
+    const first = new FakeClient();
+    const second = new FakeClient();
+    second.dataRefCount = 0;
+    second.missingDataRef = MVP_DATAREFS.airspeed;
+    const { session, scheduler, snapshot } = setup({ clients: [first, second] });
+    await session.connect('192.168.1.100', 8086);
+    first.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });
+    await scheduler.runNext();
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().health.flightLoaded).toBe(false);
+
+    second.dataRefCount = 3;
+    second.missingDataRef = null;
+    await scheduler.runNext();
+
+    const ready = snapshot();
+    expect(ready.state).toBe('connected');
+    expect(ready.health.flightLoaded).toBe(true);
+    expect(ready.error).toBeNull();
+  });
+
+  it('holds for readiness during a reconnect and takes the reconnecting to connected edge', async () => {
+    const first = new FakeClient();
+    const second = new FakeClient();
+    second.dataRefCount = 0;
+    second.missingDataRef = MVP_DATAREFS.airspeed;
+    const { session, scheduler, snapshot } = setup({ clients: [first, second] });
+    await session.connect('192.168.1.100', 8086);
+    first.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });
+    expect(snapshot().state).toBe('reconnecting');
+
+    await scheduler.runNext();
+
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().health.flightLoaded).toBe(false);
+    expect(snapshot().health.readinessRetryAt).not.toBeNull();
+    expect(snapshot().reconnectAttempt).toBe(0);
   });
 });

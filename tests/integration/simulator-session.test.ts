@@ -94,15 +94,19 @@ describe('SimulatorSession against the mock X-Plane', () => {
     expect(session.store.getSnapshot().error?.code).toBe('INCOMING_TRAFFIC_DISABLED');
   });
 
-  it('reports SIMULATOR_NOT_READY when X-Plane exposes no datarefs (main menu)', async () => {
+  it('holds the link open and reports SIMULATOR_NOT_READY when X-Plane exposes no datarefs (main menu)', async () => {
     await server.stop();
     server = await MockXPlaneServer.start({ dataRefs: [] });
     const session = createSession();
     await session.connect(server.host, server.port);
     const snap = session.store.getSnapshot();
-    expect(snap.state).toBe('error');
+    // Task 5: the socket is genuinely healthy, so the session stays connected and holds for
+    // a retry instead of failing the connect.
+    expect(snap.state).toBe('connected');
     expect(snap.error?.code).toBe('SIMULATOR_NOT_READY');
     expect(snap.diagnostics.dataRefs[MVP_DATAREFS.heartbeat]).toBe('failed');
+    expect(snap.health.readinessRetryAt).not.toBeNull();
+    session.disconnect();
   });
 
   it('reports UNSUPPORTED_API for a v1-only simulator', async () => {

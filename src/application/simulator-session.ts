@@ -43,6 +43,9 @@ import {
 /** Samples kept for the round-trip median in `SessionHealth.roundTripMs`. */
 export const ROUND_TRIP_WINDOW = 5;
 
+/** Flat retry interval used while X-Plane is up but has no flight loaded. */
+export const READINESS_RETRY_MS = 5000;
+
 export interface Scheduler {
   schedule(callback: () => void, delayMs: number): () => void;
 }
@@ -101,6 +104,7 @@ export class SimulatorSession {
   private generation = 0;
   private active: ActiveConnection | null = null;
   private cancelReconnect: (() => void) | null = null;
+  private cancelReadiness: (() => void) | null = null;
   private token: string | null = null;
   private pendingPairing: PendingPairing | null = null;
   private pairInFlight = false;
@@ -327,6 +331,7 @@ export class SimulatorSession {
   }
 
   private teardown(): void {
+    this.cancelReadinessRetry();
     if (this.cancelReconnect !== null) {
       this.cancelReconnect();
       this.cancelReconnect = null;
@@ -641,6 +646,21 @@ export class SimulatorSession {
       }));
     }
 
+    return this.completeSessionSetup(generation, config, client, unsubscribeClose, mode);
+  }
+
+  /**
+   * Everything that happens on an already-open socket: resolve names, attach the update
+   * listener, subscribe. Separate from runSimulatorFlow so it can be retried on the same
+   * socket when X-Plane has no flight loaded yet.
+   */
+  private async completeSessionSetup(
+    generation: number,
+    config: XPlaneConnectionConfig,
+    client: SimulatorClient,
+    unsubscribeClose: () => void,
+    mode: FlowMode,
+  ): Promise<boolean> {
     const dataRefs = createDataRefRepository(client);
     const commands = createCommandRepository(client);
     const dataRefsById = new Map<number, DataRefDescriptor>();
@@ -684,9 +704,9 @@ export class SimulatorSession {
       }
       this.setStep((d) => ({ ...d, command: 'ok' }));
     } catch (error) {
-      unsubscribeClose();
-      client.disconnectWebSocket();
       if (!this.isCurrent(generation)) {
+        unsubscribeClose();
+        client.disconnectWebSocket();
         return false;
       }
       // command only reaches 'pending' once the DataRefs resolved; a DataRef failure
@@ -696,7 +716,19 @@ export class SimulatorSession {
         code: 'DATAREF_NOT_FOUND',
         message: 'Resolution failed',
       });
-      this.markFailure(await this.explainLookupMiss(client, resolutionError), mode, 'resolution');
+      const explained = await this.explainLookupMiss(client, resolutionError);
+      if (!this.isCurrent(generation)) {
+        unsubscribeClose();
+        client.disconnectWebSocket();
+        return false;
+      }
+      if (explained.code === 'SIMULATOR_NOT_READY') {
+        this.holdForReadiness(generation, config, client, unsubscribeClose, mode, explained);
+        return false;
+      }
+      unsubscribeClose();
+      client.disconnectWebSocket();
+      this.markFailure(explained, mode, 'resolution');
       return false;
     }
 
@@ -765,7 +797,13 @@ export class SimulatorSession {
       this.setStep((d) => ({ ...d, subscription: 'ok' }));
       this.store.setState((prev) => ({
         ...prev,
-        state: mode === 'reconnect' ? transition(prev.state, 'connected') : prev.state,
+        // A readiness hold during a reconnect already took reconnecting → connected, so this
+        // retry's success finds the state already `connected`; only take the edge when it
+        // has not been taken yet, or a repeat 'connected' event would be illegal.
+        state:
+          mode === 'reconnect' && prev.state !== 'connected'
+            ? transition(prev.state, 'connected')
+            : prev.state,
         reconnectAttempt: 0,
         error: null,
         health: {
@@ -781,7 +819,7 @@ export class SimulatorSession {
       this.logger.info('session connected', {
         host: config.host,
         port: config.port,
-        apiVersion,
+        apiVersion: this.store.getSnapshot().apiVersion,
         mode,
       });
       return true;
@@ -798,6 +836,50 @@ export class SimulatorSession {
       );
       return false;
     }
+  }
+
+  /**
+   * X-Plane is up and the socket is open, but no flight is loaded, so no DataRef exists to
+   * resolve. The link is genuinely healthy: stay connected, say what is happening, and retry
+   * resolution on a flat interval until the pilot starts a flight. This is not the reconnect
+   * backoff, which governs a socket that is actually gone, and it has no attempt budget.
+   */
+  private holdForReadiness(
+    generation: number,
+    config: XPlaneConnectionConfig,
+    client: SimulatorClient,
+    unsubscribeClose: () => void,
+    mode: FlowMode,
+    error: AvionixError,
+  ): void {
+    const at = this.now() + READINESS_RETRY_MS;
+    this.store.setState((prev) => ({
+      ...prev,
+      // The socket is open, so a reconnect that lands on the main menu is connected too.
+      state: prev.state === 'reconnecting' ? transition(prev.state, 'connected') : prev.state,
+      error,
+      reconnectAttempt: 0,
+      health: { ...prev.health, flightLoaded: false, readinessRetryAt: at, nextRetryAt: null },
+    }));
+    this.cancelReadiness = this.scheduler.schedule(() => {
+      this.cancelReadiness = null;
+      if (!this.isCurrent(generation)) {
+        return;
+      }
+      void this.completeSessionSetup(generation, config, client, unsubscribeClose, mode);
+    }, READINESS_RETRY_MS);
+  }
+
+  private cancelReadinessRetry(): void {
+    if (this.cancelReadiness !== null) {
+      this.cancelReadiness();
+      this.cancelReadiness = null;
+    }
+    this.store.setState((prev) =>
+      prev.health.readinessRetryAt === null
+        ? prev
+        : { ...prev, health: { ...prev.health, readinessRetryAt: null } },
+    );
   }
 
   /**
@@ -866,6 +948,7 @@ export class SimulatorSession {
   }
 
   private handleSocketClosed(info: SocketCloseInfo): void {
+    this.cancelReadinessRetry();
     if (info.initiatedByClient || this.store.getSnapshot().state !== 'connected') {
       return;
     }
@@ -922,7 +1005,9 @@ export class SimulatorSession {
     attempt: number,
   ): Promise<void> {
     const ok = await this.runConnectFlow(generation, config, 'reconnect');
-    if (ok || !this.isCurrent(generation)) {
+    // completeSessionSetup() also returns false when it parked in the readiness hold: the
+    // reconnecting → connected edge already ran there, so this is not a failure to retry.
+    if (ok || !this.isCurrent(generation) || this.store.getSnapshot().state === 'connected') {
       return;
     }
     if (attempt >= this.policy.maxAttempts) {
