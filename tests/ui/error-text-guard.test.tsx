@@ -1,11 +1,13 @@
 import { render, screen } from '@testing-library/react-native';
 import React from 'react';
 
+import type { DiscoverySnapshot } from '@/application/connector-discovery';
 import { ALL_DATAREF_NAMES } from '@/application/mvp-bindings';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { createConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError, type AvionixErrorCode } from '@/domain/errors/avionix-error';
+import { DiscoveredConnectors } from '@/features/connection/DiscoveredConnectors';
 import { DiagnosticsScreen } from '@/features/health/DiagnosticsScreen';
 import { LinkStatusBar } from '@/features/health/LinkStatusBar';
 import { ThemeProvider } from '@/theme/theme-context';
@@ -57,6 +59,15 @@ function snapshotFor(code: AvionixErrorCode): SessionSnapshot {
   };
 }
 
+function discoverySnapshotFor(code: AvionixErrorCode): DiscoverySnapshot {
+  return {
+    availability: 'available',
+    scanning: false,
+    connectors: [],
+    error: new AvionixError({ code, message: RAW, httpStatus: 403 }),
+  };
+}
+
 describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
   it('is rendered as a cause and an action, not as its message', async () => {
     await render(
@@ -68,6 +79,7 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
           onRetry={jest.fn()}
           onDisconnect={jest.fn()}
         />
+        <DiscoveredConnectors snapshot={discoverySnapshotFor(code)} enabled onSelect={jest.fn()} />
       </ThemeProvider>,
     );
     expect(screen.queryByText(new RegExp('http://'))).toBeNull();

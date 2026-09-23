@@ -266,7 +266,20 @@ describe('MvpScreen', () => {
       });
       const { services } = makeServices({}, browser);
       await renderScreen(services);
-      await waitFor(() => expect(screen.getByText('Discovery failed: NSD failed')).toBeTruthy());
+      await waitFor(() =>
+        expect(
+          screen.getByText(
+            'Discovery failed: Avionix could not search the network for connectors.',
+          ),
+        ).toBeTruthy(),
+      );
+      expect(
+        screen.getByText(
+          'Enter the address from the connector window by hand, or allow local network access for Avionix.',
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByText('Discovery failed: NSD failed')).toBeNull();
+      expect(screen.queryByText('NSD failed')).toBeNull();
       expect(screen.queryByText('Looking for connectors…')).toBeNull();
       expect(screen.queryByText('No connectors found yet.')).toBeNull();
     });
