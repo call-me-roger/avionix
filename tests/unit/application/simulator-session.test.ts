@@ -1280,17 +1280,21 @@ describe('no flight loaded', () => {
     expect(snapshot().health.readinessRetryAt).toBeNull();
   });
 
-  it('cancels the readiness retry on disconnect', async () => {
+  it('cancels the readiness retry on disconnect and closes the held socket', async () => {
     const client = new FakeClient();
     client.dataRefCount = 0;
     client.missingDataRef = MVP_DATAREFS.airspeed;
     const { session, scheduler, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.10', '8086');
     await flush();
+    expect(client.socketOpen).toBe(true);
 
     session.disconnect();
     expect(scheduler.queue.filter((entry) => !entry.cancelled).length).toBe(0);
     expect(snapshot().health.readinessRetryAt).toBeNull();
+    // this.active is still null during a hold (resolution never finished), so
+    // cancelReadinessRetry() is the only thing left that can close this socket.
+    expect(client.socketOpen).toBe(false);
   });
 
   it('completes a readiness retry that started during a reconnect without illegal transition', async () => {
@@ -1331,5 +1335,35 @@ describe('no flight loaded', () => {
     expect(snapshot().health.flightLoaded).toBe(false);
     expect(snapshot().health.readinessRetryAt).not.toBeNull();
     expect(snapshot().reconnectAttempt).toBe(0);
+  });
+
+  it('recovers instead of wedging when a readiness retry started during a reconnect fails genuinely', async () => {
+    const first = new FakeClient();
+    const second = new FakeClient();
+    second.dataRefCount = 0;
+    second.missingDataRef = MVP_DATAREFS.airspeed;
+    const { session, scheduler, snapshot } = setup({ clients: [first, second] });
+    await session.connect('192.168.1.100', 8086);
+    first.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });
+    await scheduler.runNext();
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().health.readinessRetryAt).not.toBeNull();
+    expect(second.socketOpen).toBe(true);
+
+    // The pilot loads a flight, so the readiness retry gets past resolution, but something
+    // else genuinely fails: the subscription itself is rejected.
+    second.dataRefCount = 3;
+    second.missingDataRef = null;
+    second.subscribeError = new AvionixError({ code: 'SUBSCRIPTION_FAILED', message: 'no' });
+    await scheduler.runNext();
+
+    const after = snapshot();
+    // Must not report a healthy connection over the socket the failed retry already closed.
+    expect(after.state).not.toBe('connected');
+    expect(after.state).toBe('reconnecting');
+    expect(second.socketOpen).toBe(false);
+    // A fresh backoff must be armed, or the session would never recover on its own.
+    expect(scheduler.queue.filter((entry) => !entry.cancelled).length).toBe(1);
+    expect(after.reconnectAttempt).toBe(1);
   });
 });
