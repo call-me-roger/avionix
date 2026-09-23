@@ -38,10 +38,10 @@ export function deriveActivity(input: ActivityInput): SimulatorActivity {
 }
 
 export const ACTIVITY_LABEL: Record<SimulatorActivity, string> = {
-  unknown: 'Simulator state unclear',
-  running: 'X-Plane is active',
-  paused: 'X-Plane is stopped',
+  unknown: 'Simulator state unknown',
+  running: 'X-Plane is running',
+  paused: 'X-Plane is paused',
   stalled: 'X-Plane stopped sending data',
-  pausedOrStalled: 'X-Plane is paused or not responding',
+  pausedOrStalled: 'X-Plane is paused or not running',
   noFlight: 'No flight loaded in X-Plane',
 };

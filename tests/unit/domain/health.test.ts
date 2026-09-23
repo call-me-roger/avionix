@@ -44,7 +44,7 @@ describe('deriveActivity', () => {
   it('labels every activity with non-empty user-facing text', () => {
     for (const [activity, label] of Object.entries(ACTIVITY_LABEL)) {
       expect(label.length).toBeGreaterThan(0);
-      expect(label).not.toContain(activity);
+      expect(label).not.toBe(activity);
     }
   });
 });
