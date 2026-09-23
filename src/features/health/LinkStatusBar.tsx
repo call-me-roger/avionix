@@ -1,0 +1,83 @@
+import React from 'react';
+import { Pressable, View } from 'react-native';
+
+import type { SessionSnapshot } from '@/application/session-snapshot';
+import type { ConnectionState } from '@/domain/connection/connection-state';
+import { ageMs, formatAge } from '@/domain/health/freshness';
+import { ACTIVITY_LABEL } from '@/domain/health/simulator-activity';
+import { BodyText } from '@/theme/primitives';
+import { useThemedStyles } from '@/theme/theme-context';
+import type { Theme } from '@/theme/tokens';
+
+export const LINK_LABEL: Record<ConnectionState, string> = {
+  disconnected: 'Not connected',
+  connecting: 'Connecting',
+  pairing: 'Waiting for the pairing code',
+  connected: 'Connected',
+  reconnecting: 'Reconnecting',
+  error: 'Connection failed',
+};
+
+const makeStyles = (theme: Theme) => ({
+  bar: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderWidth: 1,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
+    // Comfortably above the 44 pt minimum touch target; every panel in F-04 inherits this rule.
+    minHeight: 48,
+    gap: theme.spacing.xs,
+  },
+  row: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    gap: theme.spacing.sm,
+  },
+});
+
+/**
+ * Always on screen, behind whatever panel is in front. This is the component F-04 hoists into
+ * the panel chrome; until then MvpScreen mounts it at the top.
+ */
+export function LinkStatusBar({
+  snapshot,
+  now,
+  onOpenDiagnostics,
+}: {
+  snapshot: SessionSnapshot;
+  now: number;
+  onOpenDiagnostics: () => void;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  const { health, state } = snapshot;
+  const age = formatAge(ageMs(health.lastHeartbeatAt, now));
+  const liveness = health.live ? 'Live' : 'Not live';
+  const activity = ACTIVITY_LABEL[health.activity];
+  const retry =
+    state === 'reconnecting'
+      ? `Reconnecting, attempt ${snapshot.reconnectAttempt} of ${health.reconnectBudget}`
+      : null;
+
+  return (
+    <Pressable
+      testID="link-status-bar"
+      accessibilityRole="button"
+      accessibilityLabel={`${LINK_LABEL[state]}. ${activity}. Values ${liveness.toLowerCase()}, updated ${age}. Open diagnostics.`}
+      onPress={onOpenDiagnostics}
+      style={styles.bar}
+    >
+      <View style={styles.row}>
+        <BodyText>{LINK_LABEL[state]}</BodyText>
+        <BodyText tone={health.live ? 'success' : 'danger'}>{liveness}</BodyText>
+      </View>
+      <View style={styles.row}>
+        <BodyText muted>{activity}</BodyText>
+        <BodyText muted>{age}</BodyText>
+      </View>
+      {retry === null ? null : <BodyText muted>{retry}</BodyText>}
+    </Pressable>
+  );
+}
