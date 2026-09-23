@@ -178,13 +178,15 @@ describe('SimulatorSession pairing against the mock connector', () => {
     session.disconnect();
   });
 
-  it('disconnect from pairing returns to disconnected', async () => {
+  it('disconnect from pairing returns to disconnected and keeps the last known connector', async () => {
     const session = createSession(storage);
     await session.connect(server.host, server.port);
     expect(session.store.getSnapshot().state).toBe('pairing');
     session.disconnect();
     expect(session.store.getSnapshot().state).toBe('disconnected');
-    expect(session.store.getSnapshot().connector).toBeNull();
+    // disconnect() deliberately stops clearing the connector (F-02 R11): the last known
+    // state survives so the user can still see what happened and why.
+    expect(session.store.getSnapshot().connector).toMatchObject({ name: 'Sim PC' });
   });
 
   it('connects straight through a connector with pairing disabled', async () => {

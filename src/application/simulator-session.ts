@@ -1,7 +1,9 @@
 import {
+  ALL_DATAREF_NAMES,
   MVP_COMMAND_HEADING_UP,
   MVP_DATAREFS,
   MVP_DATAREF_NAMES,
+  OPTIONAL_DATAREF_NAMES,
 } from '@/application/mvp-bindings';
 import type { PairingTokenStore } from '@/application/pairing-token-store';
 import {
@@ -19,6 +21,7 @@ import {
 import { type ConnectionState, transition } from '@/domain/connection/connection-state';
 import type { ConnectorInfo } from '@/domain/connector/connector-info';
 import { AvionixError, toAvionixError } from '@/domain/errors/avionix-error';
+import type { ConnectStep } from '@/domain/health/failure-explanation';
 import { type ApiVersion, negotiateApiVersion } from '@/domain/simulator/api-version';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
 import type { CommandDescriptor, DataRefDescriptor, DataRefUpdate } from '@/domain/simulator/types';
@@ -36,6 +39,9 @@ import {
   type ReconnectPolicy,
   computeBackoffDelayMs,
 } from '@/utils/backoff';
+
+/** Samples kept for the round-trip median in `SessionHealth.roundTripMs`. */
+export const ROUND_TRIP_WINDOW = 5;
 
 export interface Scheduler {
   schedule(callback: () => void, delayMs: number): () => void;
@@ -100,11 +106,12 @@ export class SimulatorSession {
   private pairInFlight = false;
   /** Serializes the token store writes so a late clear cannot undo a later pairing. */
   private tokenWrites: Promise<void> = Promise.resolve();
+  private roundTrips: number[] = [];
 
   constructor(private readonly deps: SimulatorSessionDeps) {
-    this.store = new Store(initialSnapshot(MVP_DATAREF_NAMES));
-    this.scheduler = deps.scheduler ?? realScheduler;
     this.policy = deps.reconnectPolicy ?? DEFAULT_RECONNECT_POLICY;
+    this.store = new Store(initialSnapshot(ALL_DATAREF_NAMES, this.policy.maxAttempts));
+    this.scheduler = deps.scheduler ?? realScheduler;
     this.random = deps.random ?? Math.random;
     this.logger = deps.logger ?? silentLogger;
     this.now = deps.now ?? Date.now;
@@ -115,7 +122,7 @@ export class SimulatorSession {
     const generation = this.nextGeneration();
     // Any previous state first returns to disconnected, then to connecting; both edges are in the table.
     this.store.setState((prev) => ({
-      ...initialSnapshot(MVP_DATAREF_NAMES),
+      ...initialSnapshot(ALL_DATAREF_NAMES, this.policy.maxAttempts),
       state: transition(this.settled(prev.state), 'connect'),
     }));
     this.pendingPairing = null;
@@ -128,6 +135,7 @@ export class SimulatorSession {
       this.markFailure(
         toAvionixError(error, { code: 'INVALID_HOST', message: 'Invalid connection settings' }),
         'initial',
+        'connector',
       );
       return;
     }
@@ -146,6 +154,11 @@ export class SimulatorSession {
     await this.runConnectFlow(generation, config, 'initial');
   }
 
+  /**
+   * Keeps the last known diagnostics, connector and health facts (F-02 R11): a disconnected
+   * session should still show the user what happened and why, not blank out. Telemetry is
+   * cleared because those values are genuinely gone the moment the link drops.
+   */
   disconnect(): void {
     this.teardown();
     this.nextGeneration();
@@ -153,14 +166,20 @@ export class SimulatorSession {
     this.pairInFlight = false;
     // The stored token is kept: only the connector revokes it.
     this.token = null;
+    const endedAt = this.now();
     this.store.setState((prev) => ({
       ...prev,
       state: this.settled(prev.state),
-      connector: null,
-      diagnostics: initialDiagnostics(MVP_DATAREF_NAMES),
       telemetry: {},
       reconnectAttempt: 0,
-      error: null,
+      health: {
+        ...prev.health,
+        nextRetryAt: null,
+        readinessRetryAt: null,
+        lastEndedAt: endedAt,
+        lastEndReason:
+          prev.error === null ? prev.health.lastEndReason : { code: prev.error.code, step: null },
+      },
     }));
   }
 
@@ -243,7 +262,7 @@ export class SimulatorSession {
       return;
     }
     try {
-      await active.client.setDataRefValue(heading.id, value);
+      await this.timed(() => active.client.setDataRefValue(heading.id, value));
       this.recordOperation({ kind: 'write', ok: true, message: `Wrote heading ${value}` });
     } catch (error) {
       const avionixError = toAvionixError(error, { code: 'WRITE_FAILED', message: 'Write failed' });
@@ -259,7 +278,7 @@ export class SimulatorSession {
       return;
     }
     try {
-      await active.client.activateCommand(active.headingUp.id, 0);
+      await this.timed(() => active.client.activateCommand(active.headingUp.id, 0));
       this.recordOperation({
         kind: 'command',
         ok: true,
@@ -331,6 +350,25 @@ export class SimulatorSession {
     this.store.setState((prev) => ({ ...prev, lastOperation: { ...operation, at: this.now() } }));
   }
 
+  /** Times a request the app was going to make anyway; keeps the median of the last few. */
+  private async timed<T>(run: () => Promise<T>): Promise<T> {
+    const startedAt = this.now();
+    const result = await run();
+    this.recordRoundTrip(this.now() - startedAt);
+    return result;
+  }
+
+  private recordRoundTrip(elapsedMs: number): void {
+    this.roundTrips = [...this.roundTrips, Math.max(0, elapsedMs)].slice(-ROUND_TRIP_WINDOW);
+    const sorted = [...this.roundTrips].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)] ?? null;
+    const at = this.now();
+    this.store.setState((prev) => ({
+      ...prev,
+      health: { ...prev.health, roundTripMs: median, roundTripAt: at },
+    }));
+  }
+
   private setStep(
     update: (diagnostics: SessionSnapshot['diagnostics']) => SessionSnapshot['diagnostics'],
   ): void {
@@ -344,17 +382,24 @@ export class SimulatorSession {
   /**
    * Records a failure. In `initial` mode the state machine takes the `failed` edge
    * (connecting → error, connected → error). In `reconnect` mode the state stays
-   * `reconnecting`; `runReconnectAttempt` decides whether to retry or exhaust.
+   * `reconnecting`; `runReconnectAttempt` decides whether to retry or exhaust. `step`
+   * names where in the flow it failed, so the explanation shown to the user can be specific.
    */
-  private markFailure(error: AvionixError, mode: FlowMode): void {
+  private markFailure(error: AvionixError, mode: FlowMode, step: ConnectStep | null = null): void {
     if (this.returnToPairingIfUnauthorized(error)) {
       return;
     }
     this.logger.warn('session failure', { code: error.code, message: error.message, mode });
+    const endedAt = this.now();
     this.store.setState((prev) => ({
       ...prev,
       state: mode === 'initial' ? transition(prev.state, 'failed') : prev.state,
       error,
+      health: {
+        ...prev.health,
+        lastEndedAt: endedAt,
+        lastEndReason: { code: error.code, step },
+      },
     }));
   }
 
@@ -475,6 +520,7 @@ export class SimulatorSession {
       this.markFailure(
         toAvionixError(error, { code: 'NETWORK_ERROR', message: 'Connector probe failed' }),
         'initial',
+        'connector',
       );
       return false;
     }
@@ -522,7 +568,7 @@ export class SimulatorSession {
     this.setStep((d) => ({ ...d, http: 'pending', capabilities: 'pending' }));
     let apiVersion: ApiVersion;
     try {
-      const capabilities = await probeCapabilities(http);
+      const capabilities = await this.timed(() => probeCapabilities(http));
       if (!this.isCurrent(generation)) {
         return false;
       }
@@ -543,7 +589,7 @@ export class SimulatorSession {
       });
       const httpStatus: StepStatus = avionixError.code === 'UNSUPPORTED_API' ? 'ok' : 'failed';
       this.setStep((d) => ({ ...d, http: httpStatus, capabilities: 'failed' }));
-      this.markFailure(avionixError, mode);
+      this.markFailure(avionixError, mode, 'capabilities');
       return false;
     }
 
@@ -573,6 +619,7 @@ export class SimulatorSession {
       this.markFailure(
         toAvionixError(error, { code: 'WEBSOCKET_ERROR', message: 'WebSocket connection failed' }),
         mode,
+        'websocket',
       );
       return false;
     }
@@ -640,8 +687,30 @@ export class SimulatorSession {
         code: 'DATAREF_NOT_FOUND',
         message: 'Resolution failed',
       });
-      this.markFailure(await this.explainLookupMiss(client, resolutionError), mode);
+      this.markFailure(await this.explainLookupMiss(client, resolutionError), mode, 'resolution');
       return false;
+    }
+
+    // Optional names must never fail the connect: a miss is recorded and left out of the
+    // subscription instead of throwing.
+    const optional: DataRefDescriptor[] = [];
+    for (const name of OPTIONAL_DATAREF_NAMES) {
+      this.setDataRefStep(name, 'pending');
+      try {
+        optional.push(await dataRefs.resolve(name));
+        if (this.isCurrent(generation)) {
+          this.setDataRefStep(name, 'ok');
+        }
+      } catch {
+        if (this.isCurrent(generation)) {
+          this.setDataRefStep(name, 'failed');
+        }
+        this.logger.debug('optional dataref missing', { name });
+      }
+    }
+    for (const descriptor of optional) {
+      dataRefsById.set(descriptor.id, descriptor);
+      dataRefsByName.set(descriptor.name, descriptor);
     }
 
     const unsubscribeUpdates = client.onDataRefUpdate((updates) => {
@@ -664,7 +733,9 @@ export class SimulatorSession {
 
     this.setStep((d) => ({ ...d, subscription: 'pending' }));
     try {
-      await client.subscribeDataRefs([...dataRefsById.keys()].map((id) => ({ id })));
+      await this.timed(() =>
+        client.subscribeDataRefs([...dataRefsById.keys()].map((id) => ({ id }))),
+      );
       if (!this.isCurrent(generation)) {
         return false;
       }
@@ -674,6 +745,12 @@ export class SimulatorSession {
         state: mode === 'reconnect' ? transition(prev.state, 'connected') : prev.state,
         reconnectAttempt: 0,
         error: null,
+        health: {
+          ...prev.health,
+          flightLoaded: true,
+          lastConnectedAt: this.now(),
+          readinessRetryAt: null,
+        },
       }));
       this.logger.info('session connected', {
         host: config.host,
@@ -691,6 +768,7 @@ export class SimulatorSession {
       this.markFailure(
         toAvionixError(error, { code: 'SUBSCRIPTION_FAILED', message: 'Subscription failed' }),
         mode,
+        'subscription',
       );
       return false;
     }
@@ -734,6 +812,7 @@ export class SimulatorSession {
   ): void {
     this.store.setState((prev) => {
       const telemetry = { ...prev.telemetry };
+      let health = prev.health;
       let changed = false;
       for (const update of updates) {
         const descriptor = dataRefsById.get(update.id);
@@ -742,8 +821,21 @@ export class SimulatorSession {
         }
         telemetry[descriptor.name] = { value: update.value, receivedAt: update.receivedAt };
         changed = true;
+        // Only a *changed* value counts as a heartbeat: a paused simulator that re-sends
+        // the same number must not read as live.
+        if (
+          descriptor.name === MVP_DATAREFS.heartbeat &&
+          typeof update.value === 'number' &&
+          update.value !== health.lastHeartbeatValue
+        ) {
+          health = {
+            ...health,
+            lastHeartbeatValue: update.value,
+            lastHeartbeatAt: update.receivedAt,
+          };
+        }
       }
-      return changed ? { ...prev, telemetry } : prev;
+      return changed ? { ...prev, telemetry, health } : prev;
     });
   }
 
@@ -773,8 +865,12 @@ export class SimulatorSession {
     if (config === null) {
       return;
     }
-    this.store.setState((prev) => ({ ...prev, reconnectAttempt: attempt }));
     const delayMs = computeBackoffDelayMs(attempt, this.policy, this.random);
+    this.store.setState((prev) => ({
+      ...prev,
+      reconnectAttempt: attempt,
+      health: { ...prev.health, nextRetryAt: this.now() + delayMs },
+    }));
     this.logger.info('scheduling reconnect', { attempt, delayMs });
     this.cancelReconnect = this.scheduler.schedule(() => {
       this.cancelReconnect = null;
@@ -785,7 +881,7 @@ export class SimulatorSession {
       this.store.setState((prev) => ({
         ...prev,
         diagnostics: {
-          ...initialDiagnostics(MVP_DATAREF_NAMES),
+          ...initialDiagnostics(ALL_DATAREF_NAMES),
           connector: prev.connector === null ? 'direct' : 'paired',
         },
         telemetry: {},
