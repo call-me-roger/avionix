@@ -1,9 +1,9 @@
 import React, { useCallback } from 'react';
 import { Button, View } from 'react-native';
 
-import { formatDiagnosticsSummary } from '@/application/diagnostics-summary';
+import { formatDiagnosticsSummary, stepLabel } from '@/application/diagnostics-summary';
 import { BINDING_FEATURE } from '@/application/mvp-bindings';
-import type { SessionSnapshot, StepStatus } from '@/application/session-snapshot';
+import type { ConnectorStep, SessionSnapshot, StepStatus } from '@/application/session-snapshot';
 import { ageMs, formatAge } from '@/domain/health/freshness';
 import { ACTIVITY_LABEL } from '@/domain/health/simulator-activity';
 import { FailureNotice } from '@/features/health/FailureNotice';
@@ -12,24 +12,28 @@ import { BodyText, Section, SectionTitle } from '@/theme/primitives';
 import { useTheme, useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
-function stepLabel(status: StepStatus): string {
-  switch (status) {
-    case 'ok':
-      return 'ok';
-    case 'failed':
-      return 'failed';
-    case 'pending':
-      return 'in progress';
-    case 'idle':
-      return 'not reached';
-  }
-}
-
 function stepTone(status: StepStatus): 'danger' | 'success' | undefined {
   if (status === 'ok') {
     return 'success';
   }
   return status === 'failed' ? 'danger' : undefined;
+}
+
+/**
+ * What the connector probe verdict means, in words distinct from `stepLabel`'s pass/fail
+ * vocabulary: this row sits right above "Reachable: ok" and friends, and a raw `idle` next to a
+ * humanized `not reached` reads as two different systems, not one.
+ */
+const CONNECTOR_STEP_LABEL: Record<ConnectorStep, string> = {
+  idle: 'not checked yet',
+  pending: 'checking',
+  direct: 'not needed, talking to X-Plane directly',
+  pairing: 'needs pairing',
+  paired: 'paired',
+};
+
+function connectorStepTone(step: ConnectorStep): 'danger' | 'success' | undefined {
+  return step === 'direct' || step === 'paired' ? 'success' : undefined;
 }
 
 const makeStyles = (theme: Theme) => ({
@@ -85,7 +89,9 @@ export function DiagnosticsScreen({
       )}
 
       <SectionTitle>Steps</SectionTitle>
-      <BodyText>{`Connector: ${diagnostics.connector}`}</BodyText>
+      <BodyText tone={connectorStepTone(diagnostics.connector)}>
+        {`Connector check: ${CONNECTOR_STEP_LABEL[diagnostics.connector]}`}
+      </BodyText>
       <BodyText
         tone={stepTone(diagnostics.http)}
       >{`Reachable: ${stepLabel(diagnostics.http)}`}</BodyText>

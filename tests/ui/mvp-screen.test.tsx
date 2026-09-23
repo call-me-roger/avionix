@@ -107,7 +107,7 @@ describe('MvpScreen', () => {
     expect(screen.getByText('Subscription: ok')).toBeTruthy();
   });
 
-  it('shows the error message and the failing step', async () => {
+  it('shows the plain-language cause and the failing step, never the raw message', async () => {
     const { services } = makeServices({
       state: 'error',
       error: new AvionixError({
@@ -411,6 +411,6 @@ describe('MvpScreen pairing mode', () => {
     });
     await renderScreen(services);
     await fireEvent.press(screen.getByTestId('link-status-bar'));
-    await waitFor(() => expect(screen.getByText('Connector: paired')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Connector check: paired')).toBeTruthy());
   });
 });

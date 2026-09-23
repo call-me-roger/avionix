@@ -4,7 +4,8 @@ import { explainFailure } from '@/domain/health/failure-explanation';
 import { ageMs, formatAge } from '@/domain/health/freshness';
 import { ACTIVITY_LABEL } from '@/domain/health/simulator-activity';
 
-function stepLabel(status: StepStatus): string {
+/** Shared with `DiagnosticsScreen` so the screen and the shared text never drift apart. */
+export function stepLabel(status: StepStatus): string {
   switch (status) {
     case 'ok':
       return 'ok';

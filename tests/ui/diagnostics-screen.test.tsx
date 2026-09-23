@@ -92,7 +92,13 @@ describe('DiagnosticsScreen', () => {
     expect(mockShareText).toHaveBeenCalled();
     const [text] = mockShareText.mock.calls[0] as unknown as [string];
     expect(text).toContain('Avionix diagnostics');
+    // The address is legitimately present...
+    expect(text).toContain('Target: 192.168.1.10:8086');
+    // ...but nothing from the raw error, whole or in part, is: a naive `error.message` dump
+    // would fail every one of these.
     expect(text).not.toContain('HTTP 403');
+    expect(text).not.toMatch(/GET http/);
+    expect(text).not.toContain('GET http://192.168.1.10:8086/api/capabilities failed: HTTP 403');
   });
 
   it('still reports the last known state while disconnected', async () => {
@@ -110,5 +116,34 @@ describe('DiagnosticsScreen', () => {
     expect(screen.getByText('Live data channel: ok')).toBeTruthy();
     expect(screen.getByText(/Last connected: 6 s ago/)).toBeTruthy();
     expect(screen.getByText('The live data connection dropped.')).toBeTruthy();
+  });
+
+  it('reads coherently when disconnected with the error still attached, the shape disconnect() actually leaves', async () => {
+    // disconnect() clears neither `error` nor `health.lastEndReason`, so a real disconnected
+    // snapshot after a failure keeps both — unlike the case above, which starts from a clean
+    // `error: null` slate. The screen must take the "Problem" branch, not double up with
+    // "Last problem" too, and must still say nothing from the raw message.
+    const base = initialSnapshot(ALL_DATAREF_NAMES, 5);
+    await renderScreen({
+      state: 'disconnected',
+      diagnostics: { ...base.diagnostics, websocket: 'failed' },
+      error: new AvionixError({
+        code: 'WEBSOCKET_ERROR',
+        message: 'ws://192.168.1.10:8086/api/ws closed unexpectedly: code 1006',
+      }),
+      health: {
+        ...base.health,
+        lastConnectedAt: 4_000,
+        lastEndedAt: 9_000,
+        lastEndReason: { code: 'WEBSOCKET_ERROR', step: 'websocket' },
+      },
+    });
+    expect(screen.getByText('Live data channel: failed')).toBeTruthy();
+    expect(screen.getByText(/Last connected: 6 s ago/)).toBeTruthy();
+    expect(screen.getByText('Problem')).toBeTruthy();
+    expect(screen.queryByText('Last problem')).toBeNull();
+    expect(screen.getByText('The live data connection dropped.')).toBeTruthy();
+    expect(screen.queryByText(/1006/)).toBeNull();
+    expect(screen.queryByText(/ws:\/\//)).toBeNull();
   });
 });

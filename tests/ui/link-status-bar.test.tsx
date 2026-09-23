@@ -44,6 +44,18 @@ describe('LinkStatusBar', () => {
     expect(screen.getByText('X-Plane is paused')).toBeTruthy();
   });
 
+  it.each([
+    ['disconnected', 'Not connected'],
+    ['connecting', 'Connecting'],
+    ['pairing', 'Waiting for the pairing code'],
+    ['connected', 'Connected'],
+    ['reconnecting', 'Reconnecting'],
+    ['error', 'Connection failed'],
+  ] as const)('shows the literal label text for %s', async (state, label) => {
+    await renderBar({ state });
+    expect(screen.getByText(label)).toBeTruthy();
+  });
+
   it('shows the retry attempt against its budget while reconnecting', async () => {
     await renderBar({ state: 'reconnecting', reconnectAttempt: 2 });
     expect(screen.getByText('Reconnecting, attempt 2 of 5')).toBeTruthy();
