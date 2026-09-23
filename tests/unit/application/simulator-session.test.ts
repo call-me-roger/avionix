@@ -1157,10 +1157,24 @@ describe('health facts', () => {
   });
 
   it('measures a round trip from requests it already makes', async () => {
-    const { session } = await connectedSession();
+    // A clock frozen during connect would make every sample 0, so this could pass even if
+    // recordRoundTrip never ran. Advance it inside subscribeDataRefs (the last timed() call
+    // in the connect flow) so the elapsed value asserted below can only come from an actual
+    // measurement.
+    const client = new FakeClient();
+    const now = new ManualClock();
+    const startedAt = now.get();
+    client.subscribeDataRefs = jest.fn(async (subs: Array<{ id: number }>) => {
+      now.set(now.get() + 42);
+      client.subscribed.push(...subs.map((s) => s.id));
+    });
+    const { session } = setup({ clients: [client], now: now.get });
+
+    await session.connect('192.168.1.10', '8086');
+
     const { health } = session.store.getSnapshot();
-    expect(health.roundTripMs).not.toBeNull();
-    expect(health.roundTripAt).not.toBeNull();
+    expect(health.roundTripMs).toBe(42);
+    expect(health.roundTripAt).toBe(startedAt + 42);
   });
 
   it('exposes the reconnect budget alongside the attempt', async () => {
@@ -1174,6 +1188,42 @@ describe('health facts', () => {
     expect(snapshot.state).toBe('connected');
     expect(snapshot.diagnostics.dataRefs['sim/time/paused']).toBe('failed');
     expect(client.subscribed).not.toContain(4);
+  });
+
+  it('closes the socket and installs nothing when disconnect() lands during optional resolution', async () => {
+    const client = new FakeClient();
+    const resolveRequired = client.findDataRef;
+    let releaseOptional!: () => void;
+    client.findDataRef = jest.fn(async (name: string) => {
+      if (name === 'sim/time/paused') {
+        await new Promise<void>((resolve) => {
+          releaseOptional = resolve;
+        });
+      }
+      return resolveRequired(name);
+    });
+    const { session, snapshot } = setup({ clients: [client] });
+
+    const connecting = session.connect('192.168.1.10', '8086');
+    await flush();
+    // The websocket is open and required resolution has finished; only the optional
+    // dataref's lookup is still pending.
+    expect(client.socketOpen).toBe(true);
+
+    session.disconnect();
+    releaseOptional();
+    await connecting;
+
+    // The socket opened for the superseded generation must be closed, not left dangling
+    // with no ActiveConnection ever holding a reference to it.
+    expect(client.socketOpen).toBe(false);
+    expect(snapshot().state).toBe('disconnected');
+
+    await session.writeHeading(10);
+    expect(snapshot().lastOperation).toMatchObject({
+      ok: false,
+      message: expect.stringContaining('not connected'),
+    });
   });
 
   it('keeps the last known state and the end reason after disconnect', async () => {

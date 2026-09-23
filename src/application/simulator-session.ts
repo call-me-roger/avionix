@@ -262,7 +262,7 @@ export class SimulatorSession {
       return;
     }
     try {
-      await this.timed(() => active.client.setDataRefValue(heading.id, value));
+      await this.timed(active.generation, () => active.client.setDataRefValue(heading.id, value));
       this.recordOperation({ kind: 'write', ok: true, message: `Wrote heading ${value}` });
     } catch (error) {
       const avionixError = toAvionixError(error, { code: 'WRITE_FAILED', message: 'Write failed' });
@@ -278,7 +278,9 @@ export class SimulatorSession {
       return;
     }
     try {
-      await this.timed(() => active.client.activateCommand(active.headingUp.id, 0));
+      await this.timed(active.generation, () =>
+        active.client.activateCommand(active.headingUp.id, 0),
+      );
       this.recordOperation({
         kind: 'command',
         ok: true,
@@ -350,15 +352,22 @@ export class SimulatorSession {
     this.store.setState((prev) => ({ ...prev, lastOperation: { ...operation, at: this.now() } }));
   }
 
-  /** Times a request the app was going to make anyway; keeps the median of the last few. */
-  private async timed<T>(run: () => Promise<T>): Promise<T> {
+  /**
+   * Times a request the app was going to make anyway; keeps the median of the last few.
+   * `generation` is the one this request belongs to, so a sample from a flow the session has
+   * already moved on from is discarded instead of making a dead connection look responsive.
+   */
+  private async timed<T>(generation: number, run: () => Promise<T>): Promise<T> {
     const startedAt = this.now();
     const result = await run();
-    this.recordRoundTrip(this.now() - startedAt);
+    this.recordRoundTrip(generation, this.now() - startedAt);
     return result;
   }
 
-  private recordRoundTrip(elapsedMs: number): void {
+  private recordRoundTrip(generation: number, elapsedMs: number): void {
+    if (!this.isCurrent(generation)) {
+      return;
+    }
     this.roundTrips = [...this.roundTrips, Math.max(0, elapsedMs)].slice(-ROUND_TRIP_WINDOW);
     const sorted = [...this.roundTrips].sort((a, b) => a - b);
     const median = sorted[Math.floor(sorted.length / 2)] ?? null;
@@ -568,7 +577,7 @@ export class SimulatorSession {
     this.setStep((d) => ({ ...d, http: 'pending', capabilities: 'pending' }));
     let apiVersion: ApiVersion;
     try {
-      const capabilities = await this.timed(() => probeCapabilities(http));
+      const capabilities = await this.timed(generation, () => probeCapabilities(http));
       if (!this.isCurrent(generation)) {
         return false;
       }
@@ -692,13 +701,19 @@ export class SimulatorSession {
     }
 
     // Optional names must never fail the connect: a miss is recorded and left out of the
-    // subscription instead of throwing.
+    // subscription instead of throwing. Guarded throughout: `dataRefs.resolve` yields, and a
+    // disconnect() or fresh connect() landing here must not write diagnostics for a
+    // superseded generation.
     const optional: DataRefDescriptor[] = [];
     for (const name of OPTIONAL_DATAREF_NAMES) {
+      if (!this.isCurrent(generation)) {
+        break;
+      }
       this.setDataRefStep(name, 'pending');
       try {
-        optional.push(await dataRefs.resolve(name));
+        const descriptor = await dataRefs.resolve(name);
         if (this.isCurrent(generation)) {
+          optional.push(descriptor);
           this.setDataRefStep(name, 'ok');
         }
       } catch {
@@ -711,6 +726,14 @@ export class SimulatorSession {
     for (const descriptor of optional) {
       dataRefsById.set(descriptor.id, descriptor);
       dataRefsByName.set(descriptor.name, descriptor);
+    }
+    // Required resolution and the optional loop above both yield; a disconnect() or fresh
+    // connect() landing anywhere in that stretch must not install this.active for a
+    // generation that is no longer live, or its socket would never be torn down.
+    if (!this.isCurrent(generation)) {
+      unsubscribeClose();
+      client.disconnectWebSocket();
+      return false;
     }
 
     const unsubscribeUpdates = client.onDataRefUpdate((updates) => {
@@ -733,7 +756,7 @@ export class SimulatorSession {
 
     this.setStep((d) => ({ ...d, subscription: 'pending' }));
     try {
-      await this.timed(() =>
+      await this.timed(generation, () =>
         client.subscribeDataRefs([...dataRefsById.keys()].map((id) => ({ id }))),
       );
       if (!this.isCurrent(generation)) {
@@ -750,6 +773,9 @@ export class SimulatorSession {
           flightLoaded: true,
           lastConnectedAt: this.now(),
           readinessRetryAt: null,
+          // A session that reconnected did not end: clear whatever failure a prior attempt
+          // stamped here, or a healthy disconnect later would report that stale reason.
+          lastEndReason: null,
         },
       }));
       this.logger.info('session connected', {
