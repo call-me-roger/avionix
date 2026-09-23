@@ -119,4 +119,19 @@ describe('HealthMonitor', () => {
     monitor.start();
     expect(scheduler.pending).toBe(1);
   });
+
+  it('does not leave a timer armed when a subscriber calls stop() from within a tick', () => {
+    const { store, scheduler, monitor, setClock } = setup((s) => connected(s, 9_900));
+    // Settle the initial state without touching the scheduler.
+    monitor.refresh();
+    store.subscribe(() => {
+      monitor.stop();
+    });
+    monitor.start();
+    expect(scheduler.pending).toBe(1);
+    // Go stale so the next tick actually changes activity/live and notifies synchronously.
+    setClock(20_000);
+    scheduler.runNext();
+    expect(scheduler.pending).toBe(0);
+  });
 });

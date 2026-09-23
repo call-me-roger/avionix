@@ -87,6 +87,13 @@ export class HealthMonitor {
         return;
       }
       this.refresh();
+      if (!this.running) {
+        // A subscriber notified synchronously from refresh() (Store.setState notifies
+        // in-line) may have called stop() during this tick. stop() found nothing to
+        // cancel above, since we already nulled `cancel` — so re-arming here would leak
+        // a timer past stop(). Re-check after refresh(), not only before it.
+        return;
+      }
       this.schedule();
     }, this.tickMs);
   }
