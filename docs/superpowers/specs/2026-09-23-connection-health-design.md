@@ -194,6 +194,7 @@ export interface SessionHealth {
   activity: SimulatorActivity;
   lastHeartbeatValue: number | null;
   lastHeartbeatAt: number | null;      // wall clock of the last heartbeat *advance*
+  flightLoaded: boolean;
   live: boolean;
   roundTripMs: number | null;          // median of the last five samples
   roundTripAt: number | null;
@@ -205,6 +206,11 @@ export interface SessionHealth {
   readinessRetryAt: number | null;
 }
 ```
+
+The session writes only facts — heartbeat advances, `flightLoaded`, round-trip samples, retry
+timings — and the monitor derives `activity` and `live` from them. The paused reading is not a
+field: the monitor takes it from `telemetry['sim/time/paused']`, which is absent exactly when the
+DataRef did not resolve, so the unresolved case needs no special plumbing.
 
 `disconnect()` currently wipes `diagnostics`; it will instead retain the last diagnostics, set
 `lastEndedAt` and `lastEndReason`, and leave `lastConnectedAt` intact, so F-02 R11 — last known
