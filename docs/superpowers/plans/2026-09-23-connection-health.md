@@ -2463,7 +2463,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 |---|---|
 | R1 link state visible from any panel, within 1 s | 6, 8, 9 |
 | R2 age of the most recent update | 4, 8 |
-| R3 staleness threshold marks readouts not live | 1, 6, 8 |
+| R3 staleness threshold marks readouts not live | 1, 6, 8 (link-level "not live" marker only; marking each individual readout stale is F-04's half — see F-02's out-of-scope list and the spec) |
 | R4 heartbeat distinguishes paused from dead | 1, 4, 6 |
 | R5 no flight loaded keeps the link open and retries | 5 |
 | R6 retry attempt and budget, then failed with retry | 3, 4, 8 |

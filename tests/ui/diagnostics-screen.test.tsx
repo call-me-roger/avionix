@@ -1,7 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 
-import { ALL_DATAREF_NAMES, MVP_DATAREFS } from '@/application/mvp-bindings';
+import {
+  ALL_DATAREF_NAMES,
+  MVP_COMMAND_HEADING_UP,
+  MVP_DATAREFS,
+} from '@/application/mvp-bindings';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { createConnectionConfig } from '@/domain/connection/connection-config';
@@ -78,6 +82,16 @@ describe('DiagnosticsScreen', () => {
     expect(screen.getByText(/Live telemetry/)).toBeTruthy();
   });
 
+  it('names an unresolved command and the feature that needs it', async () => {
+    const base = initialSnapshot(ALL_DATAREF_NAMES, 5);
+    await renderScreen({
+      diagnostics: { ...base.diagnostics, command: 'failed' },
+    });
+    expect(
+      screen.getByText(`Control: ${MVP_COMMAND_HEADING_UP} (Heading control): failed`),
+    ).toBeTruthy();
+  });
+
   it('offers retry and disconnect', async () => {
     const { onRetry, onDisconnect } = await renderScreen(failedAtCapabilities());
     await fireEvent.press(screen.getByText('Retry'));
@@ -99,6 +113,17 @@ describe('DiagnosticsScreen', () => {
     expect(text).not.toContain('HTTP 403');
     expect(text).not.toMatch(/GET http/);
     expect(text).not.toContain('GET http://192.168.1.10:8086/api/capabilities failed: HTTP 403');
+  });
+
+  it('offers the shared summary as selectable text, hidden until asked for', async () => {
+    await renderScreen(failedAtCapabilities());
+    expect(screen.queryByText(/Avionix diagnostics/)).toBeNull();
+    await fireEvent.press(screen.getByText('Show diagnostics text'));
+    const text = screen.getByText(/Avionix diagnostics/);
+    expect(text).toBeTruthy();
+    expect(text.props.selectable).toBe(true);
+    expect(text.props.children).toContain('Target: 192.168.1.10:8086');
+    expect(text.props.children).not.toContain('HTTP 403');
   });
 
   it('still reports the last known state while disconnected', async () => {

@@ -3,13 +3,18 @@ import React from 'react';
 
 import type { DiscoverySnapshot } from '@/application/connector-discovery';
 import { ALL_DATAREF_NAMES } from '@/application/mvp-bindings';
-import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
+import {
+  type LastOperation,
+  type SessionSnapshot,
+  initialSnapshot,
+} from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { createConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError, type AvionixErrorCode } from '@/domain/errors/avionix-error';
 import { DiscoveredConnectors } from '@/features/connection/DiscoveredConnectors';
 import { DiagnosticsScreen } from '@/features/health/DiagnosticsScreen';
 import { LinkStatusBar } from '@/features/health/LinkStatusBar';
+import { ControlPanel } from '@/features/mvp/ControlPanel';
 import { ThemeProvider } from '@/theme/theme-context';
 
 const mockShareText = jest.fn(async (_text: string, _title: string) => undefined);
@@ -68,6 +73,21 @@ function discoverySnapshotFor(code: AvionixErrorCode): DiscoverySnapshot {
   };
 }
 
+/**
+ * The raw text is planted in `message` too, on purpose: `ControlPanel` must ignore it and
+ * render `failure` through `FailureNotice` instead, exactly as `simulator-session.ts` never
+ * does for a real `WRITE_FAILED`/`COMMAND_FAILED`.
+ */
+function lastOperationFor(code: AvionixErrorCode): LastOperation {
+  return {
+    kind: 'write',
+    ok: false,
+    message: RAW,
+    failure: { code, step: 'operation' },
+    at: 10_000,
+  };
+}
+
 describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
   it('is rendered as a cause and an action, not as its message', async () => {
     await render(
@@ -80,6 +100,12 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
           onDisconnect={jest.fn()}
         />
         <DiscoveredConnectors snapshot={discoverySnapshotFor(code)} enabled onSelect={jest.fn()} />
+        <ControlPanel
+          enabled
+          lastOperation={lastOperationFor(code)}
+          onWriteHeading={jest.fn()}
+          onHeadingUp={jest.fn()}
+        />
       </ThemeProvider>,
     );
     expect(screen.queryByText(new RegExp('http://'))).toBeNull();

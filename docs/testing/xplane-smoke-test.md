@@ -59,6 +59,7 @@ Record results at the bottom.
 | 30 | Disable "Accept incoming connections" in X-Plane, then connect | Diagnostics names the setting and how to enable it | |
 | 31 | Open diagnostics and share | The shared text has no token, no pairing code, no URL and no raw error | |
 | 32 | Park on the ramp with engines off for two minutes | Values stay marked live throughout | |
+| 33 | While connected mid-flight, return to the main menu in X-Plane (do not reload a flight) | Expected, not a bug: `flightLoaded`/"No flight loaded" is only set by the connect-time resolution path, so a mid-session return to the menu is not detected as that case. The heartbeat simply stops advancing, so the status bar reports "X-Plane is paused or not running" instead of a distinct "No flight loaded" message. Loading a flight again brings values back without reconnecting | |
 
 ## Failure hints
 

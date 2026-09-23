@@ -1,5 +1,5 @@
-import { BINDING_FEATURE } from '@/application/mvp-bindings';
-import type { SessionSnapshot, StepStatus } from '@/application/session-snapshot';
+import { BINDING_FEATURE, MVP_COMMAND_HEADING_UP } from '@/application/mvp-bindings';
+import type { ConnectorStep, SessionSnapshot, StepStatus } from '@/application/session-snapshot';
 import { explainFailure } from '@/domain/health/failure-explanation';
 import { ageMs, formatAge } from '@/domain/health/freshness';
 import { ACTIVITY_LABEL } from '@/domain/health/simulator-activity';
@@ -17,6 +17,19 @@ export function stepLabel(status: StepStatus): string {
       return 'not reached';
   }
 }
+
+/**
+ * What the connector probe verdict means, in words distinct from `stepLabel`'s pass/fail
+ * vocabulary. Shared with `DiagnosticsScreen` so the screen and the shared text never drift
+ * apart, the same reason `stepLabel` lives here rather than in the component.
+ */
+export const CONNECTOR_STEP_LABEL: Record<ConnectorStep, string> = {
+  idle: 'not checked yet',
+  pending: 'checking',
+  direct: 'not needed, talking to X-Plane directly',
+  pairing: 'needs pairing',
+  paired: 'paired',
+};
 
 /**
  * The support text the pilot can share. It is built only from codes, step outcomes and the
@@ -56,7 +69,7 @@ export function formatDiagnosticsSummary(snapshot: SessionSnapshot, now: number)
   lines.push('');
 
   lines.push('Steps');
-  lines.push(`  Connector: ${diagnostics.connector}`);
+  lines.push(`  Connector: ${CONNECTOR_STEP_LABEL[diagnostics.connector]}`);
   lines.push(`  Reachable: ${stepLabel(diagnostics.http)}`);
   lines.push(`  Capabilities: ${stepLabel(diagnostics.capabilities)}`);
   lines.push(`  Live data channel: ${stepLabel(diagnostics.websocket)}`);
@@ -64,7 +77,10 @@ export function formatDiagnosticsSummary(snapshot: SessionSnapshot, now: number)
     const feature = BINDING_FEATURE[name] ?? 'unknown feature';
     lines.push(`  Value ${name} (${feature}): ${stepLabel(status)}`);
   }
-  lines.push(`  Control: ${stepLabel(diagnostics.command)}`);
+  const commandFeature = BINDING_FEATURE[MVP_COMMAND_HEADING_UP] ?? 'unknown feature';
+  lines.push(
+    `  Control: ${MVP_COMMAND_HEADING_UP} (${commandFeature}): ${stepLabel(diagnostics.command)}`,
+  );
   lines.push(`  Subscription: ${stepLabel(diagnostics.subscription)}`);
 
   if (error !== null) {

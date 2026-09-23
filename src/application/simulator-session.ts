@@ -7,6 +7,7 @@ import {
 } from '@/application/mvp-bindings';
 import type { PairingTokenStore } from '@/application/pairing-token-store';
 import {
+  type FailureRef,
   type LastOperation,
   type SessionSnapshot,
   type StepStatus,
@@ -139,6 +140,10 @@ export class SimulatorSession {
 
   async connect(host: string, port: string | number): Promise<void> {
     this.teardown();
+    // A fresh connect (possibly to a different host) must not let samples from whatever was
+    // measured before contaminate this session's median. An automatic reconnect to the same
+    // host never calls connect(), so its samples are deliberately left alone.
+    this.roundTrips = [];
     const generation = this.nextGeneration();
     // Any previous state first returns to disconnected, then to connecting; both edges are in the table.
     this.store.setState((prev) => ({
@@ -186,6 +191,9 @@ export class SimulatorSession {
     this.pairInFlight = false;
     // The stored token is kept: only the connector revokes it.
     this.token = null;
+    // The buffer that fed the departing session's median must not survive to poison whatever
+    // is connected to next.
+    this.roundTrips = [];
     const endedAt = this.now();
     this.store.setState((prev) => ({
       ...prev,
@@ -197,10 +205,26 @@ export class SimulatorSession {
         nextRetryAt: null,
         readinessRetryAt: null,
         lastEndedAt: endedAt,
-        lastEndReason:
-          prev.error === null ? prev.health.lastEndReason : { code: prev.error.code, step: null },
+        lastEndReason: this.endReasonForDisconnect(prev),
       },
     }));
+  }
+
+  /**
+   * `markFailure` already recorded `{code, step}` in `lastEndReason` when the live session
+   * failed; disconnecting from that same failure (e.g. pressing Disconnect from `error`) must
+   * not throw the step away and fall back to the generic no-step advice. Only overwrite with a
+   * step-less reason when the code has actually changed — a disconnect from a state that never
+   * matched `prev.error` (or has none) — so the specific explanation survives.
+   */
+  private endReasonForDisconnect(prev: SessionSnapshot): FailureRef | null {
+    if (prev.error === null) {
+      return prev.health.lastEndReason;
+    }
+    if (prev.health.lastEndReason?.code === prev.error.code) {
+      return prev.health.lastEndReason;
+    }
+    return { code: prev.error.code, step: null };
   }
 
   /**
@@ -265,6 +289,7 @@ export class SimulatorSession {
         kind: 'write',
         ok: false,
         message: 'Heading must be between 0 and 360',
+        failure: null,
       });
       return;
     }
@@ -278,15 +303,28 @@ export class SimulatorSession {
         kind: 'write',
         ok: false,
         message: 'Heading dataref is not resolved',
+        failure: null,
       });
       return;
     }
     try {
       await this.timed(active.generation, () => active.client.setDataRefValue(heading.id, value));
-      this.recordOperation({ kind: 'write', ok: true, message: `Wrote heading ${value}` });
+      this.recordOperation({
+        kind: 'write',
+        ok: true,
+        message: `Wrote heading ${value}`,
+        failure: null,
+      });
     } catch (error) {
       const avionixError = toAvionixError(error, { code: 'WRITE_FAILED', message: 'Write failed' });
-      this.recordOperation({ kind: 'write', ok: false, message: avionixError.message });
+      // `message` keeps the raw AvionixError text for the logger only; the UI renders the
+      // failure through FailureNotice(code, step), never this string (F-02 R9).
+      this.recordOperation({
+        kind: 'write',
+        ok: false,
+        message: avionixError.message,
+        failure: { code: avionixError.code, step: 'operation' },
+      });
       // Writes go over authenticated HTTP, so this is a place the connector can disown us.
       this.returnToPairingIfUnauthorized(avionixError);
     }
@@ -305,13 +343,19 @@ export class SimulatorSession {
         kind: 'command',
         ok: true,
         message: `Activated ${MVP_COMMAND_HEADING_UP}`,
+        failure: null,
       });
     } catch (error) {
       const avionixError = toAvionixError(error, {
         code: 'COMMAND_FAILED',
         message: 'Command failed',
       });
-      this.recordOperation({ kind: 'command', ok: false, message: avionixError.message });
+      this.recordOperation({
+        kind: 'command',
+        ok: false,
+        message: avionixError.message,
+        failure: { code: avionixError.code, step: 'operation' },
+      });
       this.returnToPairingIfUnauthorized(avionixError);
     }
   }
@@ -363,7 +407,12 @@ export class SimulatorSession {
   private requireActive(kind: LastOperation['kind']): ActiveConnection | null {
     const active = this.active;
     if (active === null || this.store.getSnapshot().state !== 'connected') {
-      this.recordOperation({ kind, ok: false, message: 'Avionix is not connected to X-Plane' });
+      this.recordOperation({
+        kind,
+        ok: false,
+        message: 'Avionix is not connected to X-Plane',
+        failure: null,
+      });
       return null;
     }
     return active;

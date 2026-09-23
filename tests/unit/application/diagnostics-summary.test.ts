@@ -1,5 +1,5 @@
 import { formatDiagnosticsSummary } from '@/application/diagnostics-summary';
-import { ALL_DATAREF_NAMES } from '@/application/mvp-bindings';
+import { ALL_DATAREF_NAMES, MVP_COMMAND_HEADING_UP } from '@/application/mvp-bindings';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { createConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError } from '@/domain/errors/avionix-error';
@@ -72,5 +72,24 @@ describe('formatDiagnosticsSummary', () => {
     const text = formatDiagnosticsSummary(initialSnapshot(ALL_DATAREF_NAMES, 5), 10_000);
     expect(text).toContain('Avionix diagnostics');
     expect(text).toContain('no data yet');
+  });
+
+  it('names the failing command and the feature that needs it, like the DataRef rows', () => {
+    const base = initialSnapshot(ALL_DATAREF_NAMES, 5);
+    const text = formatDiagnosticsSummary(
+      { ...base, diagnostics: { ...base.diagnostics, command: 'failed' } },
+      10_000,
+    );
+    expect(text).toContain(`Control: ${MVP_COMMAND_HEADING_UP} (Heading control): failed`);
+  });
+
+  it('humanizes the connector step instead of printing the raw value', () => {
+    const base = initialSnapshot(ALL_DATAREF_NAMES, 5);
+    const text = formatDiagnosticsSummary(
+      { ...base, diagnostics: { ...base.diagnostics, connector: 'direct' } },
+      10_000,
+    );
+    expect(text).toContain('Connector: not needed, talking to X-Plane directly');
+    expect(text).not.toMatch(/Steps\n {2}Connector: direct/);
   });
 });

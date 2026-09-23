@@ -79,7 +79,10 @@ export interface TelemetrySample {
 export interface LastOperation {
   kind: 'write' | 'command';
   ok: boolean;
+  /** Success copy only. A failure is never described here — see `failure`. */
   message: string;
+  /** Set on a failure that came from an `AvionixError`; the only route to `FailureNotice`. */
+  failure: FailureRef | null;
   at: number;
 }
 

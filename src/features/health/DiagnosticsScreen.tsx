@@ -1,8 +1,12 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Button, View } from 'react-native';
 
-import { formatDiagnosticsSummary, stepLabel } from '@/application/diagnostics-summary';
-import { BINDING_FEATURE } from '@/application/mvp-bindings';
+import {
+  CONNECTOR_STEP_LABEL,
+  formatDiagnosticsSummary,
+  stepLabel,
+} from '@/application/diagnostics-summary';
+import { BINDING_FEATURE, MVP_COMMAND_HEADING_UP } from '@/application/mvp-bindings';
 import type { ConnectorStep, SessionSnapshot, StepStatus } from '@/application/session-snapshot';
 import { ageMs, formatAge } from '@/domain/health/freshness';
 import { ACTIVITY_LABEL } from '@/domain/health/simulator-activity';
@@ -18,19 +22,6 @@ function stepTone(status: StepStatus): 'danger' | 'success' | undefined {
   }
   return status === 'failed' ? 'danger' : undefined;
 }
-
-/**
- * What the connector probe verdict means, in words distinct from `stepLabel`'s pass/fail
- * vocabulary: this row sits right above "Reachable: ok" and friends, and a raw `idle` next to a
- * humanized `not reached` reads as two different systems, not one.
- */
-const CONNECTOR_STEP_LABEL: Record<ConnectorStep, string> = {
-  idle: 'not checked yet',
-  pending: 'checking',
-  direct: 'not needed, talking to X-Plane directly',
-  pairing: 'needs pairing',
-  paired: 'paired',
-};
 
 function connectorStepTone(step: ConnectorStep): 'danger' | 'success' | undefined {
   return step === 'direct' || step === 'paired' ? 'success' : undefined;
@@ -59,10 +50,13 @@ export function DiagnosticsScreen({
   const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
   const { health, diagnostics, config, capabilities, connector, error } = snapshot;
+  const summary = formatDiagnosticsSummary(snapshot, now);
+  const [showText, setShowText] = useState(false);
 
   const onShare = useCallback(() => {
-    void shareText(formatDiagnosticsSummary(snapshot, now), 'Avionix diagnostics');
-  }, [snapshot, now]);
+    void shareText(summary, 'Avionix diagnostics');
+  }, [summary]);
+  const onToggleText = useCallback(() => setShowText((open) => !open), []);
 
   const apiVersions = capabilities?.rawApiVersions.join(', ') ?? 'unknown';
   const apiUsing = snapshot.apiVersion === null ? '' : ` (using ${snapshot.apiVersion})`;
@@ -106,9 +100,9 @@ export function DiagnosticsScreen({
           {`${name} (${BINDING_FEATURE[name] ?? 'unknown feature'}): ${stepLabel(status)}`}
         </BodyText>
       ))}
-      <BodyText
-        tone={stepTone(diagnostics.command)}
-      >{`Control: ${stepLabel(diagnostics.command)}`}</BodyText>
+      <BodyText tone={stepTone(diagnostics.command)}>
+        {`Control: ${MVP_COMMAND_HEADING_UP} (${BINDING_FEATURE[MVP_COMMAND_HEADING_UP] ?? 'unknown feature'}): ${stepLabel(diagnostics.command)}`}
+      </BodyText>
       <BodyText tone={stepTone(diagnostics.subscription)}>
         {`Subscription: ${stepLabel(diagnostics.subscription)}`}
       </BodyText>
@@ -132,6 +126,18 @@ export function DiagnosticsScreen({
         <Button title="Disconnect" onPress={onDisconnect} color={theme.colors.primary} />
         <Button title="Share diagnostics" onPress={onShare} color={theme.colors.primary} />
       </View>
+
+      {/*
+       * The web share fallback can silently fail (no Clipboard API on a plain-http LAN
+       * origin), and this is also what makes the redaction directly inspectable: selectable
+       * text the pilot can read and copy by hand, independent of the OS share sheet.
+       */}
+      <Button
+        title={showText ? 'Hide diagnostics text' : 'Show diagnostics text'}
+        onPress={onToggleText}
+        color={theme.colors.primary}
+      />
+      {showText ? <BodyText selectable>{summary}</BodyText> : null}
     </Section>
   );
 }

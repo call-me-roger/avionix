@@ -455,6 +455,7 @@ describe('SimulatorSession operations', () => {
       kind: 'write',
       ok: true,
       message: 'Wrote heading 95',
+      failure: null,
       at: 1234,
     });
   });
@@ -481,7 +482,10 @@ describe('SimulatorSession operations', () => {
     expect(snapshot().lastOperation).toMatchObject({
       kind: 'write',
       ok: false,
+      // The raw AvionixError text is kept here only for the logger; ControlPanel must never
+      // render it (F-02 R9) — it renders `failure` through FailureNotice instead.
       message: expect.stringContaining('read only'),
+      failure: { code: 'WRITE_FAILED', step: 'operation' },
     });
     expect(snapshot().state).toBe('connected');
   });
@@ -491,7 +495,25 @@ describe('SimulatorSession operations', () => {
     await session.connect('192.168.1.100', 8086);
     await session.activateHeadingUp();
     expect(clients[0]?.activations).toEqual([9]);
-    expect(snapshot().lastOperation).toMatchObject({ kind: 'command', ok: true });
+    expect(snapshot().lastOperation).toMatchObject({
+      kind: 'command',
+      ok: true,
+      failure: null,
+    });
+  });
+
+  it('records a failed command activation with a failure ref, not a raw message', async () => {
+    const { session, clients, snapshot } = setup();
+    await session.connect('192.168.1.100', 8086);
+    clients[0]?.activateCommand.mockRejectedValueOnce(
+      new AvionixError({ code: 'COMMAND_FAILED', message: 'X-Plane answered HTTP 500' }),
+    );
+    await session.activateHeadingUp();
+    expect(snapshot().lastOperation).toMatchObject({
+      kind: 'command',
+      ok: false,
+      failure: { code: 'COMMAND_FAILED', step: 'operation' },
+    });
   });
 
   it('refuses operations while not connected', async () => {
@@ -500,6 +522,7 @@ describe('SimulatorSession operations', () => {
     expect(snapshot().lastOperation).toMatchObject({
       ok: false,
       message: expect.stringContaining('not connected'),
+      failure: null,
     });
   });
 });
@@ -1238,6 +1261,79 @@ describe('health facts', () => {
     expect(snapshot.health.lastConnectedAt).not.toBeNull();
     expect(snapshot.health.lastEndedAt).not.toBeNull();
     expect(snapshot.diagnostics.websocket).toBe('ok');
+  });
+
+  it('does not let round-trip samples from a previous host survive into a new connect', async () => {
+    // Two timed calls per connect (capabilities, then subscribeDataRefs); the clock only moves
+    // inside subscribeDataRefs, so each connect contributes samples [0, elapsedMs].
+    const now = new ManualClock();
+    const fast = new FakeClient();
+    fast.subscribeDataRefs = jest.fn(async (subs: Array<{ id: number }>) => {
+      now.set(now.get() + 5);
+      fast.subscribed.push(...subs.map((s) => s.id));
+    });
+    const slow = new FakeClient();
+    slow.subscribeDataRefs = jest.fn(async (subs: Array<{ id: number }>) => {
+      now.set(now.get() + 3000);
+      slow.subscribed.push(...subs.map((s) => s.id));
+    });
+    const { session } = setup({ clients: [fast, slow], now: now.get });
+
+    await session.connect('192.168.1.10', '8086');
+    // sorted [0, 5], median (index 1) is 5.
+    expect(session.store.getSnapshot().health.roundTripMs).toBe(5);
+
+    session.disconnect();
+    await session.connect('192.168.1.20', '8086');
+
+    // Without the fix the buffer would still hold the fast host's [0, 5], and the combined
+    // sorted [0, 0, 5, 3000] would median to 5 — reporting the slow host as fast.
+    expect(session.store.getSnapshot().health.roundTripMs).toBe(3000);
+  });
+
+  it('keeps the failing step on disconnect when the code has not changed', async () => {
+    const { session, snapshot } = setup({
+      routes: { '/api/capabilities': { status: 403, body: '' } },
+    });
+    await session.connect('192.168.1.10', '8086');
+    expect(snapshot().error?.code).toBe('INCOMING_TRAFFIC_DISABLED');
+    expect(snapshot().health.lastEndReason).toEqual({
+      code: 'INCOMING_TRAFFIC_DISABLED',
+      step: 'capabilities',
+    });
+
+    session.disconnect();
+
+    // The specific "capabilities" step must survive: overwriting it with `step: null` would
+    // downgrade the explanation from "X-Plane is reachable but refused to describe itself" to
+    // the generic "X-Plane refused the request".
+    expect(snapshot().health.lastEndReason).toEqual({
+      code: 'INCOMING_TRAFFIC_DISABLED',
+      step: 'capabilities',
+    });
+  });
+
+  it('falls back to a step-less reason on disconnect when the code has changed', async () => {
+    const client = new FakeClient();
+    client.connectError = new AvionixError({ code: 'WEBSOCKET_ERROR', message: 'refused' });
+    const { session, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.10', '8086');
+    expect(snapshot().health.lastEndReason).toEqual({
+      code: 'WEBSOCKET_ERROR',
+      step: 'websocket',
+    });
+
+    // Force a mismatch between `error.code` and `health.lastEndReason.code` — not reachable
+    // through the session's own API, but exactly the condition `endReasonForDisconnect` must
+    // still handle correctly: fall back to a step-less reason rather than keep a stale step.
+    session.store.setState((prev) => ({
+      ...prev,
+      error: new AvionixError({ code: 'TIMEOUT', message: 'no answer' }),
+    }));
+
+    session.disconnect();
+
+    expect(snapshot().health.lastEndReason).toEqual({ code: 'TIMEOUT', step: null });
   });
 });
 

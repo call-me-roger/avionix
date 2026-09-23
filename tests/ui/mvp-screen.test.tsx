@@ -150,6 +150,7 @@ describe('MvpScreen', () => {
           kind: 'command',
           ok: true,
           message: 'Activated sim/autopilot/heading_up',
+          failure: null,
           at: 1,
         },
       }));
@@ -159,6 +160,29 @@ describe('MvpScreen', () => {
         screen.getByText('Last operation: OK Activated sim/autopilot/heading_up'),
       ).toBeTruthy(),
     );
+  });
+
+  it('renders a failed operation as a cause and an action, never the raw protocol message', async () => {
+    const { services, store } = makeServices({ state: 'connected' });
+    await renderScreen(services);
+    await act(async () => {
+      store.setState((prev) => ({
+        ...prev,
+        lastOperation: {
+          kind: 'write',
+          ok: false,
+          message:
+            'Writing dataref 12 failed: X-Plane answered HTTP 403 for PATCH /api/v2/datarefs/12/value',
+          failure: { code: 'HTTP_ERROR', step: 'operation' },
+          at: 1,
+        },
+      }));
+    });
+    await waitFor(() => expect(screen.getByText('Last operation: FAILED')).toBeTruthy());
+    expect(screen.getByText('X-Plane refused the request.')).toBeTruthy();
+    expect(screen.queryByText(/HTTP 403/)).toBeNull();
+    expect(screen.queryByText(/\/api\/v2\/datarefs/)).toBeNull();
+    expect(screen.queryByText(/PATCH/)).toBeNull();
   });
 
   it('calls disconnect', async () => {
