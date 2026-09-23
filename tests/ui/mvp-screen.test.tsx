@@ -2,12 +2,13 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import React from 'react';
 
 import { ConnectorDiscovery } from '@/application/connector-discovery';
-import { MVP_DATAREFS, MVP_DATAREF_NAMES } from '@/application/mvp-bindings';
+import { ALL_DATAREF_NAMES, MVP_DATAREFS } from '@/application/mvp-bindings';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
 import { AvionixError } from '@/domain/errors/avionix-error';
+import { LINK_LABEL } from '@/features/health/LinkStatusBar';
 import { MvpScreen } from '@/features/mvp/MvpScreen';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { ThemeProvider } from '@/theme/theme-context';
@@ -20,7 +21,10 @@ function makeServices(
   snapshot: Partial<SessionSnapshot> = {},
   browser: FakeServiceBrowser = createFakeServiceBrowser(),
 ) {
-  const store = new Store<SessionSnapshot>({ ...initialSnapshot(MVP_DATAREF_NAMES), ...snapshot });
+  const store = new Store<SessionSnapshot>({
+    ...initialSnapshot(ALL_DATAREF_NAMES, 5),
+    ...snapshot,
+  });
   const session = {
     store,
     connect: jest.fn(async () => undefined),
@@ -32,12 +36,14 @@ function makeServices(
     activateHeadingUp: jest.fn(async () => undefined),
   };
   const discovery = new ConnectorDiscovery({ browser, logger: silentLogger });
+  const healthMonitor = { start: jest.fn(), stop: jest.fn(), refresh: jest.fn() };
   const services: AppServices = {
     session,
     discovery,
     settingsStorage: createMemorySettingsStorage(),
+    healthMonitor,
   };
-  return { services, session, store, browser };
+  return { services, session, store, browser, healthMonitor };
 }
 
 async function renderScreen(services: AppServices, systemScheme: 'light' | 'dark' = 'light') {
@@ -55,7 +61,7 @@ describe('MvpScreen', () => {
     const { services, session } = makeServices();
     await renderScreen(services);
     await waitFor(() => expect(screen.getByDisplayValue('8080')).toBeTruthy());
-    expect(screen.getByText('Status: disconnected')).toBeTruthy();
+    expect(screen.getByText(LINK_LABEL.disconnected)).toBeTruthy();
     await fireEvent.changeText(screen.getByLabelText('X-Plane host'), '192.168.1.100');
     await fireEvent.press(screen.getByText('Connect'));
     await waitFor(() => expect(session.connect).toHaveBeenCalledWith('192.168.1.100', '8080'));
@@ -90,14 +96,15 @@ describe('MvpScreen', () => {
       },
     });
     await renderScreen(services);
-    await waitFor(() => expect(screen.getByText('Status: connected')).toBeTruthy());
-    expect(screen.getByText('X-Plane version: 12.4.0')).toBeTruthy();
-    expect(screen.getByText('API versions: v1, v2, v3 (using v3)')).toBeTruthy();
-    expect(screen.getByText('WebSocket: YES')).toBeTruthy();
-    expect(screen.getByText('Subscription: YES')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(LINK_LABEL.connected)).toBeTruthy());
     expect(screen.getByText('124.3')).toBeTruthy();
     expect(screen.getByText('270')).toBeTruthy();
     expect(screen.getByText('Disconnect')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('link-status-bar'));
+    expect(screen.getByText('X-Plane: 12.4.0')).toBeTruthy();
+    expect(screen.getByText('API: v1, v2, v3 (using v3)')).toBeTruthy();
+    expect(screen.getByText('Live data channel: ok')).toBeTruthy();
+    expect(screen.getByText('Subscription: ok')).toBeTruthy();
   });
 
   it('shows the error message and the failing step', async () => {
@@ -122,11 +129,10 @@ describe('MvpScreen', () => {
       },
     });
     await renderScreen(services);
-    await waitFor(() => expect(screen.getByText('Status: error')).toBeTruthy());
-    expect(
-      screen.getByText('INCOMING_TRAFFIC_DISABLED: X-Plane refused the request (HTTP 403).'),
-    ).toBeTruthy();
-    expect(screen.getByText('Capabilities: NO')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(LINK_LABEL.error)).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('link-status-bar'));
+    expect(screen.getByText('X-Plane is not accepting network connections.')).toBeTruthy();
+    expect(screen.getByText('Capabilities: failed')).toBeTruthy();
   });
 
   it('writes the heading and activates the command, showing the last operation', async () => {
@@ -233,7 +239,7 @@ describe('MvpScreen', () => {
     it('hides the section while connected and shows it again after disconnect', async () => {
       const { services, store, browser } = makeServices({ state: 'connected' });
       await renderScreen(services);
-      await waitFor(() => expect(screen.getByText('Status: connected')).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(LINK_LABEL.connected)).toBeTruthy());
       expect(screen.queryByText('Connectors on this network')).toBeNull();
       expect(browser.browseCalls).toHaveLength(0);
       await act(async () => {
@@ -323,9 +329,8 @@ describe('MvpScreen pairing mode', () => {
     await renderScreen(services);
     await fireEvent.changeText(screen.getByTestId('pairing-code'), '000000');
     await fireEvent.press(screen.getByText('Pair'));
-    await waitFor(() =>
-      expect(screen.getByText('Wrong code, check the connector window.')).toBeTruthy(),
-    );
+    await fireEvent.press(screen.getByTestId('link-status-bar'));
+    await waitFor(() => expect(screen.getByText('That code was not accepted.')).toBeTruthy());
     await waitFor(() => expect(screen.getByTestId('pairing-code').props.value).toBe(''));
   });
 
@@ -369,10 +374,10 @@ describe('MvpScreen pairing mode', () => {
   });
 
   it.each([
-    ['PAIRING_FAILED', 'Wrong code, check the connector window.'],
-    ['PAIRING_RATE_LIMITED', 'Too many attempts, wait a minute and try again.'],
-    ['UNAUTHORIZED', 'The connector no longer accepts this device, pair again.'],
-    ['PAIRING_REQUIRED', 'This connector needs pairing.'],
+    ['PAIRING_FAILED', 'That code was not accepted.'],
+    ['PAIRING_RATE_LIMITED', 'Too many pairing attempts.'],
+    ['UNAUTHORIZED', 'The connector no longer accepts this device.'],
+    ['PAIRING_REQUIRED', 'This connector needs to be paired with this device first.'],
   ] as const)('renders plain text for %s', async (code, text) => {
     const { services } = makeServices({
       state: 'pairing',
@@ -380,8 +385,10 @@ describe('MvpScreen pairing mode', () => {
       error: new AvionixError({ code, message: 'raw protocol message' }),
     });
     await renderScreen(services);
+    await fireEvent.press(screen.getByTestId('link-status-bar'));
     await waitFor(() => expect(screen.getByText(text)).toBeTruthy());
     expect(screen.queryByText(`${code}: raw protocol message`)).toBeNull();
+    expect(screen.queryByText(/raw protocol message/)).toBeNull();
   });
 
   it('shows the connector diagnostics row', async () => {
@@ -403,6 +410,7 @@ describe('MvpScreen pairing mode', () => {
       },
     });
     await renderScreen(services);
-    await waitFor(() => expect(screen.getByText('Connector: PAIRED')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('link-status-bar'));
+    await waitFor(() => expect(screen.getByText('Connector: paired')).toBeTruthy());
   });
 });

@@ -2,11 +2,12 @@ import React, { act } from 'react';
 import { type Root, createRoot } from 'react-dom/client';
 
 import { ConnectorDiscovery } from '@/application/connector-discovery';
-import { MVP_DATAREF_NAMES } from '@/application/mvp-bindings';
+import { ALL_DATAREF_NAMES } from '@/application/mvp-bindings';
 import { initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
+import { LINK_LABEL } from '@/features/health/LinkStatusBar';
 import { MvpScreen } from '@/features/mvp/MvpScreen';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { ThemeProvider } from '@/theme/theme-context';
@@ -27,13 +28,14 @@ function services(): AppServices {
       logger: silentLogger,
     }),
     session: {
-      store: new Store(initialSnapshot(MVP_DATAREF_NAMES)),
+      store: new Store(initialSnapshot(ALL_DATAREF_NAMES, 5)),
       connect: async () => undefined,
       disconnect: () => undefined,
       pair: async () => undefined,
       writeHeading: async () => undefined,
       activateHeadingUp: async () => undefined,
     },
+    healthMonitor: { start: () => undefined, stop: () => undefined, refresh: () => undefined },
   };
 }
 
@@ -71,7 +73,7 @@ describe('MvpScreen on react-native-web', () => {
     });
     const text = container.textContent ?? '';
     expect(text).toContain('Avionix');
-    expect(text).toContain('Status: disconnected');
+    expect(text).toContain(LINK_LABEL.disconnected);
     expect(container.querySelector('[aria-label="Theme Dark"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="mvp-screen"]')).not.toBeNull();
   });
@@ -101,7 +103,7 @@ describe('MvpScreen on react-native-web', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     const text = container.textContent ?? '';
-    expect(text).toContain('Status: pairing');
+    expect(text).toContain(LINK_LABEL.pairing);
     expect(text).toContain('Sim PC needs pairing.');
     expect(container.querySelector('[data-testid="pairing-code"]')).not.toBeNull();
   });

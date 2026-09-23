@@ -60,12 +60,16 @@ export function LinkStatusBar({
     state === 'reconnecting'
       ? `Reconnecting, attempt ${snapshot.reconnectAttempt} of ${health.reconnectBudget}`
       : null;
+  // The Pressable's accessibilityLabel collapses the whole subtree to one announced string, so
+  // the retry line rendered below as a sibling BodyText is invisible to a screen reader unless
+  // it is folded into the label too.
+  const retryLabelSuffix = retry === null ? '' : ` ${retry}.`;
 
   return (
     <Pressable
       testID="link-status-bar"
       accessibilityRole="button"
-      accessibilityLabel={`${LINK_LABEL[state]}. ${activity}. Values ${liveness.toLowerCase()}, updated ${age}. Open diagnostics.`}
+      accessibilityLabel={`${LINK_LABEL[state]}. ${activity}. Values ${liveness.toLowerCase()}, updated ${age}.${retryLabelSuffix} Open diagnostics.`}
       onPress={onOpenDiagnostics}
       style={styles.bar}
     >

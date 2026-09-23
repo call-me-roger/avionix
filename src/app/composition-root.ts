@@ -1,5 +1,6 @@
 import type { AppServices } from '@/app/services-context';
 import { ConnectorDiscovery } from '@/application/connector-discovery';
+import { HealthMonitor } from '@/application/health-monitor';
 import { createPairingTokenStore } from '@/application/pairing-token-store';
 import { SimulatorSession } from '@/application/simulator-session';
 import { httpOrigin } from '@/domain/connection/endpoints';
@@ -31,5 +32,6 @@ export function createAppServices(): AppServices {
     browser: createPlatformServiceBrowser(discoveryLogger),
     logger: discoveryLogger,
   });
-  return { session, discovery, settingsStorage };
+  const healthMonitor = new HealthMonitor({ store: session.store });
+  return { session, discovery, settingsStorage, healthMonitor };
 }

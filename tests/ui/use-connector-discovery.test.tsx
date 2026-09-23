@@ -26,6 +26,7 @@ function setup() {
       writeHeading: async () => undefined,
       activateHeadingUp: async () => undefined,
     },
+    healthMonitor: { start: jest.fn(), stop: jest.fn(), refresh: jest.fn() },
   };
   const wrapper = ({ children }: { children: React.ReactNode }) => (
     <ServicesProvider services={services}>{children}</ServicesProvider>

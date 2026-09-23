@@ -3,9 +3,9 @@ import { ScrollView, Text } from 'react-native';
 
 import type { DiscoveredConnector } from '@/domain/discovery/discovered-connector';
 import { ConnectionForm } from '@/features/connection/ConnectionForm';
-import { ConnectionStatus } from '@/features/connection/ConnectionStatus';
 import { DiscoveredConnectors } from '@/features/connection/DiscoveredConnectors';
-import { DiagnosticsPanel } from '@/features/diagnostics/DiagnosticsPanel';
+import { DiagnosticsScreen } from '@/features/health/DiagnosticsScreen';
+import { LinkStatusBar } from '@/features/health/LinkStatusBar';
 import { ControlPanel } from '@/features/mvp/ControlPanel';
 import { TelemetryPanel } from '@/features/mvp/TelemetryPanel';
 import { useConnectionSettings } from '@/hooks/useConnectionSettings';
@@ -33,11 +33,14 @@ export function MvpScreen() {
   const discovery = useConnectorDiscovery(snapshot.state);
   const styles = useThemedStyles(makeStyles);
   const [now, setNow] = useState(() => Date.now());
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  const onToggleDiagnostics = useCallback(() => setShowDiagnostics((open) => !open), []);
 
   const onConnect = useCallback(() => {
     void settings.persist();
@@ -69,6 +72,7 @@ export function MvpScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.heading}>Avionix</Text>
+      <LinkStatusBar snapshot={snapshot} now={now} onOpenDiagnostics={onToggleDiagnostics} />
       <ThemeToggle />
       <ConnectionForm
         host={settings.host}
@@ -86,8 +90,14 @@ export function MvpScreen() {
         enabled={isDiscoveryState(snapshot.state)}
         onSelect={onSelectConnector}
       />
-      <ConnectionStatus snapshot={snapshot} />
-      <DiagnosticsPanel snapshot={snapshot} />
+      {showDiagnostics ? (
+        <DiagnosticsScreen
+          snapshot={snapshot}
+          now={now}
+          onRetry={onConnect}
+          onDisconnect={disconnect}
+        />
+      ) : null}
       <TelemetryPanel snapshot={snapshot} now={now} />
       <ControlPanel
         enabled={snapshot.state === 'connected'}

@@ -49,6 +49,14 @@ describe('LinkStatusBar', () => {
     expect(screen.getByText('Reconnecting, attempt 2 of 5')).toBeTruthy();
   });
 
+  it('announces the retry attempt in the accessibility label too, not only the visible line', async () => {
+    await renderBar({ state: 'reconnecting', reconnectAttempt: 2 });
+    expect(screen.getByText('Reconnecting, attempt 2 of 5')).toBeTruthy();
+    expect(
+      screen.getByLabelText(/Reconnecting\..*Reconnecting, attempt 2 of 5\..*Open diagnostics\./s),
+    ).toBeTruthy();
+  });
+
   it('opens diagnostics when tapped', async () => {
     const onOpen = await renderBar(
       connected({ activity: 'running', live: true, lastHeartbeatAt: 9_900 }),
