@@ -108,6 +108,15 @@ Everything that crosses into the application layer is an `AvionixError` with a s
 ...), a `retryable` flag, and the original X-Plane `error_code` in `simulatorErrorCode` when
 available. Raw exceptions never reach the UI.
 
+### Error presentation
+
+`AvionixError` keeps its raw `message`, `cause` and `httpStatus` for the logger. Nothing in
+`src/features` may render them. The only route from a failure to the screen is
+`explainFailure(code, step)` in `src/domain/health/failure-explanation.ts`, which returns a
+one-line cause and a one-line action. `tests/ui/error-text-guard.test.tsx` enforces this for
+every error code, and `tests/unit/application/diagnostics-summary.test.ts` enforces it for the
+shareable summary. A new error code needs an entry in the table; there is no fallback string.
+
 ## Multi-device
 
 Each device runs its own `SimulatorSession` and its own WebSocket to X-Plane. There is no Avionix

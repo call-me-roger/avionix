@@ -53,6 +53,12 @@ Record results at the bottom.
 | 24 | Expo Go device, disconnected | The section shows "Connector discovery needs the Avionix development build." and no rows | |
 | 25 | iOS only: Settings → Avionix → Local Network off, reopen the app | No rows and no error; turning the toggle back on and reopening the app lists the connector again | |
 | 26 | Android, if "Discovery failed" ever appears: background the app, then foreground it | The section shows "Looking for connectors…" and lists the connector again | |
+| 27 | Connect, then pause X-Plane | The status bar says "X-Plane is paused", not "Not live" alone | |
+| 28 | Connect while X-Plane sits at the main menu | Link stays connected, status bar says "No flight loaded in X-Plane"; starting a flight brings values in within ~5 s without reconnecting | |
+| 29 | Pull Wi-Fi mid-flight | Status bar shows "Reconnecting, attempt N of 5"; restoring Wi-Fi returns live values | |
+| 30 | Disable "Accept incoming connections" in X-Plane, then connect | Diagnostics names the setting and how to enable it | |
+| 31 | Open diagnostics and share | The shared text has no token, no pairing code, no URL and no raw error | |
+| 32 | Park on the ramp with engines off for two minutes | Values stay marked live throughout | |
 
 ## Failure hints
 
