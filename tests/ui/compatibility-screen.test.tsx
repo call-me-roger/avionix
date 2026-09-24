@@ -66,6 +66,19 @@ describe('CompatibilityScreen', () => {
     expect(screen.getByText(/some controls may have moved/)).toBeTruthy();
   });
 
+  it('shows which aircraft versions the profile was tested with', async () => {
+    await renderScreen({
+      state: 'connected',
+      compatibility: { ...degraded, testedWith: ['4.2', '4.3'] },
+    });
+    expect(screen.getByText('Tested with 4.2, 4.3')).toBeTruthy();
+  });
+
+  it('shows no tested-with line when the profile declares none', async () => {
+    await renderScreen({ state: 'connected', compatibility: degraded });
+    expect(screen.queryByText(/^Tested with/)).toBeNull();
+  });
+
   it('names every missing binding with its purpose and why it cannot be used', async () => {
     await renderScreen({ state: 'connected', compatibility: degraded });
     expect(screen.getByText('Heading control')).toBeTruthy();

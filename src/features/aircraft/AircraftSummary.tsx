@@ -1,13 +1,14 @@
 import React from 'react';
-import { Button } from 'react-native';
+import { Pressable } from 'react-native';
 
 import type { SessionSnapshot } from '@/application/session-snapshot';
 import { identityLabel } from '@/domain/aircraft/aircraft-identity';
 import { type FeatureAvailability, summariseAvailability } from '@/domain/aircraft/availability';
 import { SELECTION_LABEL } from '@/domain/aircraft/profile-selection';
 import { ageMs, formatAge } from '@/domain/health/freshness';
-import { BodyText, Section, SectionTitle } from '@/theme/primitives';
-import { useTheme } from '@/theme/theme-context';
+import { BodyText, SectionTitle } from '@/theme/primitives';
+import { useThemedStyles } from '@/theme/theme-context';
+import type { Theme } from '@/theme/tokens';
 
 export const UNIDENTIFIED_LABEL = 'X-Plane did not report which aircraft is loaded';
 
@@ -18,9 +19,26 @@ function verdictTone(features: readonly FeatureAvailability[]): 'danger' | 'succ
   return features.every((feature) => feature.status === 'available') ? 'success' : undefined;
 }
 
+const makeStyles = (theme: Theme) => ({
+  bar: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderWidth: 1,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
+    // Matches LinkStatusBar's house rule: comfortably above the 44 pt minimum touch target.
+    minHeight: 48,
+    gap: theme.spacing.xs,
+  },
+});
+
 /**
  * What the pilot reads at a glance: which aircraft, which profile, and whether anything is
- * missing. The detail — and every DataRef name — lives one tap away in the compatibility view.
+ * missing. Like `LinkStatusBar`, the whole row is the pressable and the action is folded into
+ * its own accessibility label — a nested control inside a plain `View` would either collapse
+ * for a screen reader or never announce the label at all, leaving no non-visual way to open the
+ * compatibility view.
  */
 export function AircraftSummary({
   snapshot,
@@ -31,7 +49,7 @@ export function AircraftSummary({
   now: number;
   onOpenCompatibility: () => void;
 }) {
-  const theme = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const { compatibility, state } = snapshot;
   const checked = compatibility.checkedAt !== null;
   const aircraft = identityLabel(compatibility.identity) ?? UNIDENTIFIED_LABEL;
@@ -44,11 +62,14 @@ export function AircraftSummary({
       : `Checked ${formatAge(ageMs(compatibility.checkedAt, now))} — not current`;
 
   return (
-    <Section
+    <Pressable
       testID="aircraft-summary"
+      accessibilityRole="button"
       accessibilityLabel={`Aircraft: ${aircraft}. Profile ${profile}. ${verdict}.${
         currency === null ? '' : ` ${currency}.`
-      }`}
+      } Open compatibility details.`}
+      onPress={onOpenCompatibility}
+      style={styles.bar}
     >
       <SectionTitle>Aircraft</SectionTitle>
       <BodyText>{aircraft}</BodyText>
@@ -57,11 +78,7 @@ export function AircraftSummary({
         {verdict}
       </BodyText>
       {currency === null ? null : <BodyText muted>{currency}</BodyText>}
-      <Button
-        title="Compatibility details"
-        onPress={onOpenCompatibility}
-        color={theme.colors.primary}
-      />
-    </Section>
+      <BodyText>Compatibility details</BodyText>
+    </Pressable>
   );
 }

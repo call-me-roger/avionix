@@ -78,7 +78,11 @@ describe('AircraftSummary', () => {
 
   it('opens the compatibility view', async () => {
     const onOpen = await renderSummary({ state: 'connected', compatibility: identified });
-    fireEvent.press(screen.getByText('Compatibility details'));
+    expect(screen.getByText('Compatibility details')).toBeTruthy();
+    const row = screen.getByLabelText(
+      /Cessna 172 SP \(C172\) · N172SP[\s\S]*Open compatibility details\.$/,
+    );
+    fireEvent.press(row);
     expect(onOpen).toHaveBeenCalled();
   });
 
