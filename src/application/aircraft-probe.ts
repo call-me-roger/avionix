@@ -140,9 +140,9 @@ export async function probeBindings(
       status: readOnly ? 'readOnly' : 'ok',
     };
     dataRefs.push(dataRef);
-    if (!readOnly) {
-      resolved += 1;
-    }
+    // Resolved means the name was found, whether or not it is locked: `missing` is the only
+    // status that costs the readiness flag below.
+    resolved += 1;
   }
   return {
     results,

@@ -221,4 +221,23 @@ describe('probeBindings', () => {
     };
     await expect(probeBindings(failing, bindings)).rejects.toThrow('network down');
   });
+
+  it('does not count a resolved-but-locked binding as missing', async () => {
+    const lockedOnly: readonly BindingSpec[] = [
+      { kind: 'dataref', name: 'locked', required: true, write: true, purpose: 'Locked' },
+      { kind: 'dataref', name: 'locked2', required: true, write: true, purpose: 'Locked 2' },
+    ];
+    const probe = await probeBindings(
+      fakeClient({
+        dataRefs: {
+          locked: { id: 2, name: 'locked', valueType: 'float', isWritable: false },
+          locked2: { id: 4, name: 'locked2', valueType: 'float', isWritable: false },
+        },
+      }),
+      lockedOnly,
+    );
+    expect(probe.results.locked?.status).toBe('readOnly');
+    expect(probe.results.locked2?.status).toBe('readOnly');
+    expect(probe.allMissing).toBe(false);
+  });
 });

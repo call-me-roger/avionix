@@ -20,7 +20,7 @@ export async function mapWithConcurrency<T, R>(
       }
       const item = items[index];
       if (item === undefined) {
-        return;
+        continue;
       }
       results[index] = await run(item);
     }
