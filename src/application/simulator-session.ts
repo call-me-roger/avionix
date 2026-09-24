@@ -16,6 +16,7 @@ import {
   type LastOperation,
   type SessionSnapshot,
   type StepStatus,
+  type TelemetrySample,
   initialDiagnostics,
   initialSnapshot,
 } from '@/application/session-snapshot';
@@ -23,6 +24,7 @@ import { Store } from '@/application/store';
 import { isIdentified } from '@/domain/aircraft/aircraft-identity';
 import type { BindingResults } from '@/domain/aircraft/availability';
 import { deriveAvailability } from '@/domain/aircraft/availability';
+import { identityFieldFor } from '@/domain/aircraft/identity-datarefs';
 import type { AircraftProfile } from '@/domain/aircraft/profile';
 import { commandBindingOf, profileBindings, writeBindingOf } from '@/domain/aircraft/profile';
 import { selectProfile } from '@/domain/aircraft/profile-selection';
@@ -38,6 +40,7 @@ import type { ConnectorInfo } from '@/domain/connector/connector-info';
 import { AvionixError, toAvionixError } from '@/domain/errors/avionix-error';
 import type { ConnectStep } from '@/domain/health/failure-explanation';
 import { type ApiVersion, negotiateApiVersion } from '@/domain/simulator/api-version';
+import { decodeDataRefString } from '@/domain/simulator/dataref-string';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
 import type { CommandDescriptor, DataRefDescriptor, DataRefUpdate } from '@/domain/simulator/types';
 import type { ConnectorClient } from '@/infrastructure/connector/connector-client';
@@ -56,6 +59,12 @@ export const ROUND_TRIP_WINDOW = 5;
 
 /** Flat retry interval used while X-Plane is up but has no flight loaded. */
 export const READINESS_RETRY_MS = 5000;
+
+/**
+ * A new aircraft can change all three identification values, which arrive as separate updates.
+ * Waiting a moment turns that burst into one pass of the pipeline.
+ */
+export const RECHECK_DEBOUNCE_MS = 250;
 
 /** X-Plane is up but has no flight loaded, so no DataRef exists to resolve yet. */
 function simulatorNotReady(): AvionixError {
@@ -164,6 +173,8 @@ export class SimulatorSession {
    * `completeSessionSetup` call then owns the socket the same way any other attempt does.
    */
   private readinessHold: { client: SimulatorClient; unsubscribeClose: () => void } | null = null;
+  private cancelRecheck: (() => void) | null = null;
+  private recheckInFlight = false;
   private token: string | null = null;
   private pendingPairing: PendingPairing | null = null;
   private pairInFlight = false;
@@ -378,6 +389,23 @@ export class SimulatorSession {
     }
   }
 
+  /**
+   * Re-runs identification and probing on the open connection: the recovery path after an add-on
+   * update mid-session, and the guaranteed path on a simulator that does not stream the
+   * identification values. A no-op unless the session is connected.
+   */
+  async recheckCompatibility(): Promise<void> {
+    const active = this.active;
+    if (active === null || this.store.getSnapshot().state !== 'connected') {
+      return;
+    }
+    if (this.cancelRecheck !== null) {
+      this.cancelRecheck();
+      this.cancelRecheck = null;
+    }
+    await this.runRecheck(active.generation);
+  }
+
   async activateHeadingUp(): Promise<void> {
     const active = this.requireActive('command');
     if (active === null) {
@@ -449,6 +477,10 @@ export class SimulatorSession {
 
   private teardown(): void {
     this.cancelReadinessRetry();
+    if (this.cancelRecheck !== null) {
+      this.cancelRecheck();
+      this.cancelRecheck = null;
+    }
     if (this.cancelReconnect !== null) {
       this.cancelReconnect();
       this.cancelReconnect = null;
@@ -1068,15 +1100,25 @@ export class SimulatorSession {
 
   /** Publishes one pipeline pass. The only place a compatibility result reaches the store. */
   private applyBindings(bindings: SessionBindings): void {
-    this.store.setState((prev) => ({
-      ...prev,
-      compatibility: bindings.compatibility,
-      diagnostics: {
-        ...prev.diagnostics,
-        dataRefs: bindings.dataRefSteps,
-        command: bindings.commandStep,
-      },
-    }));
+    this.store.setState((prev) => {
+      // A value for a name this aircraft does not have is gone, not merely old.
+      const telemetry: Record<string, TelemetrySample | undefined> = {};
+      for (const [name, sample] of Object.entries(prev.telemetry)) {
+        if (bindings.dataRefsByName.has(name)) {
+          telemetry[name] = sample;
+        }
+      }
+      return {
+        ...prev,
+        telemetry,
+        compatibility: bindings.compatibility,
+        diagnostics: {
+          ...prev.diagnostics,
+          dataRefs: bindings.dataRefSteps,
+          command: bindings.commandStep,
+        },
+      };
+    });
   }
 
   /**
@@ -1172,6 +1214,24 @@ export class SimulatorSession {
       return;
     }
     const dataRefsById = active.dataRefsById;
+    // The Web API publishes no "aircraft changed" event. The identification DataRefs are
+    // subscribed like any other, so a new aircraft announces itself here (R8).
+    const known = this.store.getSnapshot().compatibility.identity;
+    let identityChanged = false;
+    for (const update of updates) {
+      const descriptor = dataRefsById.get(update.id);
+      if (descriptor === undefined) {
+        continue;
+      }
+      const field = identityFieldFor(descriptor.name);
+      if (
+        field !== null &&
+        decodeDataRefString(update.value, descriptor.valueType) !== known[field]
+      ) {
+        identityChanged = true;
+      }
+    }
+
     this.store.setState((prev) => {
       const telemetry = { ...prev.telemetry };
       let health = prev.health;
@@ -1199,6 +1259,69 @@ export class SimulatorSession {
       }
       return changed ? { ...prev, telemetry, health } : prev;
     });
+
+    if (identityChanged) {
+      this.scheduleRecheck(generation);
+    }
+  }
+
+  private scheduleRecheck(generation: number): void {
+    if (this.cancelRecheck !== null) {
+      this.cancelRecheck();
+    }
+    this.cancelRecheck = this.scheduler.schedule(() => {
+      this.cancelRecheck = null;
+      if (!this.isCurrent(generation)) {
+        return;
+      }
+      void this.runRecheck(generation);
+    }, RECHECK_DEBOUNCE_MS);
+  }
+
+  /**
+   * One pipeline pass on a live connection. `active` is compared by identity at every resume
+   * point: a disconnect, a socket loss or a fresh connect replaces it, and a result computed for
+   * the connection that went away must not be installed on the one that replaced it.
+   */
+  private async runRecheck(generation: number): Promise<void> {
+    const active = this.active;
+    if (active === null || active.generation !== generation || this.recheckInFlight) {
+      return;
+    }
+    this.recheckInFlight = true;
+    try {
+      const bindings = await this.resolveBindings(active.client);
+      if (this.active !== active || !this.isCurrent(generation)) {
+        return;
+      }
+      const nextIds = new Set(bindings.dataRefsById.keys());
+      const added = [...nextIds].filter((id) => !active.subscribedIds.has(id));
+      const removed = [...active.subscribedIds].filter((id) => !nextIds.has(id));
+      // A delta, not a re-subscribe: unsubscribing everything would blank the telemetry for a
+      // frame on an aircraft change that usually keeps most of its names.
+      if (removed.length > 0) {
+        await active.client.unsubscribeDataRefs(removed.map((id) => ({ id })));
+      }
+      if (added.length > 0) {
+        await active.client.subscribeDataRefs(added.map((id) => ({ id })));
+      }
+      if (this.active !== active || !this.isCurrent(generation)) {
+        return;
+      }
+      active.profile = bindings.profile;
+      active.dataRefsById = bindings.dataRefsById;
+      active.dataRefsByName = bindings.dataRefsByName;
+      active.commandsByName = bindings.commandsByName;
+      active.subscribedIds = nextIds;
+      this.profile = bindings.profile;
+      this.applyBindings(bindings);
+    } catch (error) {
+      // The link is still up: keep the last good result rather than blanking the panel because
+      // one re-check could not finish.
+      this.logger.warn('compatibility re-check failed', { message: String(error) });
+    } finally {
+      this.recheckInFlight = false;
+    }
   }
 
   private handleSocketClosed(info: SocketCloseInfo): void {

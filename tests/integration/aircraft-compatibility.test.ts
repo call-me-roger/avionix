@@ -39,6 +39,17 @@ function createSession(): SimulatorSession {
   });
 }
 
+/** Polls until the live stream has driven the session where the test expects it. */
+async function until(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error('condition not met in time');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 describe('aircraft compatibility against the mock X-Plane', () => {
   let server: MockXPlaneServer;
 
@@ -128,6 +139,48 @@ describe('aircraft compatibility against the mock X-Plane', () => {
     await session.connect(server.host, server.port);
     expect(featureStatus(session.store.getSnapshot().compatibility, FEATURE_HEADING_CONTROL)).toBe(
       'unavailable',
+    );
+    session.disconnect();
+  });
+
+  it('re-identifies over the live stream when the aircraft changes, without reconnecting', async () => {
+    const session = createSession();
+    await session.connect(server.host, server.port);
+    const snap = () => session.store.getSnapshot();
+    expect(snap().compatibility.identity.tailNumber).toBe('N172SP');
+    const states: string[] = [];
+    session.store.subscribe(() => states.push(snap().state));
+
+    // A new aircraft: X-Plane streams the identification datarefs like any other value.
+    server.setDataRefValue('sim/aircraft/view/acf_tailnum', 'TjczOEFW');
+    server.setDataRefValue('sim/aircraft/view/acf_ICAO', 'QjczOA==');
+    server.setDataRefValue('sim/aircraft/view/acf_descrip', 'Qm9laW5nIDczNy04MDA=');
+
+    await until(() => snap().compatibility.identity.tailNumber === 'N738AV');
+    expect(snap().compatibility.identity.icaoType).toBe('B738');
+    expect(snap().compatibility.identity.description).toBe('Boeing 737-800');
+    expect(snap().state).toBe('connected');
+    expect(new Set(states)).toEqual(new Set(['connected']));
+    session.disconnect();
+  });
+
+  it('picks up a name that appears only after a re-check', async () => {
+    server.removeDataRef(GENERIC_DATAREFS.airspeed);
+    const session = createSession();
+    await session.connect(server.host, server.port);
+    expect(featureStatus(session.store.getSnapshot().compatibility, FEATURE_FLIGHT_TELEMETRY)).toBe(
+      'unavailable',
+    );
+
+    server.addDataRef({
+      id: 1002,
+      name: GENERIC_DATAREFS.airspeed,
+      valueType: 'float',
+      value: 0,
+    });
+    await session.recheckCompatibility();
+    expect(featureStatus(session.store.getSnapshot().compatibility, FEATURE_FLIGHT_TELEMETRY)).toBe(
+      'available',
     );
     session.disconnect();
   });

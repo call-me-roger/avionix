@@ -126,7 +126,13 @@ class FakeClient implements SimulatorClient {
     this.subscribed.push(...subs.map((s) => s.id));
   });
 
-  unsubscribeDataRefs = jest.fn(async () => undefined);
+  unsubscribed: number[] = [];
+
+  unsubscribeDataRefs = jest.fn(async (subs: Array<{ id: number }> | 'all') => {
+    if (subs !== 'all') {
+      this.unsubscribed.push(...subs.map((sub) => sub.id));
+    }
+  });
 
   onDataRefUpdate(listener: (updates: DataRefUpdate[]) => void) {
     this.updateListeners.add(listener);
@@ -181,9 +187,16 @@ class ManualScheduler implements Scheduler {
       entry.cancelled = true;
     };
   }
+  /**
+   * Runs the next timer that is still armed, discarding any cancelled ones ahead of it. A
+   * debounce cancels and re-schedules, so the live timer is rarely the head of the queue.
+   */
   async runNext(): Promise<void> {
-    const entry = this.queue.shift();
-    if (entry !== undefined && !entry.cancelled) {
+    let entry = this.queue.shift();
+    while (entry !== undefined && entry.cancelled) {
+      entry = this.queue.shift();
+    }
+    if (entry !== undefined) {
       entry.callback();
     }
     await flush();
@@ -1705,5 +1718,124 @@ describe('the flight is unloaded while the probe runs', () => {
     expect(snapshot().health.readinessRetryAt).toBeNull();
     expect(snapshot().error).toBeNull();
     expect(featureStatus(snapshot().compatibility, FEATURE_HEADING_CONTROL)).toBe('unavailable');
+  });
+});
+
+describe('aircraft changes', () => {
+  const identityUpdate = (value: string) => [{ id: 7, value: base64(value), receivedAt: 1234 }];
+
+  const without = (
+    dataRefs: Record<string, FakeDataRef>,
+    name: string,
+  ): Record<string, FakeDataRef> => {
+    const copy = { ...dataRefs };
+    delete copy[name];
+    return copy;
+  };
+
+  const renameTail = (
+    dataRefs: Record<string, FakeDataRef>,
+    tail: string,
+  ): Record<string, FakeDataRef> => ({
+    ...dataRefs,
+    [IDENTITY_DATAREFS.tailNumber]: { id: 7, valueType: 'data', value: base64(tail) },
+  });
+
+  it('re-identifies and re-probes without leaving connected', async () => {
+    const client = new FakeClient();
+    const { session, scheduler, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    expect(snapshot().compatibility.identity.tailNumber).toBe('N172SP');
+
+    client.dataRefs = renameTail(client.dataRefs, 'N999XX');
+    client.emitUpdates(identityUpdate('N999XX'));
+    await flush();
+    await scheduler.runNext();
+
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().compatibility.identity.tailNumber).toBe('N999XX');
+    expect(snapshot().compatibility.checkedAt).not.toBeNull();
+  });
+
+  it('debounces a burst of identification updates into one re-check', async () => {
+    const client = new FakeClient();
+    const { session, scheduler } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    const before = client.findCommand.mock.calls.length;
+
+    client.emitUpdates(identityUpdate('N999XX'));
+    client.emitUpdates(identityUpdate('N888XX'));
+    client.emitUpdates(identityUpdate('N777XX'));
+    await flush();
+    expect(scheduler.queue.filter((entry) => !entry.cancelled)).toHaveLength(1);
+    await scheduler.runNext();
+    expect(client.findCommand.mock.calls.length).toBe(before + 1);
+  });
+
+  it('ignores an update that repeats the identification already on record', async () => {
+    const client = new FakeClient();
+    const { session, scheduler } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    client.emitUpdates(identityUpdate('N172SP'));
+    await flush();
+    expect(scheduler.queue.filter((entry) => !entry.cancelled)).toHaveLength(0);
+  });
+
+  it('subscribes what appeared and unsubscribes what went away', async () => {
+    const client = new FakeClient();
+    // The first aircraft has no airspeed dataref, so id 2 is never subscribed.
+    client.missingDataRef = GENERIC_DATAREFS.airspeed;
+    const { session, scheduler } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    client.subscribed.length = 0;
+
+    // The next one has airspeed but no heading bug.
+    client.missingDataRef = null;
+    client.dataRefs = renameTail(without(client.dataRefs, GENERIC_DATAREFS.headingBug), 'N999XX');
+    client.emitUpdates(identityUpdate('N999XX'));
+    await flush();
+    await scheduler.runNext();
+
+    expect(client.subscribed).toEqual([2]);
+    expect(client.unsubscribed).toEqual([3]);
+  });
+
+  it('drops telemetry for a name the new aircraft does not have', async () => {
+    const client = new FakeClient();
+    const { session, scheduler, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    client.emitUpdates([{ id: 2, value: 120, receivedAt: 1234 }]);
+    expect(snapshot().telemetry[GENERIC_DATAREFS.airspeed]?.value).toBe(120);
+
+    client.dataRefs = renameTail(without(client.dataRefs, GENERIC_DATAREFS.airspeed), 'N999XX');
+    client.emitUpdates(identityUpdate('N999XX'));
+    await flush();
+    await scheduler.runNext();
+
+    expect(snapshot().telemetry[GENERIC_DATAREFS.airspeed]).toBeUndefined();
+  });
+
+  it('keeps the last good result when a re-check fails', async () => {
+    const client = new FakeClient();
+    const { session, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    client.findDataRef.mockRejectedValueOnce(new Error('network down'));
+    await session.recheckCompatibility();
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().compatibility.identity.tailNumber).toBe('N172SP');
+  });
+
+  it('re-checks on demand and does nothing when the session is not connected', async () => {
+    const client = new FakeClient();
+    const { session, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    client.dataRefs = renameTail(client.dataRefs, 'N999XX');
+    await session.recheckCompatibility();
+    expect(snapshot().compatibility.identity.tailNumber).toBe('N999XX');
+
+    session.disconnect();
+    const callsBefore = client.findDataRef.mock.calls.length;
+    await session.recheckCompatibility();
+    expect(client.findDataRef.mock.calls.length).toBe(callsBefore);
   });
 });
