@@ -3,6 +3,7 @@ import { createPairingTokenStore } from '@/application/pairing-token-store';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { SimulatorSession } from '@/application/simulator-session';
 import {
+  FEATURE_CONNECTION_HEALTH,
   FEATURE_FLIGHT_TELEMETRY,
   FEATURE_HEADING_CONTROL,
   GENERIC_DATAREFS,
@@ -78,6 +79,26 @@ describe('aircraft compatibility against the mock X-Plane', () => {
     );
     expect(missing?.missing[0]).toMatchObject({
       name: GENERIC_DATAREFS.airspeed,
+      status: 'missing',
+    });
+    session.disconnect();
+  });
+
+  it('connects with an optional name missing and reports that feature partly available', async () => {
+    server.removeDataRef(GENERIC_DATAREFS.paused);
+    const session = createSession();
+    await session.connect(server.host, server.port);
+    const snapshot = session.store.getSnapshot();
+    // An optional miss degrades its feature and nothing else: the pause flag is community
+    // sourced, so an aircraft without it must still report connection health as working.
+    expect(snapshot.state).toBe('connected');
+    expect(featureStatus(snapshot.compatibility, FEATURE_CONNECTION_HEALTH)).toBe('partial');
+    expect(featureStatus(snapshot.compatibility, FEATURE_FLIGHT_TELEMETRY)).toBe('available');
+    const degraded = snapshot.compatibility.features.find(
+      (feature) => feature.id === FEATURE_CONNECTION_HEALTH,
+    );
+    expect(degraded?.missing[0]).toMatchObject({
+      name: GENERIC_DATAREFS.paused,
       status: 'missing',
     });
     session.disconnect();

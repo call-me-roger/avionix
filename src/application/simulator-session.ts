@@ -340,10 +340,7 @@ export class SimulatorSession {
     }
     const binding = writeBindingOf(active.profile, FEATURE_HEADING_CONTROL);
     const heading = binding === null ? undefined : active.dataRefsByName.get(binding.name);
-    if (
-      heading === undefined ||
-      featureStatus(this.store.getSnapshot().compatibility, FEATURE_HEADING_CONTROL) !== 'available'
-    ) {
+    if (heading === undefined || !this.featureUsable(FEATURE_HEADING_CONTROL)) {
       // R6: a control whose binding is missing or read-only is inert, and says why in the
       // pilot's words rather than naming a DataRef the message has no room to explain.
       this.recordOperation({
@@ -384,10 +381,7 @@ export class SimulatorSession {
     }
     const binding = commandBindingOf(active.profile, FEATURE_HEADING_CONTROL);
     const command = binding === null ? undefined : active.commandsByName.get(binding.name);
-    if (
-      command === undefined ||
-      featureStatus(this.store.getSnapshot().compatibility, FEATURE_HEADING_CONTROL) !== 'available'
-    ) {
+    if (command === undefined || !this.featureUsable(FEATURE_HEADING_CONTROL)) {
       this.recordOperation({
         kind: 'command',
         ok: false,
@@ -463,6 +457,16 @@ export class SimulatorSession {
     }
   }
 
+  /**
+   * Whether a feature's controls should act. R6 makes an `unavailable` feature inert, and an
+   * `unknown` one has not been checked, so neither may act; `partial` exists precisely so a
+   * feature missing only an optional binding keeps the control it still has.
+   */
+  private featureUsable(featureId: string): boolean {
+    const status = featureStatus(this.store.getSnapshot().compatibility, featureId);
+    return status === 'available' || status === 'partial';
+  }
+
   private requireActive(kind: LastOperation['kind']): ActiveConnection | null {
     const active = this.active;
     if (active === null || this.store.getSnapshot().state !== 'connected') {
@@ -515,6 +519,26 @@ export class SimulatorSession {
 
   private setDataRefStep(name: string, status: StepStatus): void {
     this.setStep((d) => ({ ...d, dataRefs: { ...d.dataRefs, [name]: status } }));
+  }
+
+  /**
+   * Resolves the steps the pipeline marked `'pending'` when it ends without an `applyBindings`
+   * to replace them. A step left `'pending'` beside a failed connect, or beside a readiness
+   * hold that never probed anything, reads on the diagnostics screen as work still in flight —
+   * exactly the silent failure this feature exists to prevent. Steps a previous pass already
+   * settled are left alone.
+   */
+  private settlePendingSteps(status: Extract<StepStatus, 'idle' | 'failed'>): void {
+    this.setStep((d) => ({
+      ...d,
+      dataRefs: Object.fromEntries(
+        Object.entries(d.dataRefs).map(([name, step]) => [
+          name,
+          step === 'pending' ? status : step,
+        ]),
+      ),
+      command: d.command === 'pending' ? status : d.command,
+    }));
   }
 
   /**
@@ -921,8 +945,12 @@ export class SimulatorSession {
       }
       unsubscribeClose();
       client.disconnectWebSocket();
+      this.settlePendingSteps('failed');
+      // Not DATAREF_NOT_FOUND: a name that does not resolve is a recorded miss now, so the only
+      // thing that reaches this default is an internal fault. Blaming the aircraft for one would
+      // tell the pilot a lie about a bug.
       this.markFailure(
-        toAvionixError(error, { code: 'DATAREF_NOT_FOUND', message: 'Resolution failed' }),
+        toAvionixError(error, { code: 'INTERNAL', message: 'Resolution failed' }),
         mode,
         'resolution',
       );
@@ -946,6 +974,9 @@ export class SimulatorSession {
         return abandon();
       }
       if (recount === 0) {
+        // Back to 'idle', so a hold reads the same whether the empty simulator was caught by
+        // the count gate above or only after the probe came back with nothing.
+        this.settlePendingSteps('idle');
         this.holdForReadiness(
           generation,
           config,

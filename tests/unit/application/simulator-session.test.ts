@@ -420,7 +420,7 @@ describe('SimulatorSession connect flow', () => {
     expect(featureStatus(snapshot().compatibility, FEATURE_HEADING_CONTROL)).toBe('available');
   });
 
-  it('reports SIMULATOR_NOT_READY when a dataref is missing and X-Plane has no datarefs, holding the link open', async () => {
+  it('reports SIMULATOR_NOT_READY when X-Plane has no datarefs, holding the link open', async () => {
     const client = new FakeClient();
     client.dataRefCount = 0;
     const { session, snapshot } = setup({ clients: [client] });
@@ -1267,28 +1267,28 @@ describe('health facts', () => {
     expect(client.subscribed).not.toContain(4);
   });
 
-  it('closes the socket and installs nothing when disconnect() lands during optional resolution', async () => {
+  it('closes the socket and installs nothing when disconnect() lands during resolution', async () => {
     const client = new FakeClient();
-    const resolveRequired = client.findDataRef;
-    let releaseOptional!: () => void;
+    const lookup = client.findDataRef;
+    let releaseLastLookup!: () => void;
     client.findDataRef = jest.fn(async (name: string) => {
-      if (name === 'sim/time/paused') {
+      if (name === GENERIC_DATAREFS.paused) {
         await new Promise<void>((resolve) => {
-          releaseOptional = resolve;
+          releaseLastLookup = resolve;
         });
       }
-      return resolveRequired(name);
+      return lookup(name);
     });
     const { session, snapshot } = setup({ clients: [client] });
 
     const connecting = session.connect('192.168.1.10', '8086');
     await flush();
-    // The websocket is open and required resolution has finished; only the optional
-    // dataref's lookup is still pending.
+    // The websocket is open and the pipeline is inside resolveBindings, one lookup short of
+    // returning: this exercises the guard between resolveBindings and installing this.active.
     expect(client.socketOpen).toBe(true);
 
     session.disconnect();
-    releaseOptional();
+    releaseLastLookup();
     await connecting;
 
     // The socket opened for the superseded generation must be closed, not left dangling
@@ -1592,6 +1592,51 @@ describe('aircraft compatibility', () => {
     });
   });
 
+  it('settles every diagnostics step when resolution fails', async () => {
+    const client = new FakeClient();
+    // Not a lookup miss (those are recorded, not thrown) — a lookup that cannot complete at all.
+    client.findDataRef.mockRejectedValue(new Error('socket went away'));
+    const { session, snapshot } = setup({ clients: [client] });
+
+    await session.connect('192.168.1.100', 8086);
+
+    expect(snapshot().state).toBe('error');
+    // A name miss cannot reach this default any more, so blaming the aircraft would describe
+    // an internal fault as an aircraft that does not publish a value.
+    expect(snapshot().error?.code).toBe('INTERNAL');
+    // A step left 'pending' beside a failed connect reads as work still in flight.
+    expect(Object.values(snapshot().diagnostics.dataRefs)).not.toContain('pending');
+    expect(Object.values(snapshot().diagnostics.dataRefs).every((step) => step === 'failed')).toBe(
+      true,
+    );
+    expect(snapshot().diagnostics.command).toBe('failed');
+  });
+
+  it('still writes when the heading feature is only partly available', async () => {
+    const { session, clients, snapshot } = setup();
+    await session.connect('192.168.1.100', 8086);
+    // No bundled profile gives heading control an optional binding yet, so 'partial' is not
+    // reachable through the session's own API. R6 says a partly available feature keeps the
+    // control it still has, and the first profile with an optional control binding will rely
+    // on that, so the rule is pinned here rather than left for it to discover.
+    session.store.setState((prev) => ({
+      ...prev,
+      compatibility: {
+        ...prev.compatibility,
+        features: prev.compatibility.features.map((feature) =>
+          feature.id === FEATURE_HEADING_CONTROL
+            ? { ...feature, status: 'partial' as const }
+            : feature,
+        ),
+      },
+    }));
+
+    await session.writeHeading(95);
+
+    expect(clients[0]?.writes).toEqual([{ id: 3, value: 95 }]);
+    expect(snapshot().lastOperation).toMatchObject({ kind: 'write', ok: true });
+  });
+
   it('probes nothing at all when X-Plane has no flight loaded', async () => {
     const client = new FakeClient();
     client.dataRefCount = 0;
@@ -1599,5 +1644,60 @@ describe('aircraft compatibility', () => {
     await session.connect('192.168.1.100', 8086);
     expect(client.findDataRef).not.toHaveBeenCalled();
     expect(client.findCommand).not.toHaveBeenCalled();
+  });
+});
+
+describe('the flight is unloaded while the probe runs', () => {
+  /** A simulator on which not one of the profile's names resolves, DataRefs or commands. */
+  function unloadedMidProbe(): FakeClient {
+    const client = new FakeClient();
+    client.dataRefs = {};
+    client.missingCommand = GENERIC_COMMANDS.headingUp;
+    return client;
+  }
+
+  it('holds for readiness when the re-check finds the flight gone', async () => {
+    const client = unloadedMidProbe();
+    client.getDataRefCount.mockResolvedValueOnce(3).mockResolvedValueOnce(0);
+    const { session, snapshot } = setup({ clients: [client] });
+
+    await session.connect('192.168.1.100', 8086);
+
+    // Probing nothing is either an unloaded flight or a profile that does not fit; only the
+    // second count tells the two apart, and here it says the flight is gone.
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().error?.code).toBe('SIMULATOR_NOT_READY');
+    expect(snapshot().health.readinessRetryAt).not.toBeNull();
+    expect(client.socketOpen).toBe(true);
+  });
+
+  it('leaves the diagnostics steps idle, the same as a hold detected before the probe', async () => {
+    const client = unloadedMidProbe();
+    client.getDataRefCount.mockResolvedValueOnce(3).mockResolvedValueOnce(0);
+    const { session, snapshot } = setup({ clients: [client] });
+
+    await session.connect('192.168.1.100', 8086);
+
+    // A hold must read the same whether the empty simulator was caught by the count gate or
+    // only after the probe; 'pending' here would say the lookups are still running.
+    expect(Object.values(snapshot().diagnostics.dataRefs).every((step) => step === 'idle')).toBe(
+      true,
+    );
+    expect(snapshot().diagnostics.command).toBe('idle');
+  });
+
+  it('does not hold when the re-check itself fails', async () => {
+    const client = unloadedMidProbe();
+    client.getDataRefCount.mockResolvedValueOnce(3).mockRejectedValueOnce(new Error('no answer'));
+    const { session, snapshot } = setup({ clients: [client] });
+
+    await session.connect('192.168.1.100', 8086);
+
+    // A failed re-check must not invent a readiness hold: the count already in hand said a
+    // flight was loaded, so this is a profile that does not fit, not an empty simulator.
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().health.readinessRetryAt).toBeNull();
+    expect(snapshot().error).toBeNull();
+    expect(featureStatus(snapshot().compatibility, FEATURE_HEADING_CONTROL)).toBe('unavailable');
   });
 });
