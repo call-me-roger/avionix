@@ -3,7 +3,6 @@ import {
   UNIDENTIFIED,
   identityLabel,
   isIdentified,
-  sameAircraft,
 } from '@/domain/aircraft/aircraft-identity';
 import {
   IDENTITY_DATAREFS,
@@ -40,12 +39,6 @@ describe('AircraftIdentity', () => {
     expect(identityLabel({ ...UNIDENTIFIED, icaoType: 'B738' })).toBe('B738');
     expect(identityLabel({ ...UNIDENTIFIED, tailNumber: 'N738AV' })).toBe('N738AV');
     expect(identityLabel({ ...UNIDENTIFIED, description: 'Zibo 737' })).toBe('Zibo 737');
-  });
-
-  it('treats any difference as a different aircraft, the add-on version included', () => {
-    expect(sameAircraft(cessna, { ...cessna })).toBe(true);
-    expect(sameAircraft(cessna, { ...cessna, tailNumber: 'N999XX' })).toBe(false);
-    expect(sameAircraft(cessna, { ...cessna, addOnVersion: '4.2' })).toBe(false);
   });
 });
 

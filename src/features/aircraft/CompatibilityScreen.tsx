@@ -70,6 +70,11 @@ export function CompatibilityScreen({
   const theme = useTheme();
   const { compatibility, state } = snapshot;
   const connected = state === 'connected';
+  // A connect that lands on X-Plane's main menu is `connected` while the session sits on the
+  // readiness hold with nothing to re-check, so `flightLoaded` — set when the subscription
+  // succeeds, cleared by the hold — is what says whether a re-check can do anything at all.
+  const canRecheck = connected && snapshot.health.flightLoaded;
+  const waitingForFlight = connected && !snapshot.health.flightLoaded;
   const checked = compatibility.checkedAt !== null;
 
   return (
@@ -82,6 +87,9 @@ export function CompatibilityScreen({
             : 'Not checked yet. Connect to X-Plane to check this aircraft.'}
         </BodyText>
       )}
+      {waitingForFlight ? (
+        <BodyText muted>Waiting for a flight to be loaded in X-Plane.</BodyText>
+      ) : null}
       <BodyText>{identityLabel(compatibility.identity) ?? UNIDENTIFIED_LABEL}</BodyText>
       {compatibility.identified ? null : (
         <BodyText muted>Avionix is using the generic profile.</BodyText>
@@ -110,7 +118,7 @@ export function CompatibilityScreen({
       <Button
         title="Check again"
         onPress={onRecheck}
-        disabled={!connected}
+        disabled={!canRecheck}
         color={theme.colors.primary}
       />
     </Section>

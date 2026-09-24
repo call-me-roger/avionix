@@ -41,17 +41,3 @@ export function identityLabel(identity: AircraftIdentity): string | null {
   }
   return parts.length === 0 ? null : parts.join(' · ');
 }
-
-/**
- * Whether two identifications describe the same aircraft *with the same bindings*. The add-on
- * version counts: a reloaded add-on can move the very names a profile depends on, which is the
- * breakage this feature exists to catch.
- */
-export function sameAircraft(a: AircraftIdentity, b: AircraftIdentity): boolean {
-  return (
-    a.icaoType === b.icaoType &&
-    a.description === b.description &&
-    a.tailNumber === b.tailNumber &&
-    a.addOnVersion === b.addOnVersion
-  );
-}

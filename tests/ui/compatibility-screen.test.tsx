@@ -10,6 +10,12 @@ import { ThemeProvider } from '@/theme/theme-context';
 
 const base = initialSnapshot(GENERIC_PROFILE, 5);
 
+/** A live session with a flight loaded: the only state in which a re-check can do anything. */
+const live: Partial<SessionSnapshot> = {
+  state: 'connected',
+  health: { ...base.health, flightLoaded: true },
+};
+
 const degraded: SessionSnapshot['compatibility'] = {
   ...base.compatibility,
   identity: {
@@ -53,7 +59,7 @@ async function renderScreen(patch: Partial<SessionSnapshot>, onRecheck = jest.fn
 
 describe('CompatibilityScreen', () => {
   it('names the aircraft, its add-on version and the profile', async () => {
-    await renderScreen({ state: 'connected', compatibility: degraded });
+    await renderScreen({ ...live, compatibility: degraded });
     expect(screen.getByText('Boeing 737-800 (B738) · N738AV')).toBeTruthy();
     expect(screen.getByText('Add-on version 4.4')).toBeTruthy();
     expect(
@@ -62,25 +68,25 @@ describe('CompatibilityScreen', () => {
   });
 
   it('shows the version warning', async () => {
-    await renderScreen({ state: 'connected', compatibility: degraded });
+    await renderScreen({ ...live, compatibility: degraded });
     expect(screen.getByText(/some controls may have moved/)).toBeTruthy();
   });
 
   it('shows which aircraft versions the profile was tested with', async () => {
     await renderScreen({
-      state: 'connected',
+      ...live,
       compatibility: { ...degraded, testedWith: ['4.2', '4.3'] },
     });
     expect(screen.getByText('Tested with 4.2, 4.3')).toBeTruthy();
   });
 
   it('shows no tested-with line when the profile declares none', async () => {
-    await renderScreen({ state: 'connected', compatibility: degraded });
+    await renderScreen({ ...live, compatibility: degraded });
     expect(screen.queryByText(/^Tested with/)).toBeNull();
   });
 
   it('names every missing binding with its purpose and why it cannot be used', async () => {
-    await renderScreen({ state: 'connected', compatibility: degraded });
+    await renderScreen({ ...live, compatibility: degraded });
     expect(screen.getByText('Heading control')).toBeTruthy();
     expect(screen.getByText('not available on this aircraft')).toBeTruthy();
     expect(
@@ -92,7 +98,7 @@ describe('CompatibilityScreen', () => {
 
   it('explains the fallback when nothing was identified', async () => {
     await renderScreen({
-      state: 'connected',
+      ...live,
       compatibility: { ...base.compatibility, checkedAt: 9_000 },
     });
     expect(screen.getByText(UNIDENTIFIED_LABEL)).toBeTruthy();
@@ -101,7 +107,7 @@ describe('CompatibilityScreen', () => {
 
   it('warns when this X-Plane does not report write capability', async () => {
     await renderScreen({
-      state: 'connected',
+      ...live,
       compatibility: { ...degraded, writabilityReported: false },
     });
     expect(screen.getByText(/does not report which values can be written/)).toBeTruthy();
@@ -115,8 +121,21 @@ describe('CompatibilityScreen', () => {
   });
 
   it('re-checks on demand while connected', async () => {
-    const onRecheck = await renderScreen({ state: 'connected', compatibility: degraded });
+    const onRecheck = await renderScreen({ ...live, compatibility: degraded });
     fireEvent.press(screen.getByText('Check again'));
     expect(onRecheck).toHaveBeenCalled();
+  });
+
+  it('waits for a flight instead of offering a re-check that could do nothing', async () => {
+    // A connect against X-Plane's main menu: the state is `connected`, but the session is parked
+    // on the readiness hold with no active connection, so a re-check would return silently.
+    const onRecheck = await renderScreen({
+      state: 'connected',
+      health: { ...base.health, flightLoaded: false },
+      compatibility: degraded,
+    });
+    expect(screen.getByText('Waiting for a flight to be loaded in X-Plane.')).toBeTruthy();
+    fireEvent.press(screen.getByText('Check again'));
+    expect(onRecheck).not.toHaveBeenCalled();
   });
 });
