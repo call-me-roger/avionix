@@ -46,6 +46,7 @@ class FakeClient implements SimulatorClient {
       [MVP_DATAREFS.heartbeat]: 1,
       [MVP_DATAREFS.airspeed]: 2,
       [MVP_DATAREFS.heading]: 3,
+      ['sim/time/paused']: 4,
     };
     const id = ids[name];
     return id === undefined ? null : { id, name, valueType: 'float' as const };
@@ -200,6 +201,7 @@ function setup(
     tokenStore?: PairingTokenStore;
     createClient?: SimulatorSessionDeps['createClient'];
     holdPaths?: string[];
+    now?: () => number;
   } = {},
 ) {
   const clients = options.clients ?? [new FakeClient()];
@@ -277,7 +279,7 @@ function setup(
     scheduler,
     random: () => 0.5,
     logger: silentLogger,
-    now: () => 1234,
+    now: options.now ?? (() => 1234),
   });
   return {
     session,
@@ -315,10 +317,13 @@ describe('SimulatorSession connect flow', () => {
           [MVP_DATAREFS.heartbeat]: 'ok',
           [MVP_DATAREFS.airspeed]: 'ok',
           [MVP_DATAREFS.heading]: 'ok',
+          // The optional dataref resolves too by default and is subscribed alongside the
+          // required ones (id 4 below).
+          'sim/time/paused': 'ok',
         },
       },
     });
-    expect(clients[0]?.subscribed.sort()).toEqual([1, 2, 3]);
+    expect(clients[0]?.subscribed.sort()).toEqual([1, 2, 3, 4]);
   });
 
   it('rejects an invalid host without touching the network', async () => {
@@ -368,17 +373,21 @@ describe('SimulatorSession connect flow', () => {
     expect(snapshot().diagnostics.command).toBe('idle');
   });
 
-  it('reports SIMULATOR_NOT_READY when a dataref is missing and X-Plane has no datarefs', async () => {
+  it('reports SIMULATOR_NOT_READY when a dataref is missing and X-Plane has no datarefs, holding the link open', async () => {
     const client = new FakeClient();
     client.missingDataRef = MVP_DATAREFS.heartbeat;
     client.dataRefCount = 0;
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
-    expect(snapshot().state).toBe('error');
+    // Task 5: SIMULATOR_NOT_READY no longer fails the connect. The socket is genuinely
+    // healthy, so the session stays connected and retries resolution instead.
+    expect(snapshot().state).toBe('connected');
     expect(snapshot().error?.code).toBe('SIMULATOR_NOT_READY');
     expect(snapshot().error?.message).toContain('Load a flight');
     expect(snapshot().error?.retryable).toBe(true);
     expect(snapshot().diagnostics.dataRefs[MVP_DATAREFS.heartbeat]).toBe('failed');
+    expect(snapshot().health.readinessRetryAt).not.toBeNull();
+    expect(client.socketOpen).toBe(true);
   });
 
   it('keeps DATAREF_NOT_FOUND when the count check itself fails', async () => {
@@ -446,6 +455,7 @@ describe('SimulatorSession operations', () => {
       kind: 'write',
       ok: true,
       message: 'Wrote heading 95',
+      failure: null,
       at: 1234,
     });
   });
@@ -472,7 +482,10 @@ describe('SimulatorSession operations', () => {
     expect(snapshot().lastOperation).toMatchObject({
       kind: 'write',
       ok: false,
+      // The raw AvionixError text is kept here only for the logger; ControlPanel must never
+      // render it (F-02 R9) — it renders `failure` through FailureNotice instead.
       message: expect.stringContaining('read only'),
+      failure: { code: 'WRITE_FAILED', step: 'operation' },
     });
     expect(snapshot().state).toBe('connected');
   });
@@ -482,7 +495,25 @@ describe('SimulatorSession operations', () => {
     await session.connect('192.168.1.100', 8086);
     await session.activateHeadingUp();
     expect(clients[0]?.activations).toEqual([9]);
-    expect(snapshot().lastOperation).toMatchObject({ kind: 'command', ok: true });
+    expect(snapshot().lastOperation).toMatchObject({
+      kind: 'command',
+      ok: true,
+      failure: null,
+    });
+  });
+
+  it('records a failed command activation with a failure ref, not a raw message', async () => {
+    const { session, clients, snapshot } = setup();
+    await session.connect('192.168.1.100', 8086);
+    clients[0]?.activateCommand.mockRejectedValueOnce(
+      new AvionixError({ code: 'COMMAND_FAILED', message: 'X-Plane answered HTTP 500' }),
+    );
+    await session.activateHeadingUp();
+    expect(snapshot().lastOperation).toMatchObject({
+      kind: 'command',
+      ok: false,
+      failure: { code: 'COMMAND_FAILED', step: 'operation' },
+    });
   });
 
   it('refuses operations while not connected', async () => {
@@ -491,6 +522,7 @@ describe('SimulatorSession operations', () => {
     expect(snapshot().lastOperation).toMatchObject({
       ok: false,
       message: expect.stringContaining('not connected'),
+      failure: null,
     });
   });
 });
@@ -508,7 +540,7 @@ describe('SimulatorSession reconnect', () => {
     await scheduler.runNext();
     expect(snapshot().state).toBe('connected');
     expect(snapshot().reconnectAttempt).toBe(0);
-    expect(second.subscribed.sort()).toEqual([1, 2, 3]);
+    expect(second.subscribed.sort()).toEqual([1, 2, 3, 4]);
   });
 
   it('gives up after maxAttempts with retryExhausted → error', async () => {
@@ -750,7 +782,7 @@ describe('SimulatorSession pairing', () => {
     await expect(tokenStore.get('192.168.1.100', 8080)).resolves.toBeNull();
   });
 
-  it('disconnect from pairing returns to disconnected and clears the connector', async () => {
+  it('disconnect from pairing returns to disconnected and keeps the last known connector', async () => {
     const { session, snapshot, tokenStore } = setup({
       routes: { '/avionix/info': { status: 200, body: CONNECTOR_INFO } },
     });
@@ -758,8 +790,15 @@ describe('SimulatorSession pairing', () => {
     expect(snapshot().state).toBe('pairing');
     session.disconnect();
     expect(snapshot().state).toBe('disconnected');
-    expect(snapshot().connector).toBeNull();
-    expect(snapshot().diagnostics.connector).toBe('idle');
+    // disconnect() deliberately stops clearing diagnostics and connector (F-02 R11): the last
+    // known state survives so the user can still see what happened and why.
+    expect(snapshot().connector).toEqual({
+      name: 'Sim PC',
+      version: '0.1.0',
+      pairingRequired: true,
+      xplane: { host: '127.0.0.1', port: 8086, reachable: true },
+    });
+    expect(snapshot().diagnostics.connector).toBe('pairing');
     // The stored token (none here) is deliberately kept across a disconnect.
     await expect(tokenStore.get('192.168.1.100', 8080)).resolves.toBeNull();
     await expect(session.pair('123456')).rejects.toMatchObject({ code: 'INTERNAL' });
@@ -966,7 +1005,12 @@ describe('SimulatorSession when the token dies mid-session', () => {
       command: 'idle',
       subscription: 'idle',
     });
-    expect(Object.values(snapshot().diagnostics.dataRefs)).toEqual(['idle', 'idle', 'idle']);
+    expect(Object.values(snapshot().diagnostics.dataRefs)).toEqual([
+      'idle',
+      'idle',
+      'idle',
+      'idle',
+    ]);
   });
 
   it('returns to pairing when a command activation is rejected', async () => {
@@ -1078,6 +1122,344 @@ describe('SimulatorSession pairing edge cases', () => {
 
     expect(snapshot().state).toBe('disconnected');
     expect(snapshot().diagnostics.command).toBe('idle');
-    expect(snapshot().diagnostics.dataRefs[MVP_DATAREFS.heartbeat]).toBe('idle');
+    // disconnect() no longer resets diagnostics (F-02 R11): the step was 'pending' the
+    // moment disconnect() ran, and the late resolve is ignored rather than overwriting it.
+    expect(snapshot().diagnostics.dataRefs[MVP_DATAREFS.heartbeat]).toBe('pending');
+  });
+});
+
+/** A controllable clock, so the health-fact tests can drive freshness and round trips precisely. */
+class ManualClock {
+  private value = 1234;
+  get = (): number => this.value;
+  set(value: number): void {
+    this.value = value;
+  }
+}
+
+/** Drives a connection through to completion with the existing setup()/flush() pattern. */
+async function connectedSession(
+  options: { missingOptional?: boolean } = {},
+): Promise<{ session: SimulatorSession; client: FakeClient; now: ManualClock }> {
+  const client = new FakeClient();
+  if (options.missingOptional) {
+    client.missingDataRef = 'sim/time/paused';
+  }
+  const now = new ManualClock();
+  const { session } = setup({ clients: [client], now: now.get });
+  await session.connect('192.168.1.10', '8086');
+  await flush();
+  return { session, client, now };
+}
+
+function emitUpdate(client: FakeClient, update: DataRefUpdate): void {
+  for (const listener of client.updateListeners) {
+    listener([update]);
+  }
+}
+
+describe('health facts', () => {
+  it('records a heartbeat advance, and ignores a repeat of the same value', async () => {
+    const { session, client, now } = await connectedSession();
+
+    now.set(1000);
+    emitUpdate(client, { id: 1, value: 10, receivedAt: 1000 });
+    expect(session.store.getSnapshot().health.lastHeartbeatAt).toBe(1000);
+    expect(session.store.getSnapshot().health.lastHeartbeatValue).toBe(10);
+
+    now.set(3000);
+    emitUpdate(client, { id: 1, value: 10, receivedAt: 3000 });
+    expect(session.store.getSnapshot().health.lastHeartbeatAt).toBe(1000);
+
+    now.set(4000);
+    emitUpdate(client, { id: 1, value: 11, receivedAt: 4000 });
+    expect(session.store.getSnapshot().health.lastHeartbeatAt).toBe(4000);
+  });
+
+  it('marks the flight as loaded and stamps the connection time on success', async () => {
+    const { session } = await connectedSession();
+    const { health } = session.store.getSnapshot();
+    expect(health.flightLoaded).toBe(true);
+    expect(health.lastConnectedAt).not.toBeNull();
+  });
+
+  it('measures a round trip from requests it already makes', async () => {
+    // A clock frozen during connect would make every sample 0, so this could pass even if
+    // recordRoundTrip never ran. Advance it inside subscribeDataRefs (the last timed() call
+    // in the connect flow) so the elapsed value asserted below can only come from an actual
+    // measurement.
+    const client = new FakeClient();
+    const now = new ManualClock();
+    const startedAt = now.get();
+    client.subscribeDataRefs = jest.fn(async (subs: Array<{ id: number }>) => {
+      now.set(now.get() + 42);
+      client.subscribed.push(...subs.map((s) => s.id));
+    });
+    const { session } = setup({ clients: [client], now: now.get });
+
+    await session.connect('192.168.1.10', '8086');
+
+    const { health } = session.store.getSnapshot();
+    expect(health.roundTripMs).toBe(42);
+    expect(health.roundTripAt).toBe(startedAt + 42);
+  });
+
+  it('exposes the reconnect budget alongside the attempt', async () => {
+    const { session } = await connectedSession();
+    expect(session.store.getSnapshot().health.reconnectBudget).toBe(5);
+  });
+
+  it('resolves an optional dataref without letting it fail the connect', async () => {
+    const { session, client } = await connectedSession({ missingOptional: true });
+    const snapshot = session.store.getSnapshot();
+    expect(snapshot.state).toBe('connected');
+    expect(snapshot.diagnostics.dataRefs['sim/time/paused']).toBe('failed');
+    expect(client.subscribed).not.toContain(4);
+  });
+
+  it('closes the socket and installs nothing when disconnect() lands during optional resolution', async () => {
+    const client = new FakeClient();
+    const resolveRequired = client.findDataRef;
+    let releaseOptional!: () => void;
+    client.findDataRef = jest.fn(async (name: string) => {
+      if (name === 'sim/time/paused') {
+        await new Promise<void>((resolve) => {
+          releaseOptional = resolve;
+        });
+      }
+      return resolveRequired(name);
+    });
+    const { session, snapshot } = setup({ clients: [client] });
+
+    const connecting = session.connect('192.168.1.10', '8086');
+    await flush();
+    // The websocket is open and required resolution has finished; only the optional
+    // dataref's lookup is still pending.
+    expect(client.socketOpen).toBe(true);
+
+    session.disconnect();
+    releaseOptional();
+    await connecting;
+
+    // The socket opened for the superseded generation must be closed, not left dangling
+    // with no ActiveConnection ever holding a reference to it.
+    expect(client.socketOpen).toBe(false);
+    expect(snapshot().state).toBe('disconnected');
+
+    await session.writeHeading(10);
+    expect(snapshot().lastOperation).toMatchObject({
+      ok: false,
+      message: expect.stringContaining('not connected'),
+    });
+  });
+
+  it('keeps the last known state and the end reason after disconnect', async () => {
+    const { session } = await connectedSession();
+    session.disconnect();
+    const snapshot = session.store.getSnapshot();
+    expect(snapshot.state).toBe('disconnected');
+    expect(snapshot.health.lastConnectedAt).not.toBeNull();
+    expect(snapshot.health.lastEndedAt).not.toBeNull();
+    expect(snapshot.diagnostics.websocket).toBe('ok');
+  });
+
+  it('does not let round-trip samples from a previous host survive into a new connect', async () => {
+    // Two timed calls per connect (capabilities, then subscribeDataRefs); the clock only moves
+    // inside subscribeDataRefs, so each connect contributes samples [0, elapsedMs].
+    const now = new ManualClock();
+    const fast = new FakeClient();
+    fast.subscribeDataRefs = jest.fn(async (subs: Array<{ id: number }>) => {
+      now.set(now.get() + 5);
+      fast.subscribed.push(...subs.map((s) => s.id));
+    });
+    const slow = new FakeClient();
+    slow.subscribeDataRefs = jest.fn(async (subs: Array<{ id: number }>) => {
+      now.set(now.get() + 3000);
+      slow.subscribed.push(...subs.map((s) => s.id));
+    });
+    const { session } = setup({ clients: [fast, slow], now: now.get });
+
+    await session.connect('192.168.1.10', '8086');
+    // sorted [0, 5], median (index 1) is 5.
+    expect(session.store.getSnapshot().health.roundTripMs).toBe(5);
+
+    session.disconnect();
+    await session.connect('192.168.1.20', '8086');
+
+    // Without the fix the buffer would still hold the fast host's [0, 5], and the combined
+    // sorted [0, 0, 5, 3000] would median to 5 — reporting the slow host as fast.
+    expect(session.store.getSnapshot().health.roundTripMs).toBe(3000);
+  });
+
+  it('keeps the failing step on disconnect when the code has not changed', async () => {
+    const { session, snapshot } = setup({
+      routes: { '/api/capabilities': { status: 403, body: '' } },
+    });
+    await session.connect('192.168.1.10', '8086');
+    expect(snapshot().error?.code).toBe('INCOMING_TRAFFIC_DISABLED');
+    expect(snapshot().health.lastEndReason).toEqual({
+      code: 'INCOMING_TRAFFIC_DISABLED',
+      step: 'capabilities',
+    });
+
+    session.disconnect();
+
+    // The specific "capabilities" step must survive: overwriting it with `step: null` would
+    // downgrade the explanation from "X-Plane is reachable but refused to describe itself" to
+    // the generic "X-Plane refused the request".
+    expect(snapshot().health.lastEndReason).toEqual({
+      code: 'INCOMING_TRAFFIC_DISABLED',
+      step: 'capabilities',
+    });
+  });
+
+  it('falls back to a step-less reason on disconnect when the code has changed', async () => {
+    const client = new FakeClient();
+    client.connectError = new AvionixError({ code: 'WEBSOCKET_ERROR', message: 'refused' });
+    const { session, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.10', '8086');
+    expect(snapshot().health.lastEndReason).toEqual({
+      code: 'WEBSOCKET_ERROR',
+      step: 'websocket',
+    });
+
+    // Force a mismatch between `error.code` and `health.lastEndReason.code` — not reachable
+    // through the session's own API, but exactly the condition `endReasonForDisconnect` must
+    // still handle correctly: fall back to a step-less reason rather than keep a stale step.
+    session.store.setState((prev) => ({
+      ...prev,
+      error: new AvionixError({ code: 'TIMEOUT', message: 'no answer' }),
+    }));
+
+    session.disconnect();
+
+    expect(snapshot().health.lastEndReason).toEqual({ code: 'TIMEOUT', step: null });
+  });
+});
+
+describe('no flight loaded', () => {
+  it('keeps the link open and retries instead of failing the connect', async () => {
+    const client = new FakeClient();
+    client.dataRefCount = 0;
+    client.missingDataRef = MVP_DATAREFS.airspeed;
+    const { session, scheduler, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.10', '8086');
+    await flush();
+
+    const held = snapshot();
+    expect(held.state).toBe('connected');
+    expect(held.health.flightLoaded).toBe(false);
+    expect(held.health.readinessRetryAt).not.toBeNull();
+    expect(held.error?.code).toBe('SIMULATOR_NOT_READY');
+    expect(client.socketOpen).toBe(true);
+
+    client.dataRefCount = 3;
+    client.missingDataRef = null;
+    await scheduler.runNext();
+
+    const ready = snapshot();
+    expect(ready.state).toBe('connected');
+    expect(ready.health.flightLoaded).toBe(true);
+    expect(ready.health.readinessRetryAt).toBeNull();
+    expect(ready.error).toBeNull();
+    expect(client.connectWebSocket).toHaveBeenCalledTimes(1);
+  });
+
+  it('still fails the connect when a name is genuinely missing and a flight is loaded', async () => {
+    const client = new FakeClient();
+    client.dataRefCount = 3;
+    client.missingDataRef = MVP_DATAREFS.airspeed;
+    const { session, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.10', '8086');
+
+    expect(snapshot().state).toBe('error');
+    expect(snapshot().health.readinessRetryAt).toBeNull();
+  });
+
+  it('cancels the readiness retry on disconnect and closes the held socket', async () => {
+    const client = new FakeClient();
+    client.dataRefCount = 0;
+    client.missingDataRef = MVP_DATAREFS.airspeed;
+    const { session, scheduler, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.10', '8086');
+    await flush();
+    expect(client.socketOpen).toBe(true);
+
+    session.disconnect();
+    expect(scheduler.queue.filter((entry) => !entry.cancelled).length).toBe(0);
+    expect(snapshot().health.readinessRetryAt).toBeNull();
+    // this.active is still null during a hold (resolution never finished), so
+    // cancelReadinessRetry() is the only thing left that can close this socket.
+    expect(client.socketOpen).toBe(false);
+  });
+
+  it('completes a readiness retry that started during a reconnect without illegal transition', async () => {
+    const first = new FakeClient();
+    const second = new FakeClient();
+    second.dataRefCount = 0;
+    second.missingDataRef = MVP_DATAREFS.airspeed;
+    const { session, scheduler, snapshot } = setup({ clients: [first, second] });
+    await session.connect('192.168.1.100', 8086);
+    first.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });
+    await scheduler.runNext();
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().health.flightLoaded).toBe(false);
+
+    second.dataRefCount = 3;
+    second.missingDataRef = null;
+    await scheduler.runNext();
+
+    const ready = snapshot();
+    expect(ready.state).toBe('connected');
+    expect(ready.health.flightLoaded).toBe(true);
+    expect(ready.error).toBeNull();
+  });
+
+  it('holds for readiness during a reconnect and takes the reconnecting to connected edge', async () => {
+    const first = new FakeClient();
+    const second = new FakeClient();
+    second.dataRefCount = 0;
+    second.missingDataRef = MVP_DATAREFS.airspeed;
+    const { session, scheduler, snapshot } = setup({ clients: [first, second] });
+    await session.connect('192.168.1.100', 8086);
+    first.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });
+    expect(snapshot().state).toBe('reconnecting');
+
+    await scheduler.runNext();
+
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().health.flightLoaded).toBe(false);
+    expect(snapshot().health.readinessRetryAt).not.toBeNull();
+    expect(snapshot().reconnectAttempt).toBe(0);
+  });
+
+  it('recovers instead of wedging when a readiness retry started during a reconnect fails genuinely', async () => {
+    const first = new FakeClient();
+    const second = new FakeClient();
+    second.dataRefCount = 0;
+    second.missingDataRef = MVP_DATAREFS.airspeed;
+    const { session, scheduler, snapshot } = setup({ clients: [first, second] });
+    await session.connect('192.168.1.100', 8086);
+    first.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });
+    await scheduler.runNext();
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().health.readinessRetryAt).not.toBeNull();
+    expect(second.socketOpen).toBe(true);
+
+    // The pilot loads a flight, so the readiness retry gets past resolution, but something
+    // else genuinely fails: the subscription itself is rejected.
+    second.dataRefCount = 3;
+    second.missingDataRef = null;
+    second.subscribeError = new AvionixError({ code: 'SUBSCRIPTION_FAILED', message: 'no' });
+    await scheduler.runNext();
+
+    const after = snapshot();
+    // Must not report a healthy connection over the socket the failed retry already closed.
+    expect(after.state).not.toBe('connected');
+    expect(after.state).toBe('reconnecting');
+    expect(second.socketOpen).toBe(false);
+    // A fresh backoff must be armed, or the session would never recover on its own.
+    expect(scheduler.queue.filter((entry) => !entry.cancelled).length).toBe(1);
+    expect(after.reconnectAttempt).toBe(1);
   });
 });

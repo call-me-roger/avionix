@@ -1,6 +1,7 @@
 import React, { createContext, useContext } from 'react';
 
 import type { ConnectorDiscovery } from '@/application/connector-discovery';
+import type { HealthMonitor } from '@/application/health-monitor';
 import type { SettingsStorage } from '@/application/settings-store';
 import type { SimulatorSession } from '@/application/simulator-session';
 
@@ -11,10 +12,13 @@ export type SessionApi = Pick<
 
 export type DiscoveryApi = Pick<ConnectorDiscovery, 'store' | 'start' | 'stop'>;
 
+export type HealthMonitorApi = Pick<HealthMonitor, 'start' | 'stop' | 'refresh'>;
+
 export interface AppServices {
   session: SessionApi;
   discovery: DiscoveryApi;
   settingsStorage: SettingsStorage;
+  healthMonitor: HealthMonitorApi;
 }
 
 const ServicesContext = createContext<AppServices | null>(null);

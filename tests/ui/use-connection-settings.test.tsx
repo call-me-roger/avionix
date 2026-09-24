@@ -33,6 +33,7 @@ function services(storage = createMemorySettingsStorage()): AppServices {
       writeHeading: async () => undefined,
       activateHeadingUp: async () => undefined,
     },
+    healthMonitor: { start: jest.fn(), stop: jest.fn(), refresh: jest.fn() },
   };
 }
 

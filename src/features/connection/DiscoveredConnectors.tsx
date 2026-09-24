@@ -3,6 +3,7 @@ import { Pressable, Text } from 'react-native';
 
 import type { DiscoverySnapshot } from '@/application/connector-discovery';
 import type { DiscoveredConnector } from '@/domain/discovery/discovered-connector';
+import { explainFailure } from '@/domain/health/failure-explanation';
 import { BodyText, Section, SectionTitle } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
@@ -41,6 +42,9 @@ export function DiscoveredConnectors({ snapshot, enabled, onSelect }: Props) {
     return null;
   }
   const empty = snapshot.connectors.length === 0;
+  // `snapshot.error` carries a raw AvionixError; only `explainFailure` may reach the screen
+  // (F-02 R9), the same rule the health surfaces follow.
+  const explanation = snapshot.error === null ? null : explainFailure(snapshot.error.code, null);
   return (
     <Section testID="discovered-connectors">
       <SectionTitle>Connectors on this network</SectionTitle>
@@ -71,8 +75,11 @@ export function DiscoveredConnectors({ snapshot, enabled, onSelect }: Props) {
           {empty && !snapshot.scanning && snapshot.error === null ? (
             <BodyText muted>No connectors found yet.</BodyText>
           ) : null}
-          {snapshot.error === null ? null : (
-            <BodyText tone="danger">{`Discovery failed: ${snapshot.error.message}`}</BodyText>
+          {explanation === null ? null : (
+            <>
+              <BodyText tone="danger">{`Discovery failed: ${explanation.cause}`}</BodyText>
+              <BodyText muted>{explanation.action}</BodyText>
+            </>
           )}
         </>
       )}

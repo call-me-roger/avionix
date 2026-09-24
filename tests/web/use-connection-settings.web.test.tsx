@@ -34,6 +34,7 @@ function services(storage = createMemorySettingsStorage()): AppServices {
       writeHeading: async () => undefined,
       activateHeadingUp: async () => undefined,
     },
+    healthMonitor: { start: () => undefined, stop: () => undefined, refresh: () => undefined },
   };
 }
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Button, View } from 'react-native';
 
 import type { LastOperation } from '@/application/session-snapshot';
+import { FailureNotice } from '@/features/health/FailureNotice';
 import { BodyText, Section, SectionTitle, ThemedTextInput } from '@/theme/primitives';
 import { useTheme, useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
@@ -47,14 +48,30 @@ export function ControlPanel(props: Props) {
           color={theme.colors.primary}
         />
       </View>
-      <BodyText
-        tone={props.lastOperation === null || props.lastOperation.ok ? undefined : 'danger'}
-      >
-        Last operation:{' '}
-        {props.lastOperation === null
-          ? '-'
-          : `${props.lastOperation.ok ? 'OK' : 'FAILED'} ${props.lastOperation.message}`}
-      </BodyText>
+      <LastOperationRow lastOperation={props.lastOperation} />
     </Section>
+  );
+}
+
+/**
+ * `lastOperation.message` is safe to render only for the success copy and for the plain-language
+ * validation messages this component synthesizes itself (never for an `AvionixError`-derived
+ * failure, which carries `failure` instead and must go through `FailureNotice` — F-02 R9).
+ */
+function LastOperationRow({ lastOperation }: { lastOperation: LastOperation | null }) {
+  if (lastOperation === null) {
+    return <BodyText>Last operation: -</BodyText>;
+  }
+  if (lastOperation.ok) {
+    return <BodyText>{`Last operation: OK ${lastOperation.message}`}</BodyText>;
+  }
+  if (lastOperation.failure === null) {
+    return <BodyText tone="danger">{`Last operation: FAILED ${lastOperation.message}`}</BodyText>;
+  }
+  return (
+    <View>
+      <BodyText tone="danger">Last operation: FAILED</BodyText>
+      <FailureNotice code={lastOperation.failure.code} step={lastOperation.failure.step} />
+    </View>
   );
 }

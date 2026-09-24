@@ -1,10 +1,13 @@
 import {
+  ALL_DATAREF_NAMES,
   MVP_COMMAND_HEADING_UP,
   MVP_DATAREFS,
   MVP_DATAREF_NAMES,
+  OPTIONAL_DATAREF_NAMES,
 } from '@/application/mvp-bindings';
 import type { PairingTokenStore } from '@/application/pairing-token-store';
 import {
+  type FailureRef,
   type LastOperation,
   type SessionSnapshot,
   type StepStatus,
@@ -19,6 +22,7 @@ import {
 import { type ConnectionState, transition } from '@/domain/connection/connection-state';
 import type { ConnectorInfo } from '@/domain/connector/connector-info';
 import { AvionixError, toAvionixError } from '@/domain/errors/avionix-error';
+import type { ConnectStep } from '@/domain/health/failure-explanation';
 import { type ApiVersion, negotiateApiVersion } from '@/domain/simulator/api-version';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
 import type { CommandDescriptor, DataRefDescriptor, DataRefUpdate } from '@/domain/simulator/types';
@@ -36,6 +40,12 @@ import {
   type ReconnectPolicy,
   computeBackoffDelayMs,
 } from '@/utils/backoff';
+
+/** Samples kept for the round-trip median in `SessionHealth.roundTripMs`. */
+export const ROUND_TRIP_WINDOW = 5;
+
+/** Flat retry interval used while X-Plane is up but has no flight loaded. */
+export const READINESS_RETRY_MS = 5000;
 
 export interface Scheduler {
   schedule(callback: () => void, delayMs: number): () => void;
@@ -67,6 +77,14 @@ export interface SimulatorSessionDeps {
 
 type FlowMode = 'initial' | 'reconnect';
 
+/**
+ * `'ok'`: setup finished and the session is live. `'held'`: parked on `holdForReadiness`,
+ * an open socket with a retry armed, not a failure. `'failed'`: everything else, including a
+ * stale generation with nothing left to do — always paired with an `isCurrent()` check before
+ * a caller derives anything from it, exactly as every generation guard in this file already is.
+ */
+type FlowResult = 'ok' | 'held' | 'failed';
+
 /** A connect flow parked in `pairing`, waiting for `pair(code)` to resume it. */
 interface PendingPairing {
   generation: number;
@@ -95,16 +113,26 @@ export class SimulatorSession {
   private generation = 0;
   private active: ActiveConnection | null = null;
   private cancelReconnect: (() => void) | null = null;
+  private cancelReadiness: (() => void) | null = null;
+  /**
+   * The socket a readiness hold is sitting on, while the hold is armed (timer not yet fired).
+   * Nothing else holds a reference to this client during that window — `this.active` is still
+   * null, since resolution never finished — so `cancelReadinessRetry()` is the only place left
+   * that can close it. Cleared (without closing) the moment the timer fires: the retry's own
+   * `completeSessionSetup` call then owns the socket the same way any other attempt does.
+   */
+  private readinessHold: { client: SimulatorClient; unsubscribeClose: () => void } | null = null;
   private token: string | null = null;
   private pendingPairing: PendingPairing | null = null;
   private pairInFlight = false;
   /** Serializes the token store writes so a late clear cannot undo a later pairing. */
   private tokenWrites: Promise<void> = Promise.resolve();
+  private roundTrips: number[] = [];
 
   constructor(private readonly deps: SimulatorSessionDeps) {
-    this.store = new Store(initialSnapshot(MVP_DATAREF_NAMES));
-    this.scheduler = deps.scheduler ?? realScheduler;
     this.policy = deps.reconnectPolicy ?? DEFAULT_RECONNECT_POLICY;
+    this.store = new Store(initialSnapshot(ALL_DATAREF_NAMES, this.policy.maxAttempts));
+    this.scheduler = deps.scheduler ?? realScheduler;
     this.random = deps.random ?? Math.random;
     this.logger = deps.logger ?? silentLogger;
     this.now = deps.now ?? Date.now;
@@ -112,10 +140,14 @@ export class SimulatorSession {
 
   async connect(host: string, port: string | number): Promise<void> {
     this.teardown();
+    // A fresh connect (possibly to a different host) must not let samples from whatever was
+    // measured before contaminate this session's median. An automatic reconnect to the same
+    // host never calls connect(), so its samples are deliberately left alone.
+    this.roundTrips = [];
     const generation = this.nextGeneration();
     // Any previous state first returns to disconnected, then to connecting; both edges are in the table.
     this.store.setState((prev) => ({
-      ...initialSnapshot(MVP_DATAREF_NAMES),
+      ...initialSnapshot(ALL_DATAREF_NAMES, this.policy.maxAttempts),
       state: transition(this.settled(prev.state), 'connect'),
     }));
     this.pendingPairing = null;
@@ -128,6 +160,7 @@ export class SimulatorSession {
       this.markFailure(
         toAvionixError(error, { code: 'INVALID_HOST', message: 'Invalid connection settings' }),
         'initial',
+        'connector',
       );
       return;
     }
@@ -146,6 +179,11 @@ export class SimulatorSession {
     await this.runConnectFlow(generation, config, 'initial');
   }
 
+  /**
+   * Keeps the last known diagnostics, connector and health facts (F-02 R11): a disconnected
+   * session should still show the user what happened and why, not blank out. Telemetry is
+   * cleared because those values are genuinely gone the moment the link drops.
+   */
   disconnect(): void {
     this.teardown();
     this.nextGeneration();
@@ -153,15 +191,40 @@ export class SimulatorSession {
     this.pairInFlight = false;
     // The stored token is kept: only the connector revokes it.
     this.token = null;
+    // The buffer that fed the departing session's median must not survive to poison whatever
+    // is connected to next.
+    this.roundTrips = [];
+    const endedAt = this.now();
     this.store.setState((prev) => ({
       ...prev,
       state: this.settled(prev.state),
-      connector: null,
-      diagnostics: initialDiagnostics(MVP_DATAREF_NAMES),
       telemetry: {},
       reconnectAttempt: 0,
-      error: null,
+      health: {
+        ...prev.health,
+        nextRetryAt: null,
+        readinessRetryAt: null,
+        lastEndedAt: endedAt,
+        lastEndReason: this.endReasonForDisconnect(prev),
+      },
     }));
+  }
+
+  /**
+   * `markFailure` already recorded `{code, step}` in `lastEndReason` when the live session
+   * failed; disconnecting from that same failure (e.g. pressing Disconnect from `error`) must
+   * not throw the step away and fall back to the generic no-step advice. Only overwrite with a
+   * step-less reason when the code has actually changed — a disconnect from a state that never
+   * matched `prev.error` (or has none) — so the specific explanation survives.
+   */
+  private endReasonForDisconnect(prev: SessionSnapshot): FailureRef | null {
+    if (prev.error === null) {
+      return prev.health.lastEndReason;
+    }
+    if (prev.health.lastEndReason?.code === prev.error.code) {
+      return prev.health.lastEndReason;
+    }
+    return { code: prev.error.code, step: null };
   }
 
   /**
@@ -226,6 +289,7 @@ export class SimulatorSession {
         kind: 'write',
         ok: false,
         message: 'Heading must be between 0 and 360',
+        failure: null,
       });
       return;
     }
@@ -239,15 +303,28 @@ export class SimulatorSession {
         kind: 'write',
         ok: false,
         message: 'Heading dataref is not resolved',
+        failure: null,
       });
       return;
     }
     try {
-      await active.client.setDataRefValue(heading.id, value);
-      this.recordOperation({ kind: 'write', ok: true, message: `Wrote heading ${value}` });
+      await this.timed(active.generation, () => active.client.setDataRefValue(heading.id, value));
+      this.recordOperation({
+        kind: 'write',
+        ok: true,
+        message: `Wrote heading ${value}`,
+        failure: null,
+      });
     } catch (error) {
       const avionixError = toAvionixError(error, { code: 'WRITE_FAILED', message: 'Write failed' });
-      this.recordOperation({ kind: 'write', ok: false, message: avionixError.message });
+      // `message` keeps the raw AvionixError text for the logger only; the UI renders the
+      // failure through FailureNotice(code, step), never this string (F-02 R9).
+      this.recordOperation({
+        kind: 'write',
+        ok: false,
+        message: avionixError.message,
+        failure: { code: avionixError.code, step: 'operation' },
+      });
       // Writes go over authenticated HTTP, so this is a place the connector can disown us.
       this.returnToPairingIfUnauthorized(avionixError);
     }
@@ -259,18 +336,26 @@ export class SimulatorSession {
       return;
     }
     try {
-      await active.client.activateCommand(active.headingUp.id, 0);
+      await this.timed(active.generation, () =>
+        active.client.activateCommand(active.headingUp.id, 0),
+      );
       this.recordOperation({
         kind: 'command',
         ok: true,
         message: `Activated ${MVP_COMMAND_HEADING_UP}`,
+        failure: null,
       });
     } catch (error) {
       const avionixError = toAvionixError(error, {
         code: 'COMMAND_FAILED',
         message: 'Command failed',
       });
-      this.recordOperation({ kind: 'command', ok: false, message: avionixError.message });
+      this.recordOperation({
+        kind: 'command',
+        ok: false,
+        message: avionixError.message,
+        failure: { code: avionixError.code, step: 'operation' },
+      });
       this.returnToPairingIfUnauthorized(avionixError);
     }
   }
@@ -306,6 +391,7 @@ export class SimulatorSession {
   }
 
   private teardown(): void {
+    this.cancelReadinessRetry();
     if (this.cancelReconnect !== null) {
       this.cancelReconnect();
       this.cancelReconnect = null;
@@ -321,7 +407,12 @@ export class SimulatorSession {
   private requireActive(kind: LastOperation['kind']): ActiveConnection | null {
     const active = this.active;
     if (active === null || this.store.getSnapshot().state !== 'connected') {
-      this.recordOperation({ kind, ok: false, message: 'Avionix is not connected to X-Plane' });
+      this.recordOperation({
+        kind,
+        ok: false,
+        message: 'Avionix is not connected to X-Plane',
+        failure: null,
+      });
       return null;
     }
     return active;
@@ -329,6 +420,32 @@ export class SimulatorSession {
 
   private recordOperation(operation: Omit<LastOperation, 'at'>): void {
     this.store.setState((prev) => ({ ...prev, lastOperation: { ...operation, at: this.now() } }));
+  }
+
+  /**
+   * Times a request the app was going to make anyway; keeps the median of the last few.
+   * `generation` is the one this request belongs to, so a sample from a flow the session has
+   * already moved on from is discarded instead of making a dead connection look responsive.
+   */
+  private async timed<T>(generation: number, run: () => Promise<T>): Promise<T> {
+    const startedAt = this.now();
+    const result = await run();
+    this.recordRoundTrip(generation, this.now() - startedAt);
+    return result;
+  }
+
+  private recordRoundTrip(generation: number, elapsedMs: number): void {
+    if (!this.isCurrent(generation)) {
+      return;
+    }
+    this.roundTrips = [...this.roundTrips, Math.max(0, elapsedMs)].slice(-ROUND_TRIP_WINDOW);
+    const sorted = [...this.roundTrips].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)] ?? null;
+    const at = this.now();
+    this.store.setState((prev) => ({
+      ...prev,
+      health: { ...prev.health, roundTripMs: median, roundTripAt: at },
+    }));
   }
 
   private setStep(
@@ -344,17 +461,24 @@ export class SimulatorSession {
   /**
    * Records a failure. In `initial` mode the state machine takes the `failed` edge
    * (connecting → error, connected → error). In `reconnect` mode the state stays
-   * `reconnecting`; `runReconnectAttempt` decides whether to retry or exhaust.
+   * `reconnecting`; `runReconnectAttempt` decides whether to retry or exhaust. `step`
+   * names where in the flow it failed, so the explanation shown to the user can be specific.
    */
-  private markFailure(error: AvionixError, mode: FlowMode): void {
+  private markFailure(error: AvionixError, mode: FlowMode, step: ConnectStep | null = null): void {
     if (this.returnToPairingIfUnauthorized(error)) {
       return;
     }
     this.logger.warn('session failure', { code: error.code, message: error.message, mode });
+    const endedAt = this.now();
     this.store.setState((prev) => ({
       ...prev,
       state: mode === 'initial' ? transition(prev.state, 'failed') : prev.state,
       error,
+      health: {
+        ...prev.health,
+        lastEndedAt: endedAt,
+        lastEndReason: { code: error.code, step },
+      },
     }));
   }
 
@@ -428,7 +552,7 @@ export class SimulatorSession {
     generation: number,
     config: XPlaneConnectionConfig,
     mode: FlowMode,
-  ): Promise<boolean> {
+  ): Promise<FlowResult> {
     // Only the initial connect probes: a reconnect reuses the verdict already in the snapshot,
     // and a connector that has forgotten this device surfaces as UNAUTHORIZED instead. The
     // probe runs unauthenticated — until it answers we do not know whether the host is the
@@ -436,7 +560,7 @@ export class SimulatorSession {
     if (mode === 'initial') {
       const probeHttp = this.deps.createHttpTransport(config, noAuth);
       if (!(await this.runConnectorProbe(generation, config, probeHttp))) {
-        return false;
+        return 'failed';
       }
     }
     return this.runSimulatorFlow(
@@ -475,6 +599,7 @@ export class SimulatorSession {
       this.markFailure(
         toAvionixError(error, { code: 'NETWORK_ERROR', message: 'Connector probe failed' }),
         'initial',
+        'connector',
       );
       return false;
     }
@@ -518,13 +643,13 @@ export class SimulatorSession {
     config: XPlaneConnectionConfig,
     http: HttpTransport,
     mode: FlowMode,
-  ): Promise<boolean> {
+  ): Promise<FlowResult> {
     this.setStep((d) => ({ ...d, http: 'pending', capabilities: 'pending' }));
     let apiVersion: ApiVersion;
     try {
-      const capabilities = await probeCapabilities(http);
+      const capabilities = await this.timed(generation, () => probeCapabilities(http));
       if (!this.isCurrent(generation)) {
-        return false;
+        return 'failed';
       }
       apiVersion = negotiateApiVersion(capabilities);
       this.store.setState((prev) => ({
@@ -535,7 +660,7 @@ export class SimulatorSession {
       }));
     } catch (error) {
       if (!this.isCurrent(generation)) {
-        return false;
+        return 'failed';
       }
       const avionixError = toAvionixError(error, {
         code: 'UNKNOWN',
@@ -543,8 +668,8 @@ export class SimulatorSession {
       });
       const httpStatus: StepStatus = avionixError.code === 'UNSUPPORTED_API' ? 'ok' : 'failed';
       this.setStep((d) => ({ ...d, http: httpStatus, capabilities: 'failed' }));
-      this.markFailure(avionixError, mode);
-      return false;
+      this.markFailure(avionixError, mode, 'capabilities');
+      return 'failed';
     }
 
     const client = this.deps.createClient(config, apiVersion, http, () => this.token);
@@ -554,7 +679,7 @@ export class SimulatorSession {
       await client.connectWebSocket();
       if (!this.isCurrent(generation)) {
         client.disconnectWebSocket();
-        return false;
+        return 'failed';
       }
       this.setStep((d) => ({ ...d, websocket: 'ok' }));
       // Registered as soon as the socket is open so a loss during DataRef/command
@@ -567,14 +692,15 @@ export class SimulatorSession {
       });
     } catch (error) {
       if (!this.isCurrent(generation)) {
-        return false;
+        return 'failed';
       }
       this.setStep((d) => ({ ...d, websocket: 'failed' }));
       this.markFailure(
         toAvionixError(error, { code: 'WEBSOCKET_ERROR', message: 'WebSocket connection failed' }),
         mode,
+        'websocket',
       );
-      return false;
+      return 'failed';
     }
 
     if (mode === 'initial') {
@@ -585,6 +711,21 @@ export class SimulatorSession {
       }));
     }
 
+    return this.completeSessionSetup(generation, config, client, unsubscribeClose, mode);
+  }
+
+  /**
+   * Everything that happens on an already-open socket: resolve names, attach the update
+   * listener, subscribe. Separate from runSimulatorFlow so it can be retried on the same
+   * socket when X-Plane has no flight loaded yet.
+   */
+  private async completeSessionSetup(
+    generation: number,
+    config: XPlaneConnectionConfig,
+    client: SimulatorClient,
+    unsubscribeClose: () => void,
+    mode: FlowMode,
+  ): Promise<FlowResult> {
     const dataRefs = createDataRefRepository(client);
     const commands = createCommandRepository(client);
     const dataRefsById = new Map<number, DataRefDescriptor>();
@@ -613,7 +754,7 @@ export class SimulatorSession {
       if (!this.isCurrent(generation)) {
         unsubscribeClose();
         client.disconnectWebSocket();
-        return false;
+        return 'failed';
       }
       for (const descriptor of resolved) {
         dataRefsById.set(descriptor.id, descriptor);
@@ -624,14 +765,14 @@ export class SimulatorSession {
       if (!this.isCurrent(generation)) {
         unsubscribeClose();
         client.disconnectWebSocket();
-        return false;
+        return 'failed';
       }
       this.setStep((d) => ({ ...d, command: 'ok' }));
     } catch (error) {
-      unsubscribeClose();
-      client.disconnectWebSocket();
       if (!this.isCurrent(generation)) {
-        return false;
+        unsubscribeClose();
+        client.disconnectWebSocket();
+        return 'failed';
       }
       // command only reaches 'pending' once the DataRefs resolved; a DataRef failure
       // rejects Promise.all before the command lookup ever runs, so command stays 'idle'.
@@ -640,8 +781,56 @@ export class SimulatorSession {
         code: 'DATAREF_NOT_FOUND',
         message: 'Resolution failed',
       });
-      this.markFailure(await this.explainLookupMiss(client, resolutionError), mode);
-      return false;
+      const explained = await this.explainLookupMiss(client, resolutionError);
+      if (!this.isCurrent(generation)) {
+        unsubscribeClose();
+        client.disconnectWebSocket();
+        return 'failed';
+      }
+      if (explained.code === 'SIMULATOR_NOT_READY') {
+        this.holdForReadiness(generation, config, client, unsubscribeClose, mode, explained);
+        return 'held';
+      }
+      unsubscribeClose();
+      client.disconnectWebSocket();
+      this.markFailure(explained, mode, 'resolution');
+      return 'failed';
+    }
+
+    // Optional names must never fail the connect: a miss is recorded and left out of the
+    // subscription instead of throwing. Guarded throughout: `dataRefs.resolve` yields, and a
+    // disconnect() or fresh connect() landing here must not write diagnostics for a
+    // superseded generation.
+    const optional: DataRefDescriptor[] = [];
+    for (const name of OPTIONAL_DATAREF_NAMES) {
+      if (!this.isCurrent(generation)) {
+        break;
+      }
+      this.setDataRefStep(name, 'pending');
+      try {
+        const descriptor = await dataRefs.resolve(name);
+        if (this.isCurrent(generation)) {
+          optional.push(descriptor);
+          this.setDataRefStep(name, 'ok');
+        }
+      } catch {
+        if (this.isCurrent(generation)) {
+          this.setDataRefStep(name, 'failed');
+        }
+        this.logger.debug('optional dataref missing', { name });
+      }
+    }
+    for (const descriptor of optional) {
+      dataRefsById.set(descriptor.id, descriptor);
+      dataRefsByName.set(descriptor.name, descriptor);
+    }
+    // Required resolution and the optional loop above both yield; a disconnect() or fresh
+    // connect() landing anywhere in that stretch must not install this.active for a
+    // generation that is no longer live, or its socket would never be torn down.
+    if (!this.isCurrent(generation)) {
+      unsubscribeClose();
+      client.disconnectWebSocket();
+      return 'failed';
     }
 
     const unsubscribeUpdates = client.onDataRefUpdate((updates) => {
@@ -664,36 +853,141 @@ export class SimulatorSession {
 
     this.setStep((d) => ({ ...d, subscription: 'pending' }));
     try {
-      await client.subscribeDataRefs([...dataRefsById.keys()].map((id) => ({ id })));
+      await this.timed(generation, () =>
+        client.subscribeDataRefs([...dataRefsById.keys()].map((id) => ({ id }))),
+      );
       if (!this.isCurrent(generation)) {
-        return false;
+        return 'failed';
       }
       this.setStep((d) => ({ ...d, subscription: 'ok' }));
       this.store.setState((prev) => ({
         ...prev,
-        state: mode === 'reconnect' ? transition(prev.state, 'connected') : prev.state,
+        // A readiness hold during a reconnect already took reconnecting → connected, so this
+        // retry's success finds the state already `connected`; only take the edge when it
+        // has not been taken yet, or a repeat 'connected' event would be illegal.
+        state:
+          mode === 'reconnect' && prev.state !== 'connected'
+            ? transition(prev.state, 'connected')
+            : prev.state,
         reconnectAttempt: 0,
         error: null,
+        health: {
+          ...prev.health,
+          flightLoaded: true,
+          lastConnectedAt: this.now(),
+          readinessRetryAt: null,
+          // A session that reconnected did not end: clear whatever failure a prior attempt
+          // stamped here, or a healthy disconnect later would report that stale reason.
+          lastEndReason: null,
+        },
       }));
       this.logger.info('session connected', {
         host: config.host,
         port: config.port,
-        apiVersion,
+        apiVersion: this.store.getSnapshot().apiVersion,
         mode,
       });
-      return true;
+      return 'ok';
     } catch (error) {
       if (!this.isCurrent(generation)) {
-        return false;
+        return 'failed';
       }
       this.setStep((d) => ({ ...d, subscription: 'failed' }));
       this.teardown();
       this.markFailure(
         toAvionixError(error, { code: 'SUBSCRIPTION_FAILED', message: 'Subscription failed' }),
         mode,
+        'subscription',
       );
-      return false;
+      return 'failed';
     }
+  }
+
+  /**
+   * X-Plane is up and the socket is open, but no flight is loaded, so no DataRef exists to
+   * resolve. The link is genuinely healthy: stay connected, say what is happening, and retry
+   * resolution on a flat interval until the pilot starts a flight. This is not the reconnect
+   * backoff, which governs a socket that is actually gone, and it has no attempt budget.
+   */
+  private holdForReadiness(
+    generation: number,
+    config: XPlaneConnectionConfig,
+    client: SimulatorClient,
+    unsubscribeClose: () => void,
+    mode: FlowMode,
+    error: AvionixError,
+  ): void {
+    const at = this.now() + READINESS_RETRY_MS;
+    this.store.setState((prev) => ({
+      ...prev,
+      // The socket is open, so a reconnect that lands on the main menu is connected too.
+      state: prev.state === 'reconnecting' ? transition(prev.state, 'connected') : prev.state,
+      error,
+      reconnectAttempt: 0,
+      health: { ...prev.health, flightLoaded: false, readinessRetryAt: at, nextRetryAt: null },
+    }));
+    this.readinessHold = { client, unsubscribeClose };
+    this.cancelReadiness = this.scheduler.schedule(() => {
+      this.cancelReadiness = null;
+      // The retry is starting now: it owns the socket from here the same way any other
+      // completeSessionSetup call does, via its own isCurrent() guards. Not "cancelled" —
+      // cancelReadinessRetry() must not also close it once it is running.
+      this.readinessHold = null;
+      if (!this.isCurrent(generation)) {
+        unsubscribeClose();
+        client.disconnectWebSocket();
+        return;
+      }
+      this.completeSessionSetup(generation, config, client, unsubscribeClose, mode)
+        .then((result) => {
+          if (result !== 'failed' || mode !== 'reconnect' || !this.isCurrent(generation)) {
+            return;
+          }
+          // completeSessionSetup() already ran markFailure(), but in `reconnect` mode that
+          // leaves state at prev.state — 'connected', because the hold took that edge
+          // earlier — instead of arming a new backoff. Without this, a genuine failure here
+          // (not another SIMULATOR_NOT_READY) would report a healthy connection over a
+          // socket completeSessionSetup has already closed. Recover exactly as a real socket
+          // loss would: back to `reconnecting`, backoff restarted at attempt 1.
+          this.store.setState((prev) => ({
+            ...prev,
+            state: transition(prev.state, 'socketLost'),
+            diagnostics: { ...prev.diagnostics, websocket: 'failed', subscription: 'idle' },
+          }));
+          this.scheduleReconnect(generation, 1);
+        })
+        .catch((thrown: unknown) => {
+          // transition() throws AvionixError on an illegal edge; this timer has no other
+          // caller to receive it, so a bug here must not become an unhandled rejection.
+          this.logger.warn('readiness retry failed unexpectedly', { message: String(thrown) });
+        });
+    }, READINESS_RETRY_MS);
+  }
+
+  /**
+   * Cancels a pending readiness retry, closing the socket it was holding open if the hold was
+   * still armed. `teardown()` and `handleSocketClosed()` both call this: while a hold is armed,
+   * `this.active` is null (resolution never finished), so this is the only place left that can
+   * close that socket. Idempotent — safe to call when nothing is armed, and safe to call twice
+   * for the same close (e.g. `handleSocketClosed` firing synchronously from the
+   * `disconnectWebSocket()` call below, after `unsubscribeClose()` has already run).
+   */
+  private cancelReadinessRetry(): void {
+    if (this.cancelReadiness !== null) {
+      this.cancelReadiness();
+      this.cancelReadiness = null;
+    }
+    if (this.readinessHold !== null) {
+      const { client, unsubscribeClose } = this.readinessHold;
+      this.readinessHold = null;
+      unsubscribeClose();
+      client.disconnectWebSocket();
+    }
+    this.store.setState((prev) =>
+      prev.health.readinessRetryAt === null
+        ? prev
+        : { ...prev, health: { ...prev.health, readinessRetryAt: null } },
+    );
   }
 
   /**
@@ -734,6 +1028,7 @@ export class SimulatorSession {
   ): void {
     this.store.setState((prev) => {
       const telemetry = { ...prev.telemetry };
+      let health = prev.health;
       let changed = false;
       for (const update of updates) {
         const descriptor = dataRefsById.get(update.id);
@@ -742,12 +1037,26 @@ export class SimulatorSession {
         }
         telemetry[descriptor.name] = { value: update.value, receivedAt: update.receivedAt };
         changed = true;
+        // Only a *changed* value counts as a heartbeat: a paused simulator that re-sends
+        // the same number must not read as live.
+        if (
+          descriptor.name === MVP_DATAREFS.heartbeat &&
+          typeof update.value === 'number' &&
+          update.value !== health.lastHeartbeatValue
+        ) {
+          health = {
+            ...health,
+            lastHeartbeatValue: update.value,
+            lastHeartbeatAt: update.receivedAt,
+          };
+        }
       }
-      return changed ? { ...prev, telemetry } : prev;
+      return changed ? { ...prev, telemetry, health } : prev;
     });
   }
 
   private handleSocketClosed(info: SocketCloseInfo): void {
+    this.cancelReadinessRetry();
     if (info.initiatedByClient || this.store.getSnapshot().state !== 'connected') {
       return;
     }
@@ -773,8 +1082,12 @@ export class SimulatorSession {
     if (config === null) {
       return;
     }
-    this.store.setState((prev) => ({ ...prev, reconnectAttempt: attempt }));
     const delayMs = computeBackoffDelayMs(attempt, this.policy, this.random);
+    this.store.setState((prev) => ({
+      ...prev,
+      reconnectAttempt: attempt,
+      health: { ...prev.health, nextRetryAt: this.now() + delayMs },
+    }));
     this.logger.info('scheduling reconnect', { attempt, delayMs });
     this.cancelReconnect = this.scheduler.schedule(() => {
       this.cancelReconnect = null;
@@ -785,7 +1098,7 @@ export class SimulatorSession {
       this.store.setState((prev) => ({
         ...prev,
         diagnostics: {
-          ...initialDiagnostics(MVP_DATAREF_NAMES),
+          ...initialDiagnostics(ALL_DATAREF_NAMES),
           connector: prev.connector === null ? 'direct' : 'paired',
         },
         telemetry: {},
@@ -799,8 +1112,10 @@ export class SimulatorSession {
     config: XPlaneConnectionConfig,
     attempt: number,
   ): Promise<void> {
-    const ok = await this.runConnectFlow(generation, config, 'reconnect');
-    if (ok || !this.isCurrent(generation)) {
+    const result = await this.runConnectFlow(generation, config, 'reconnect');
+    // 'held' means completeSessionSetup() parked in the readiness hold: the reconnecting →
+    // connected edge already ran there, so this is not a failure to retry.
+    if (result !== 'failed' || !this.isCurrent(generation)) {
       return;
     }
     if (attempt >= this.policy.maxAttempts) {
