@@ -1648,11 +1648,15 @@ describe('aircraft compatibility', () => {
 });
 
 describe('the flight is unloaded while the probe runs', () => {
-  /** A simulator on which not one of the profile's names resolves, DataRefs or commands. */
+  /**
+   * A simulator on which no DataRef resolves — identification included — which is what a flight
+   * unload looks like. The heading-up command is deliberately left resolvable: X-Plane's command
+   * table outlives the flight, so a real mid-probe unload always looks like this, and a resolved
+   * command must never suppress the readiness hold.
+   */
   function unloadedMidProbe(): FakeClient {
     const client = new FakeClient();
     client.dataRefs = {};
-    client.missingCommand = GENERIC_COMMANDS.headingUp;
     return client;
   }
 
@@ -1663,8 +1667,10 @@ describe('the flight is unloaded while the probe runs', () => {
 
     await session.connect('192.168.1.100', 8086);
 
-    // Probing nothing is either an unloaded flight or a profile that does not fit; only the
-    // second count tells the two apart, and here it says the flight is gone.
+    // The command resolved and must not have suppressed the hold.
+    expect(client.findCommand).toHaveBeenCalled();
+    // Resolving no DataRef is either an unloaded flight or a profile that does not fit; only
+    // the second count tells the two apart, and here it says the flight is gone.
     expect(snapshot().state).toBe('connected');
     expect(snapshot().error?.code).toBe('SIMULATOR_NOT_READY');
     expect(snapshot().health.readinessRetryAt).not.toBeNull();

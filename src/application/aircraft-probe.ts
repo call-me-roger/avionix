@@ -87,8 +87,6 @@ export interface ProbeResult {
   commands: Map<string, CommandDescriptor>;
   /** False when this X-Plane reported `is_writable` on no descriptor at all (pre-12.4.3). */
   writabilityReported: boolean;
-  /** True when the profile declared names and not one of them resolved. */
-  allMissing: boolean;
 }
 
 /** Phase 4 of the connect pipeline: which of the profile's names this aircraft actually has. */
@@ -110,7 +108,6 @@ export async function probeBindings(
   const dataRefs: DataRefDescriptor[] = [];
   const commands = new Map<string, CommandDescriptor>();
   let writabilityReported = false;
-  let resolved = 0;
   for (const { binding, command, dataRef } of probes) {
     if (binding.kind === 'command') {
       results[binding.name] = {
@@ -120,7 +117,6 @@ export async function probeBindings(
       };
       if (command !== null) {
         commands.set(command.name, command);
-        resolved += 1;
       }
       continue;
     }
@@ -139,16 +135,9 @@ export async function probeBindings(
       kind: 'dataref',
       status: readOnly ? 'readOnly' : 'ok',
     };
+    // A locked name is still a name this aircraft has, so its descriptor is collected and
+    // subscribed like any other; only the binding's own status records that it cannot be written.
     dataRefs.push(dataRef);
-    // Resolved means the name was found, whether or not it is locked: `missing` is the only
-    // status that costs the readiness flag below.
-    resolved += 1;
   }
-  return {
-    results,
-    dataRefs,
-    commands,
-    writabilityReported,
-    allMissing: bindings.length > 0 && resolved === 0,
-  };
+  return { results, dataRefs, commands, writabilityReported };
 }

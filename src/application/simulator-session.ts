@@ -123,8 +123,12 @@ interface SessionBindings {
   dataRefsById: Map<number, DataRefDescriptor>;
   dataRefsByName: Map<string, DataRefDescriptor>;
   commandsByName: Map<string, CommandDescriptor>;
-  /** The profile declared names and not one of them resolved. */
-  allMissing: boolean;
+  /**
+   * Not one DataRef resolved, identification included. Readiness is a question about DataRefs —
+   * `datarefs/count` is what answers it, and unloading a flight takes every DataRef with it — so
+   * a command that still resolves (X-Plane's command table outlives the flight) must not hide it.
+   */
+  noDataRefsResolved: boolean;
 }
 
 interface ActiveConnection {
@@ -869,7 +873,7 @@ export class SimulatorSession {
       dataRefsById,
       dataRefsByName,
       commandsByName: probe.commands,
-      allMissing: probe.allMissing,
+      noDataRefsResolved: dataRefsById.size === 0,
     };
   }
 
@@ -962,7 +966,7 @@ export class SimulatorSession {
 
     // The flight can be unloaded while the probe runs. Nothing resolving is either that, or a
     // profile that does not fit this aircraft; only the count tells the two apart.
-    if (bindings.allMissing) {
+    if (bindings.noDataRefsResolved) {
       let recount = count;
       try {
         recount = await client.getDataRefCount();

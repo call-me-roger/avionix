@@ -191,13 +191,6 @@ describe('probeBindings', () => {
     expect(probe.commands.get('cmd')?.id).toBe(9);
   });
 
-  it('flags the case where nothing at all resolved', async () => {
-    const probe = await probeBindings(fakeClient(), bindings);
-    expect(probe.allMissing).toBe(true);
-    expect((await probeBindings(client(), bindings)).allMissing).toBe(false);
-    expect((await probeBindings(fakeClient(), [])).allMissing).toBe(false);
-  });
-
   it('keeps at most `concurrency` lookups in flight', async () => {
     const many: BindingSpec[] = Array.from({ length: 20 }, (_, index) => ({
       kind: 'dataref',
@@ -220,24 +213,5 @@ describe('probeBindings', () => {
       getDataRefValue: async () => 0,
     };
     await expect(probeBindings(failing, bindings)).rejects.toThrow('network down');
-  });
-
-  it('does not count a resolved-but-locked binding as missing', async () => {
-    const lockedOnly: readonly BindingSpec[] = [
-      { kind: 'dataref', name: 'locked', required: true, write: true, purpose: 'Locked' },
-      { kind: 'dataref', name: 'locked2', required: true, write: true, purpose: 'Locked 2' },
-    ];
-    const probe = await probeBindings(
-      fakeClient({
-        dataRefs: {
-          locked: { id: 2, name: 'locked', valueType: 'float', isWritable: false },
-          locked2: { id: 4, name: 'locked2', valueType: 'float', isWritable: false },
-        },
-      }),
-      lockedOnly,
-    );
-    expect(probe.results.locked?.status).toBe('readOnly');
-    expect(probe.results.locked2?.status).toBe('readOnly');
-    expect(probe.allMissing).toBe(false);
   });
 });
