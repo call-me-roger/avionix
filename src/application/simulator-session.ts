@@ -1,4 +1,5 @@
 import {
+  PROBE_CONCURRENCY,
   type ProbeClient,
   identifyAircraft,
   probeBindings,
@@ -149,6 +150,15 @@ interface ActiveConnection {
   dataRefsByName: Map<string, DataRefDescriptor>;
   commandsByName: Map<string, CommandDescriptor>;
   subscribedIds: Set<number>;
+  /**
+   * A compatibility pass running against *this* connection. The pass runs over REST, so one
+   * already in flight when the socket drops completes normally, long after a reconnect may have
+   * installed a new connection; holding the marker here is what stops that dead pass from
+   * suppressing — and then swallowing — a re-check owed to the connection that replaced it.
+   */
+  recheckInFlight: boolean;
+  /** An aircraft change that arrived while this connection's pass was running, owed a pass. */
+  recheckPending: boolean;
   unsubscribe: () => void;
 }
 
@@ -174,9 +184,6 @@ export class SimulatorSession {
    */
   private readinessHold: { client: SimulatorClient; unsubscribeClose: () => void } | null = null;
   private cancelRecheck: (() => void) | null = null;
-  private recheckInFlight = false;
-  /** An aircraft change that arrived while a pass was already running, owed a pass of its own. */
-  private recheckPending = false;
   private token: string | null = null;
   private pendingPairing: PendingPairing | null = null;
   private pairInFlight = false;
@@ -401,10 +408,7 @@ export class SimulatorSession {
     if (active === null || this.store.getSnapshot().state !== 'connected') {
       return;
     }
-    if (this.cancelRecheck !== null) {
-      this.cancelRecheck();
-      this.cancelRecheck = null;
-    }
+    this.cancelRecheckDebounce();
     await this.runRecheck(active.generation);
   }
 
@@ -479,15 +483,7 @@ export class SimulatorSession {
 
   private teardown(): void {
     this.cancelReadinessRetry();
-    if (this.cancelRecheck !== null) {
-      this.cancelRecheck();
-      this.cancelRecheck = null;
-    }
-    // A pass still awaiting resolveBindings can no longer install anything — `this.active` has
-    // changed, and both its resume points compare by identity — so the session it belongs to is
-    // over. Clearing the flags here stops it from swallowing the next connection's first pass.
-    this.recheckInFlight = false;
-    this.recheckPending = false;
+    this.cancelRecheckDebounce();
     if (this.cancelReconnect !== null) {
       this.cancelReconnect();
       this.cancelReconnect = null;
@@ -846,7 +842,7 @@ export class SimulatorSession {
    * whether the result is still wanted.
    */
   private async resolveBindings(client: ProbeClient): Promise<SessionBindings> {
-    const identification = await identifyAircraft(client);
+    const identification = await identifyAircraft(client, PROBE_CONCURRENCY, this.logger);
     const selection = selectProfile(BUNDLED_PROFILES, identification.identity);
     const profile = selection.profile;
     let identity = identification.identity;
@@ -855,7 +851,7 @@ export class SimulatorSession {
 
     const versionName = profile.addOnVersionDataRef;
     if (versionName !== undefined) {
-      const read = await readAddOnVersion(client, versionName);
+      const read = await readAddOnVersion(client, versionName, this.logger);
       identity = { ...identity, addOnVersion: read.version };
       results[versionName] = read.result;
       if (read.dataRef !== null) {
@@ -1044,6 +1040,8 @@ export class SimulatorSession {
       dataRefsByName: bindings.dataRefsByName,
       commandsByName: bindings.commandsByName,
       subscribedIds: new Set<number>(),
+      recheckInFlight: false,
+      recheckPending: false,
       unsubscribe: () => {
         unsubscribeUpdates();
         unsubscribeClose();
@@ -1272,10 +1270,16 @@ export class SimulatorSession {
     }
   }
 
-  private scheduleRecheck(generation: number): void {
+  /** Cancels an armed re-check debounce, if any. Idempotent. */
+  private cancelRecheckDebounce(): void {
     if (this.cancelRecheck !== null) {
       this.cancelRecheck();
+      this.cancelRecheck = null;
     }
+  }
+
+  private scheduleRecheck(generation: number): void {
+    this.cancelRecheckDebounce();
     this.cancelRecheck = this.scheduler.schedule(() => {
       this.cancelRecheck = null;
       if (!this.isCurrent(generation)) {
@@ -1295,13 +1299,13 @@ export class SimulatorSession {
     if (active === null || active.generation !== generation) {
       return;
     }
-    if (this.recheckInFlight) {
+    if (active.recheckInFlight) {
       // Deferred, never dropped: the pass already running read the previous aircraft's table, so
       // the change that just arrived is owed a pass of its own. Its `finally` re-arms one.
-      this.recheckPending = true;
+      active.recheckPending = true;
       return;
     }
-    this.recheckInFlight = true;
+    active.recheckInFlight = true;
     try {
       const bindings = await this.resolveBindings(active.client);
       if (this.active !== active || !this.isCurrent(generation)) {
@@ -1321,17 +1325,24 @@ export class SimulatorSession {
       const added = [...nextIds].filter((id) => !active.subscribedIds.has(id));
       const removed = [...active.subscribedIds].filter((id) => !nextIds.has(id));
       // A delta, not a re-subscribe: unsubscribing everything would blank the telemetry for a
-      // frame on an aircraft change that usually keeps most of its names.
-      if (removed.length > 0) {
-        await active.client.unsubscribeDataRefs(removed.map((id) => ({ id })));
+      // frame on an aircraft change that usually keeps most of its names. Added first: a brief
+      // superset costs nothing, while dropping the old ids first would leave the socket short of
+      // them — the three identification DataRefs included, and they are the only thing that can
+      // ever announce the next aircraft — if the subscribe then failed. `subscribedIds` is
+      // updated as each call returns, so a delta that only half-happened is still recorded as it
+      // actually is on the socket.
+      if (added.length > 0) {
+        await active.client.subscribeDataRefs(added.map((id) => ({ id })));
+        active.subscribedIds = new Set([...active.subscribedIds, ...added]);
       }
-      // A teardown landing in this gap would leave the subscribe below running against a closed
+      // A teardown landing in this gap would leave the unsubscribe below running against a closed
       // socket, reporting a re-check failure for a connection that is simply gone.
       if (this.active !== active) {
         return;
       }
-      if (added.length > 0) {
-        await active.client.subscribeDataRefs(added.map((id) => ({ id })));
+      if (removed.length > 0) {
+        await active.client.unsubscribeDataRefs(removed.map((id) => ({ id })));
+        active.subscribedIds = nextIds;
       }
       if (this.active !== active || !this.isCurrent(generation)) {
         return;
@@ -1340,7 +1351,6 @@ export class SimulatorSession {
       active.dataRefsById = bindings.dataRefsById;
       active.dataRefsByName = bindings.dataRefsByName;
       active.commandsByName = bindings.commandsByName;
-      active.subscribedIds = nextIds;
       this.profile = bindings.profile;
       this.applyBindings(bindings);
     } catch (error) {
@@ -1348,12 +1358,12 @@ export class SimulatorSession {
       // one re-check could not finish.
       this.logger.warn('compatibility re-check failed', { message: String(error) });
     } finally {
-      this.recheckInFlight = false;
-      if (this.recheckPending) {
-        this.recheckPending = false;
+      active.recheckInFlight = false;
+      if (active.recheckPending) {
+        active.recheckPending = false;
         // Through the debounce rather than straight back into runRecheck, so a burst of changes
-        // arriving during a slow pass cannot spin. `teardown()` clears the flag, so this only
-        // re-arms for a connection that is still the live one.
+        // arriving during a slow pass cannot spin. The markers belong to this connection, so a
+        // pass that outlived its own connection clears and consumes nothing a live one owns.
         if (this.active === active && this.isCurrent(generation)) {
           this.scheduleRecheck(generation);
         }
@@ -1367,6 +1377,10 @@ export class SimulatorSession {
       return;
     }
     this.logger.warn('socket lost', { code: info.code, reason: info.reason });
+    // The armed debounce belongs to the connection that just went away: leaving it to fire and
+    // no-op on its generation guard only works while the shortest reconnect backoff outlasts it,
+    // and a stale callback that then nulls `cancelRecheck` would orphan a live timer's handle.
+    this.cancelRecheckDebounce();
     const active = this.active;
     this.active = null;
     active?.unsubscribe();

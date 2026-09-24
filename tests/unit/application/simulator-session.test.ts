@@ -1745,6 +1745,20 @@ describe('aircraft changes', () => {
   });
 
   /**
+   * X-Plane tears its DataRef table down and rebuilds it on an aircraft change, so the same names
+   * can come back under different ids. Every id the session holds is then `removed`.
+   */
+  const renumber = (
+    dataRefs: Record<string, FakeDataRef>,
+    offset: number,
+  ): Record<string, FakeDataRef> =>
+    Object.fromEntries(
+      Object.entries(dataRefs).map(([name, ref]) => [name, { ...ref, id: ref.id + offset }]),
+    );
+
+  const ascending = (ids: number[]): number[] => [...ids].sort((a, b) => a - b);
+
+  /**
    * Parks every name lookup the pipeline makes from now on, so a pass can be held open mid-probe.
    * Returns the release.
    */
@@ -1905,6 +1919,66 @@ describe('aircraft changes', () => {
     expect(client.unsubscribed).toEqual([]);
   });
 
+  it('subscribes before it unsubscribes, so a failed delta keeps the identification ids', async () => {
+    const client = new FakeClient();
+    const { session, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    client.subscribed.length = 0;
+
+    // A rebuilt table: every id the session holds is about to be dropped, the three
+    // identification ones included — and they are the only thing that can announce the next
+    // aircraft. The subscribe of the replacements fails.
+    client.dataRefs = renumber(renameTail(client.dataRefs, 'N999XX'), 10);
+    client.subscribeError = new AvionixError({
+      code: 'SUBSCRIPTION_FAILED',
+      message: 'subscribe rejected',
+    });
+    await session.recheckCompatibility();
+
+    expect(snapshot().state).toBe('connected');
+    // Nothing was unsubscribed, so the socket still carries every id it did before.
+    expect(client.unsubscribed).toEqual([]);
+
+    // And the session's record says so: the next pass still sees all seven old ids as live and
+    // all seven new ones as missing, which is exactly what the socket has.
+    client.subscribeError = null;
+    await session.recheckCompatibility();
+    expect(ascending(client.subscribed)).toEqual([11, 12, 13, 14, 15, 16, 17]);
+    expect(ascending(client.unsubscribed)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(snapshot().compatibility.identity.tailNumber).toBe('N999XX');
+  });
+
+  it('does not let a pass that outlived its connection suppress one on the next', async () => {
+    const first = new FakeClient();
+    const second = new FakeClient();
+    const { session, scheduler, snapshot } = setup({ clients: [first, second] });
+    await session.connect('192.168.1.100', 8086);
+
+    // A pass parked on its lookups. It runs over REST, so losing the socket does not fail it.
+    const release = gateLookups(first);
+    const pass = session.recheckCompatibility();
+    await flush();
+
+    first.emitClose({ code: 1006, reason: 'gone', wasClean: false, initiatedByClient: false });
+    await flush();
+    await scheduler.runNext();
+    expect(snapshot().state).toBe('connected');
+
+    // A genuine aircraft change on the connection that replaced it, while the dead pass is
+    // still running.
+    second.dataRefs = renameTail(second.dataRefs, 'N888XX');
+    second.emitUpdates(identityUpdate('N888XX'));
+    await flush();
+    await scheduler.runNext();
+
+    release();
+    await pass;
+    await flush();
+
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().compatibility.identity.tailNumber).toBe('N888XX');
+  });
+
   it('defers an aircraft change that arrives mid-pass instead of dropping it', async () => {
     const client = new FakeClient();
     const { session, scheduler, snapshot } = setup({ clients: [client] });
@@ -1931,5 +2005,30 @@ describe('aircraft changes', () => {
     await scheduler.runNext();
     expect(snapshot().compatibility.identity.tailNumber).toBe('N888XX');
     expect(snapshot().state).toBe('connected');
+  });
+});
+
+describe('identification never fails a connect', () => {
+  it('connects when a value read fails on an identification dataref', async () => {
+    const client = new FakeClient();
+    // The name resolves, then the read 404s: the aircraft changed between the lookup and the
+    // read, which is the table rebuild this feature defends against everywhere else.
+    client.getDataRefValue.mockRejectedValue(
+      new AvionixError({ code: 'DATAREF_NOT_FOUND', message: 'no such dataref id' }),
+    );
+    const { session, snapshot } = setup({ clients: [client] });
+
+    await session.connect('192.168.1.100', 8086);
+
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().error).toBeNull();
+    expect(snapshot().compatibility.identified).toBe(false);
+    // The names themselves resolved, so they are recorded as present and stay subscribed —
+    // nothing else can announce the next aircraft.
+    for (const name of IDENTITY_DATAREF_NAMES) {
+      expect(snapshot().compatibility.bindings[name]?.status).toBe('ok');
+    }
+    expect(client.subscribed.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(snapshot().diagnostics.subscription).toBe('ok');
   });
 });

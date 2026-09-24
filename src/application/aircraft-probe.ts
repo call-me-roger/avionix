@@ -9,7 +9,8 @@ import {
 import type { BindingSpec } from '@/domain/aircraft/profile';
 import { decodeDataRefString } from '@/domain/simulator/dataref-string';
 import type { SimulatorClient } from '@/domain/simulator/simulator-client';
-import type { CommandDescriptor, DataRefDescriptor } from '@/domain/simulator/types';
+import type { CommandDescriptor, DataRefDescriptor, DataRefValue } from '@/domain/simulator/types';
+import { type Logger, silentLogger } from '@/infrastructure/logging/logger';
 import { mapWithConcurrency } from '@/utils/concurrency';
 
 /** Six at a time keeps a 60-name profile under a second on a LAN without flooding a phone's link. */
@@ -25,33 +26,48 @@ export interface IdentificationResult {
 }
 
 /**
- * Reads a `data`-typed DataRef as text. A lookup miss is a recorded result; a transport failure is
+ * Reads a `data`-typed DataRef as text. A lookup miss is a recorded result; a failed *lookup* is
  * left to throw, because a broken link must not be reported as a missing name.
+ *
+ * A failed *value* read is neither: the name resolved a moment ago, so the binding is present and
+ * only its text is unavailable. The usual cause is the aircraft changing between the lookup and
+ * the read, which makes X-Plane rebuild its DataRef table and answer 404 for an id that was valid
+ * when it was issued. Identification is optional (R1, R2), so this may never fail a connect; a
+ * link that is genuinely dead still fails it a moment later, at the probe's own lookups.
  */
 async function readText(
   client: ProbeClient,
   name: string,
+  logger: Logger = silentLogger,
 ): Promise<{ text: string | null; dataRef: DataRefDescriptor | null; result: BindingResult }> {
   const dataRef = await client.findDataRef(name);
   if (dataRef === null) {
     return { text: null, dataRef: null, result: { name, kind: 'dataref', status: 'missing' } };
   }
-  const value = await client.getDataRefValue(dataRef.id);
-  return {
-    text: decodeDataRefString(value, dataRef.valueType),
-    dataRef,
-    // The name resolved: a DataRef holding an empty string is present, just silent.
-    result: { name, kind: 'dataref', status: 'ok' },
-  };
+  // The name resolved: a DataRef holding an empty string, or one that would not answer at all,
+  // is present — just silent.
+  const result: BindingResult = { name, kind: 'dataref', status: 'ok' };
+  let value: DataRefValue;
+  try {
+    value = await client.getDataRefValue(dataRef.id);
+  } catch (error) {
+    logger.debug('dataref resolved but its value could not be read', {
+      name,
+      message: String(error),
+    });
+    return { text: null, dataRef, result };
+  }
+  return { text: decodeDataRefString(value, dataRef.valueType), dataRef, result };
 }
 
 /** Phase 2 of the connect pipeline: who is flying. Never fails a connect (R1, R2). */
 export async function identifyAircraft(
   client: ProbeClient,
   concurrency: number = PROBE_CONCURRENCY,
+  logger: Logger = silentLogger,
 ): Promise<IdentificationResult> {
   const reads = await mapWithConcurrency(IDENTITY_FIELDS, concurrency, (field: IdentityField) =>
-    readText(client, IDENTITY_DATAREFS[field]).then((read) => ({ field, read })),
+    readText(client, IDENTITY_DATAREFS[field], logger).then((read) => ({ field, read })),
   );
   const identity: AircraftIdentity = { ...UNIDENTIFIED };
   const results: BindingResults = {};
@@ -76,8 +92,9 @@ export interface AddOnVersionResult {
 export async function readAddOnVersion(
   client: ProbeClient,
   name: string,
+  logger: Logger = silentLogger,
 ): Promise<AddOnVersionResult> {
-  const read = await readText(client, name);
+  const read = await readText(client, name, logger);
   return { version: read.text, result: read.result, dataRef: read.dataRef };
 }
 
