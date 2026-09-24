@@ -1,4 +1,4 @@
-import { snapshotDataRefNames } from '@/application/compatibility';
+import { featureStatus, snapshotDataRefNames } from '@/application/compatibility';
 import type { PairingTokenStore } from '@/application/pairing-token-store';
 import { createPairingTokenStore } from '@/application/pairing-token-store';
 import { createMemorySettingsStorage } from '@/application/settings-store';
@@ -7,7 +7,10 @@ import {
   SimulatorSession,
   type SimulatorSessionDeps,
 } from '@/application/simulator-session';
+import { IDENTITY_DATAREFS, IDENTITY_DATAREF_NAMES } from '@/domain/aircraft/identity-datarefs';
 import {
+  FEATURE_FLIGHT_TELEMETRY,
+  FEATURE_HEADING_CONTROL,
   GENERIC_COMMANDS,
   GENERIC_DATAREFS,
   GENERIC_PROFILE,
@@ -15,7 +18,13 @@ import {
 import type { XPlaneConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
-import type { DataRefUpdate, SimulatorCapabilities } from '@/domain/simulator/types';
+import type {
+  DataRefDescriptor,
+  DataRefUpdate,
+  DataRefValue,
+  DataRefValueType,
+  SimulatorCapabilities,
+} from '@/domain/simulator/types';
 import { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
@@ -32,6 +41,25 @@ const caps: SimulatorCapabilities = {
   rawApiVersions: ['v1', 'v2', 'v3'],
 };
 
+interface FakeDataRef {
+  id: number;
+  valueType: DataRefValueType;
+  value?: DataRefValue;
+  isWritable?: boolean;
+}
+
+const base64 = (text: string): string => Buffer.from(text, 'utf8').toString('base64');
+
+const DEFAULT_FAKE_DATAREFS: Record<string, FakeDataRef> = {
+  [GENERIC_DATAREFS.heartbeat]: { id: 1, valueType: 'float' },
+  [GENERIC_DATAREFS.airspeed]: { id: 2, valueType: 'float' },
+  [GENERIC_DATAREFS.headingBug]: { id: 3, valueType: 'float', isWritable: true },
+  [GENERIC_DATAREFS.paused]: { id: 4, valueType: 'float' },
+  [IDENTITY_DATAREFS.icaoType]: { id: 5, valueType: 'data', value: base64('C172') },
+  [IDENTITY_DATAREFS.description]: { id: 6, valueType: 'data', value: base64('Cessna 172 SP') },
+  [IDENTITY_DATAREFS.tailNumber]: { id: 7, valueType: 'data', value: base64('N172SP') },
+};
+
 class FakeClient implements SimulatorClient {
   updateListeners = new Set<(updates: DataRefUpdate[]) => void>();
   closeListeners = new Set<(info: SocketCloseInfo) => void>();
@@ -43,25 +71,34 @@ class FakeClient implements SimulatorClient {
   missingDataRef: string | null = null;
   socketOpen = false;
 
+  dataRefs: Record<string, FakeDataRef> = { ...DEFAULT_FAKE_DATAREFS };
+
   findDataRef = jest.fn(async (name: string) => {
     if (name === this.missingDataRef) {
       return null;
     }
-    const ids: Record<string, number> = {
-      [GENERIC_DATAREFS.heartbeat]: 1,
-      [GENERIC_DATAREFS.airspeed]: 2,
-      [GENERIC_DATAREFS.headingBug]: 3,
-      ['sim/time/paused']: 4,
-    };
-    const id = ids[name];
-    return id === undefined ? null : { id, name, valueType: 'float' as const };
+    const entry = this.dataRefs[name];
+    if (entry === undefined) {
+      return null;
+    }
+    const descriptor: DataRefDescriptor = { id: entry.id, name, valueType: entry.valueType };
+    return entry.isWritable === undefined
+      ? descriptor
+      : { ...descriptor, isWritable: entry.isWritable };
   });
 
   findCommand = jest.fn(async (name: string) =>
-    name === GENERIC_COMMANDS.headingUp ? { id: 9, name, description: 'up' } : null,
+    name === GENERIC_COMMANDS.headingUp && name !== this.missingCommand
+      ? { id: 9, name, description: 'up' }
+      : null,
   );
 
-  getDataRefValue = jest.fn(async () => 0);
+  getDataRefValue = jest.fn(async (id: number) => {
+    const entry = Object.values(this.dataRefs).find((item) => item.id === id);
+    return entry?.value ?? 0;
+  });
+
+  missingCommand: string | null = null;
 
   dataRefCount = 3;
 
@@ -300,7 +337,7 @@ function setup(
 }
 
 describe('SimulatorSession connect flow', () => {
-  it('goes disconnected → connecting → connected, resolves MVP datarefs and subscribes', async () => {
+  it("goes disconnected → connecting → connected, resolves the profile's datarefs and subscribes", async () => {
     const { session, clients, snapshot } = setup();
     const states: string[] = [];
     session.store.subscribe(() => states.push(snapshot().state));
@@ -328,7 +365,9 @@ describe('SimulatorSession connect flow', () => {
         },
       },
     });
-    expect(clients[0]?.subscribed.sort()).toEqual([1, 2, 3, 4]);
+    // 1-4 are the profile's own names; 5-7 are the three identification DataRefs, which the
+    // session subscribes to so a mid-session aircraft change is visible (R8).
+    expect(clients[0]?.subscribed.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 
   it('rejects an invalid host without touching the network', async () => {
@@ -366,21 +405,23 @@ describe('SimulatorSession connect flow', () => {
     expect(snapshot().diagnostics.websocket).toBe('failed');
   });
 
-  it('marks a missing dataref failed and reports DATAREF_NOT_FOUND', async () => {
+  it('stays connected when a dataref is missing and reports the feature unavailable', async () => {
     const client = new FakeClient();
     client.missingDataRef = GENERIC_DATAREFS.airspeed;
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
-    expect(snapshot().state).toBe('error');
-    expect(snapshot().error?.code).toBe('DATAREF_NOT_FOUND');
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().error).toBeNull();
     expect(snapshot().diagnostics.dataRefs[GENERIC_DATAREFS.airspeed]).toBe('failed');
     expect(snapshot().diagnostics.dataRefs[GENERIC_DATAREFS.heartbeat]).toBe('ok');
-    expect(snapshot().diagnostics.command).toBe('idle');
+    // The command is probed regardless now: a missing DataRef no longer short-circuits the flow.
+    expect(snapshot().diagnostics.command).toBe('ok');
+    expect(featureStatus(snapshot().compatibility, FEATURE_FLIGHT_TELEMETRY)).toBe('unavailable');
+    expect(featureStatus(snapshot().compatibility, FEATURE_HEADING_CONTROL)).toBe('available');
   });
 
   it('reports SIMULATOR_NOT_READY when a dataref is missing and X-Plane has no datarefs, holding the link open', async () => {
     const client = new FakeClient();
-    client.missingDataRef = GENERIC_DATAREFS.heartbeat;
     client.dataRefCount = 0;
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
@@ -390,18 +431,20 @@ describe('SimulatorSession connect flow', () => {
     expect(snapshot().error?.code).toBe('SIMULATOR_NOT_READY');
     expect(snapshot().error?.message).toContain('Load a flight');
     expect(snapshot().error?.retryable).toBe(true);
-    expect(snapshot().diagnostics.dataRefs[GENERIC_DATAREFS.heartbeat]).toBe('failed');
+    // The count is checked before any name is tried, so nothing was probed: the step is
+    // still 'idle' rather than reporting a name this aircraft does not have.
+    expect(snapshot().diagnostics.dataRefs[GENERIC_DATAREFS.heartbeat]).toBe('idle');
     expect(snapshot().health.readinessRetryAt).not.toBeNull();
     expect(client.socketOpen).toBe(true);
   });
 
-  it('keeps DATAREF_NOT_FOUND when the count check itself fails', async () => {
+  it('fails the connect when the readiness check itself fails', async () => {
     const client = new FakeClient();
-    client.missingDataRef = GENERIC_DATAREFS.heartbeat;
     client.getDataRefCount.mockRejectedValueOnce(new Error('network'));
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
-    expect(snapshot().error?.code).toBe('DATAREF_NOT_FOUND');
+    expect(snapshot().state).toBe('error');
+    expect(snapshot().error?.code).toBe('NETWORK_ERROR');
   });
 
   it('marks subscription failed', async () => {
@@ -545,7 +588,7 @@ describe('SimulatorSession reconnect', () => {
     await scheduler.runNext();
     expect(snapshot().state).toBe('connected');
     expect(snapshot().reconnectAttempt).toBe(0);
-    expect(second.subscribed.sort()).toEqual([1, 2, 3, 4]);
+    expect(second.subscribed.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 
   it('gives up after maxAttempts with retryExhausted → error', async () => {
@@ -616,22 +659,18 @@ describe('SimulatorSession reconnect', () => {
 
   it('socket loss while dataref resolution is pending starts a reconnect', async () => {
     const client = new FakeClient();
-    // findDataRef is called once per MVP DataRef name (all issued synchronously by
-    // Promise.all before any microtask runs), so each call gets its own controllable
-    // promise; releasing all of them together simulates resolution finally settling.
-    const resolvers: Array<() => void> = [];
-    client.findDataRef = jest.fn(
-      (name: string) =>
-        new Promise((resolve) => {
-          const id = resolvers.length + 1;
-          resolvers.push(() => resolve({ id, name, valueType: 'float' as const }));
-        }),
-    );
-    const releaseDataRefs = (): void => {
-      for (const resolve of resolvers) {
-        resolve();
-      }
-    };
+    // Resolution runs in phases now (identify, then probe the profile), so a batch of
+    // one-shot resolvers would leave the second phase's lookups hanging. One gate, opened
+    // once, releases every lookup the pipeline makes from then on.
+    const lookup = client.findDataRef;
+    let releaseDataRefs!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseDataRefs = resolve;
+    });
+    client.findDataRef = jest.fn(async (name: string) => {
+      await gate;
+      return lookup(name);
+    });
     const second = new FakeClient();
     const { session, scheduler, snapshot } = setup({ clients: [client, second] });
 
@@ -1106,26 +1145,31 @@ describe('SimulatorSession pairing edge cases', () => {
 
   it('ignores a resolution that completes after the session was torn down', async () => {
     const client = new FakeClient();
-    const gates: Array<() => void> = [];
+    const lookup = client.findDataRef;
+    let lookups = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     client.findDataRef = jest.fn(async (name: string) => {
-      await new Promise<void>((resolve) => gates.push(resolve));
-      return { id: 1, name, valueType: 'float' as const };
+      lookups += 1;
+      await gate;
+      return lookup(name);
     });
     const { session, snapshot } = setup({ clients: [client] });
 
     const connecting = session.connect('192.168.1.100', 8080);
     await flush();
-    expect(gates.length).toBe(3);
+    // Identification is the first phase of the pipeline and probes exactly three names.
+    expect(lookups).toBe(3);
     session.disconnect();
-    for (const gate of gates) {
-      gate();
-    }
+    release();
     await connecting;
 
     expect(snapshot().state).toBe('disconnected');
-    expect(snapshot().diagnostics.command).toBe('idle');
-    // disconnect() no longer resets diagnostics (F-02 R11): the step was 'pending' the
-    // moment disconnect() ran, and the late resolve is ignored rather than overwriting it.
+    // disconnect() no longer resets diagnostics (F-02 R11): both steps were 'pending' the
+    // moment disconnect() ran, and the late resolution is discarded rather than published.
+    expect(snapshot().diagnostics.command).toBe('pending');
     expect(snapshot().diagnostics.dataRefs[GENERIC_DATAREFS.heartbeat]).toBe('pending');
   });
 });
@@ -1187,12 +1231,16 @@ describe('health facts', () => {
 
   it('measures a round trip from requests it already makes', async () => {
     // A clock frozen during connect would make every sample 0, so this could pass even if
-    // recordRoundTrip never ran. Advance it inside subscribeDataRefs (the last timed() call
-    // in the connect flow) so the elapsed value asserted below can only come from an actual
-    // measurement.
+    // recordRoundTrip never ran. A connect makes three timed() calls (capabilities, the
+    // readiness count, the subscription); advance the clock inside the two the fake owns, so
+    // samples are [0, 42, 42] and the median asserted below can only come from a measurement.
     const client = new FakeClient();
     const now = new ManualClock();
     const startedAt = now.get();
+    client.getDataRefCount = jest.fn(async () => {
+      now.set(now.get() + 42);
+      return client.dataRefCount;
+    });
     client.subscribeDataRefs = jest.fn(async (subs: Array<{ id: number }>) => {
       now.set(now.get() + 42);
       client.subscribed.push(...subs.map((s) => s.id));
@@ -1203,7 +1251,7 @@ describe('health facts', () => {
 
     const { health } = session.store.getSnapshot();
     expect(health.roundTripMs).toBe(42);
-    expect(health.roundTripAt).toBe(startedAt + 42);
+    expect(health.roundTripAt).toBe(startedAt + 84);
   });
 
   it('exposes the reconnect budget alongside the attempt', async () => {
@@ -1266,30 +1314,34 @@ describe('health facts', () => {
   });
 
   it('does not let round-trip samples from a previous host survive into a new connect', async () => {
-    // Two timed calls per connect (capabilities, then subscribeDataRefs); the clock only moves
-    // inside subscribeDataRefs, so each connect contributes samples [0, elapsedMs].
+    // Three timed calls per connect (capabilities, the readiness count, subscribeDataRefs);
+    // the clock only moves inside the last two, so each connect contributes [0, ms, ms].
     const now = new ManualClock();
+    const advance = (client: FakeClient, ms: number): void => {
+      client.getDataRefCount = jest.fn(async () => {
+        now.set(now.get() + ms);
+        return client.dataRefCount;
+      });
+      client.subscribeDataRefs = jest.fn(async (subs: Array<{ id: number }>) => {
+        now.set(now.get() + ms);
+        client.subscribed.push(...subs.map((s) => s.id));
+      });
+    };
     const fast = new FakeClient();
-    fast.subscribeDataRefs = jest.fn(async (subs: Array<{ id: number }>) => {
-      now.set(now.get() + 5);
-      fast.subscribed.push(...subs.map((s) => s.id));
-    });
+    advance(fast, 5);
     const slow = new FakeClient();
-    slow.subscribeDataRefs = jest.fn(async (subs: Array<{ id: number }>) => {
-      now.set(now.get() + 3000);
-      slow.subscribed.push(...subs.map((s) => s.id));
-    });
+    advance(slow, 3000);
     const { session } = setup({ clients: [fast, slow], now: now.get });
 
     await session.connect('192.168.1.10', '8086');
-    // sorted [0, 5], median (index 1) is 5.
+    // sorted [0, 5, 5], median (index 1) is 5.
     expect(session.store.getSnapshot().health.roundTripMs).toBe(5);
 
     session.disconnect();
     await session.connect('192.168.1.20', '8086');
 
-    // Without the fix the buffer would still hold the fast host's [0, 5], and the combined
-    // sorted [0, 0, 5, 3000] would median to 5 — reporting the slow host as fast.
+    // Without the fix the window would still hold the fast host's samples, and the last five
+    // of [0, 5, 5, 0, 3000, 3000] would median to 5 — reporting the slow host as fast.
     expect(session.store.getSnapshot().health.roundTripMs).toBe(3000);
   });
 
@@ -1343,7 +1395,6 @@ describe('no flight loaded', () => {
   it('keeps the link open and retries instead of failing the connect', async () => {
     const client = new FakeClient();
     client.dataRefCount = 0;
-    client.missingDataRef = GENERIC_DATAREFS.airspeed;
     const { session, scheduler, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.10', '8086');
     await flush();
@@ -1356,7 +1407,6 @@ describe('no flight loaded', () => {
     expect(client.socketOpen).toBe(true);
 
     client.dataRefCount = 3;
-    client.missingDataRef = null;
     await scheduler.runNext();
 
     const ready = snapshot();
@@ -1367,21 +1417,24 @@ describe('no flight loaded', () => {
     expect(client.connectWebSocket).toHaveBeenCalledTimes(1);
   });
 
-  it('still fails the connect when a name is genuinely missing and a flight is loaded', async () => {
+  it('does not hold for readiness when a name is genuinely missing and a flight is loaded', async () => {
     const client = new FakeClient();
     client.dataRefCount = 3;
     client.missingDataRef = GENERIC_DATAREFS.airspeed;
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.10', '8086');
 
-    expect(snapshot().state).toBe('error');
+    // A missing name costs its feature, not the link — and a loaded flight must never be
+    // mistaken for the main menu, which is the only thing the readiness hold is for.
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().error).toBeNull();
     expect(snapshot().health.readinessRetryAt).toBeNull();
+    expect(featureStatus(snapshot().compatibility, FEATURE_FLIGHT_TELEMETRY)).toBe('unavailable');
   });
 
   it('cancels the readiness retry on disconnect and closes the held socket', async () => {
     const client = new FakeClient();
     client.dataRefCount = 0;
-    client.missingDataRef = GENERIC_DATAREFS.airspeed;
     const { session, scheduler, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.10', '8086');
     await flush();
@@ -1399,7 +1452,6 @@ describe('no flight loaded', () => {
     const first = new FakeClient();
     const second = new FakeClient();
     second.dataRefCount = 0;
-    second.missingDataRef = GENERIC_DATAREFS.airspeed;
     const { session, scheduler, snapshot } = setup({ clients: [first, second] });
     await session.connect('192.168.1.100', 8086);
     first.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });
@@ -1408,7 +1460,6 @@ describe('no flight loaded', () => {
     expect(snapshot().health.flightLoaded).toBe(false);
 
     second.dataRefCount = 3;
-    second.missingDataRef = null;
     await scheduler.runNext();
 
     const ready = snapshot();
@@ -1421,7 +1472,6 @@ describe('no flight loaded', () => {
     const first = new FakeClient();
     const second = new FakeClient();
     second.dataRefCount = 0;
-    second.missingDataRef = GENERIC_DATAREFS.airspeed;
     const { session, scheduler, snapshot } = setup({ clients: [first, second] });
     await session.connect('192.168.1.100', 8086);
     first.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });
@@ -1439,7 +1489,6 @@ describe('no flight loaded', () => {
     const first = new FakeClient();
     const second = new FakeClient();
     second.dataRefCount = 0;
-    second.missingDataRef = GENERIC_DATAREFS.airspeed;
     const { session, scheduler, snapshot } = setup({ clients: [first, second] });
     await session.connect('192.168.1.100', 8086);
     first.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });
@@ -1451,7 +1500,6 @@ describe('no flight loaded', () => {
     // The pilot loads a flight, so the readiness retry gets past resolution, but something
     // else genuinely fails: the subscription itself is rejected.
     second.dataRefCount = 3;
-    second.missingDataRef = null;
     second.subscribeError = new AvionixError({ code: 'SUBSCRIPTION_FAILED', message: 'no' });
     await scheduler.runNext();
 
@@ -1463,5 +1511,93 @@ describe('no flight loaded', () => {
     // A fresh backoff must be armed, or the session would never recover on its own.
     expect(scheduler.queue.filter((entry) => !entry.cancelled).length).toBe(1);
     expect(after.reconnectAttempt).toBe(1);
+  });
+});
+
+describe('aircraft compatibility', () => {
+  it('identifies the aircraft and selects the generic profile', async () => {
+    const { session, snapshot } = setup();
+    await session.connect('192.168.1.100', 8086);
+    const { compatibility } = snapshot();
+    expect(compatibility.identity).toEqual({
+      icaoType: 'C172',
+      description: 'Cessna 172 SP',
+      tailNumber: 'N172SP',
+      addOnVersion: null,
+    });
+    expect(compatibility.identified).toBe(true);
+    expect(compatibility.profileId).toBe('avionix.generic');
+    expect(compatibility.selection).toBe('fallback');
+    expect(compatibility.checkedAt).not.toBeNull();
+    expect(compatibility.features.every((feature) => feature.status === 'available')).toBe(true);
+  });
+
+  it('connects and falls back when X-Plane reports no aircraft at all', async () => {
+    const client = new FakeClient();
+    for (const name of IDENTITY_DATAREF_NAMES) {
+      delete client.dataRefs[name];
+    }
+    const { session, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().compatibility.identified).toBe(false);
+    expect(snapshot().compatibility.profileId).toBe('avionix.generic');
+  });
+
+  it('marks a control unavailable when its dataref is read-only, and refuses to write', async () => {
+    const client = new FakeClient();
+    client.dataRefs = {
+      ...client.dataRefs,
+      [GENERIC_DATAREFS.headingBug]: { id: 3, valueType: 'float', isWritable: false },
+    };
+    const { session, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    expect(featureStatus(snapshot().compatibility, FEATURE_HEADING_CONTROL)).toBe('unavailable');
+    await session.writeHeading(180);
+    expect(client.writes).toEqual([]);
+    expect(snapshot().lastOperation).toMatchObject({
+      ok: false,
+      message: 'Heading control is not available on this aircraft',
+      failure: null,
+    });
+  });
+
+  it('keeps the compatibility result after a disconnect, so the view can mark it not current', async () => {
+    const { session, snapshot } = setup();
+    await session.connect('192.168.1.100', 8086);
+    const checkedAt = snapshot().compatibility.checkedAt;
+    session.disconnect();
+    expect(snapshot().state).toBe('disconnected');
+    expect(snapshot().compatibility.checkedAt).toBe(checkedAt);
+    expect(snapshot().compatibility.identity.tailNumber).toBe('N172SP');
+  });
+
+  it('refuses the heading command when this aircraft does not have it', async () => {
+    const client = new FakeClient();
+    client.missingCommand = GENERIC_COMMANDS.headingUp;
+    const { session, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().diagnostics.command).toBe('failed');
+    expect(featureStatus(snapshot().compatibility, FEATURE_HEADING_CONTROL)).toBe('unavailable');
+
+    await session.activateHeadingUp();
+
+    expect(client.activations).toEqual([]);
+    expect(snapshot().lastOperation).toMatchObject({
+      kind: 'command',
+      ok: false,
+      message: 'Heading control is not available on this aircraft',
+      failure: null,
+    });
+  });
+
+  it('probes nothing at all when X-Plane has no flight loaded', async () => {
+    const client = new FakeClient();
+    client.dataRefCount = 0;
+    const { session } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    expect(client.findDataRef).not.toHaveBeenCalled();
+    expect(client.findCommand).not.toHaveBeenCalled();
   });
 });

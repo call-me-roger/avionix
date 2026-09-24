@@ -34,10 +34,13 @@ export interface MockXPlaneOptions {
   commands?: MockCommand[];
   updateIntervalMs?: number;
   connector?: MockConnectorOptions;
+  /** X-Plane 12.4.3 and newer report `is_writable`; set false to act like an older sim. */
+  reportWritability?: boolean;
 }
 
 export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
   { id: 1001, name: 'sim/time/total_running_time_sec', valueType: 'float', value: 12.5 },
+  { id: 1008, name: 'sim/time/paused', valueType: 'float', value: 0 },
   {
     id: 1002,
     name: 'sim/cockpit2/gauges/indicators/airspeed_kts_pilot',
@@ -57,7 +60,14 @@ export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
     valueType: 'float_array',
     value: [10, 20, 30],
   },
-  { id: 1005, name: 'sim/aircraft/view/acf_tailnum', valueType: 'data', value: 'TklsNzc=' },
+  { id: 1005, name: 'sim/aircraft/view/acf_tailnum', valueType: 'data', value: 'TjE3MlNQ' },
+  { id: 1006, name: 'sim/aircraft/view/acf_ICAO', valueType: 'data', value: 'QzE3Mg==' },
+  {
+    id: 1007,
+    name: 'sim/aircraft/view/acf_descrip',
+    valueType: 'data',
+    value: 'Q2Vzc25hIDE3MiBTUA==',
+  },
 ];
 
 export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [
@@ -115,6 +125,7 @@ export class MockXPlaneServer {
   private readonly xplaneVersion: string;
   private readonly capabilitiesMode: 'ok' | 'not_found';
   private readonly connector: MockConnectorOptions | undefined;
+  private readonly reportWritability: boolean;
   private rejectAllTokens: boolean;
   private readonly dataRefs: Map<number, MockDataRef>;
   private readonly commands: Map<number, MockCommand>;
@@ -135,6 +146,7 @@ export class MockXPlaneServer {
     );
     this.commands = new Map((options.commands ?? DEFAULT_MOCK_COMMANDS).map((c) => [c.id, c]));
     this.connector = options.connector;
+    this.reportWritability = options.reportWritability ?? true;
     this.rejectAllTokens = options.connector?.rejectAllTokens ?? false;
     this.timer = setInterval(() => this.pushUpdates(), options.updateIntervalMs ?? 20);
     this.timer.unref();
@@ -178,6 +190,22 @@ export class MockXPlaneServer {
       throw new Error(`mock dataref ${name} not defined`);
     }
     dataRef.value = value;
+  }
+
+  /** Simulates a name that this aircraft does not have. */
+  removeDataRef(name: string): void {
+    const dataRef = this.getDataRefByName(name);
+    if (dataRef === undefined) {
+      throw new Error(`mock dataref ${name} not defined`);
+    }
+    this.dataRefs.delete(dataRef.id);
+    for (const subs of this.subscriptions.values()) {
+      subs.delete(dataRef.id);
+    }
+  }
+
+  addDataRef(dataRef: MockDataRef): void {
+    this.dataRefs.set(dataRef.id, { ...dataRef });
   }
 
   /** Simulates a connector that has forgotten every paired device (token file deleted). */
@@ -347,7 +375,12 @@ export class MockXPlaneServer {
         this.fail(404, 'invalid_dataref_name', `Dataref ${missing} doesn't exist`);
       }
       this.json(res, 200, {
-        data: selected.map((d) => ({ id: d.id, name: d.name, value_type: d.valueType })),
+        data: selected.map((d) => ({
+          id: d.id,
+          name: d.name,
+          value_type: d.valueType,
+          ...(this.reportWritability ? { is_writable: d.writable === true } : {}),
+        })),
       });
       return;
     }

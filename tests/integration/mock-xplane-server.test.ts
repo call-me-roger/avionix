@@ -85,7 +85,15 @@ describe('MockXPlaneServer', () => {
       await fetch(`${base}/api/v3/datarefs?filter[name]=sim/time/total_running_time_sec`)
     ).json();
     expect(list).toEqual({
-      data: [{ id: 1001, name: 'sim/time/total_running_time_sec', value_type: 'float' }],
+      data: [
+        {
+          id: 1001,
+          name: 'sim/time/total_running_time_sec',
+          value_type: 'float',
+          // The mock emulates X-Plane 12.4.3 and newer, which reports is_writable.
+          is_writable: false,
+        },
+      ],
     });
 
     const missing = await fetch(`${base}/api/v3/datarefs?filter[name]=sim/nope`);

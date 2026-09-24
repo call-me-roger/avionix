@@ -1,5 +1,15 @@
-import { snapshotDataRefNames } from '@/application/compatibility';
-import { MVP_DATAREF_NAMES, OPTIONAL_DATAREF_NAMES } from '@/application/mvp-bindings';
+import {
+  type ProbeClient,
+  identifyAircraft,
+  probeBindings,
+  readAddOnVersion,
+} from '@/application/aircraft-probe';
+import {
+  type CompatibilitySnapshot,
+  bindingFeatureLabels,
+  featureStatus,
+  snapshotDataRefNames,
+} from '@/application/compatibility';
 import type { PairingTokenStore } from '@/application/pairing-token-store';
 import {
   type FailureRef,
@@ -10,11 +20,15 @@ import {
   initialSnapshot,
 } from '@/application/session-snapshot';
 import { Store } from '@/application/store';
-import {
-  GENERIC_COMMANDS,
-  GENERIC_DATAREFS,
-  GENERIC_PROFILE,
-} from '@/domain/aircraft/profiles/generic';
+import { isIdentified } from '@/domain/aircraft/aircraft-identity';
+import type { BindingResults } from '@/domain/aircraft/availability';
+import { deriveAvailability } from '@/domain/aircraft/availability';
+import type { AircraftProfile } from '@/domain/aircraft/profile';
+import { commandBindingOf, profileBindings, writeBindingOf } from '@/domain/aircraft/profile';
+import { selectProfile } from '@/domain/aircraft/profile-selection';
+import { BUNDLED_PROFILES } from '@/domain/aircraft/profiles/catalog';
+import { FEATURE_HEADING_CONTROL, GENERIC_DATAREFS } from '@/domain/aircraft/profiles/generic';
+import { versionWarning } from '@/domain/aircraft/version-check';
 import {
   type XPlaneConnectionConfig,
   createConnectionConfig,
@@ -32,10 +46,6 @@ import { type AuthProvider, noAuth } from '@/infrastructure/xplane/auth';
 import { probeCapabilities } from '@/infrastructure/xplane/capabilities';
 import type { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
 import {
-  createCommandRepository,
-  createDataRefRepository,
-} from '@/infrastructure/xplane/resolution-cache';
-import {
   DEFAULT_RECONNECT_POLICY,
   type ReconnectPolicy,
   computeBackoffDelayMs,
@@ -46,6 +56,17 @@ export const ROUND_TRIP_WINDOW = 5;
 
 /** Flat retry interval used while X-Plane is up but has no flight loaded. */
 export const READINESS_RETRY_MS = 5000;
+
+/** X-Plane is up but has no flight loaded, so no DataRef exists to resolve yet. */
+function simulatorNotReady(): AvionixError {
+  return new AvionixError({
+    code: 'SIMULATOR_NOT_READY',
+    message:
+      'X-Plane has no DataRefs registered yet (count is 0). Load a flight in X-Plane, ' +
+      'then connect again.',
+    retryable: true,
+  });
+}
 
 export interface Scheduler {
   schedule(callback: () => void, delayMs: number): () => void;
@@ -93,13 +114,28 @@ interface PendingPairing {
   connectorHttp: HttpTransport;
 }
 
+/** Everything one pass of the pipeline produced, before any of it reaches the store. */
+interface SessionBindings {
+  profile: AircraftProfile;
+  compatibility: CompatibilitySnapshot;
+  dataRefSteps: Record<string, StepStatus>;
+  commandStep: StepStatus;
+  dataRefsById: Map<number, DataRefDescriptor>;
+  dataRefsByName: Map<string, DataRefDescriptor>;
+  commandsByName: Map<string, CommandDescriptor>;
+  /** The profile declared names and not one of them resolved. */
+  allMissing: boolean;
+}
+
 interface ActiveConnection {
   generation: number;
   config: XPlaneConnectionConfig;
   client: SimulatorClient;
+  profile: AircraftProfile;
   dataRefsById: Map<number, DataRefDescriptor>;
   dataRefsByName: Map<string, DataRefDescriptor>;
-  headingUp: CommandDescriptor;
+  commandsByName: Map<string, CommandDescriptor>;
+  subscribedIds: Set<number>;
   unsubscribe: () => void;
 }
 
@@ -112,6 +148,8 @@ export class SimulatorSession {
   private readonly now: () => number;
   private generation = 0;
   private active: ActiveConnection | null = null;
+  /** The profile the session is working from; the generic one until a probe says otherwise. */
+  private profile: AircraftProfile = BUNDLED_PROFILES.generic;
   private cancelReconnect: (() => void) | null = null;
   private cancelReadiness: (() => void) | null = null;
   /**
@@ -131,7 +169,7 @@ export class SimulatorSession {
 
   constructor(private readonly deps: SimulatorSessionDeps) {
     this.policy = deps.reconnectPolicy ?? DEFAULT_RECONNECT_POLICY;
-    this.store = new Store(initialSnapshot(GENERIC_PROFILE, this.policy.maxAttempts));
+    this.store = new Store(initialSnapshot(BUNDLED_PROFILES.generic, this.policy.maxAttempts));
     this.scheduler = deps.scheduler ?? realScheduler;
     this.random = deps.random ?? Math.random;
     this.logger = deps.logger ?? silentLogger;
@@ -145,9 +183,12 @@ export class SimulatorSession {
     // host never calls connect(), so its samples are deliberately left alone.
     this.roundTrips = [];
     const generation = this.nextGeneration();
+    // The next aircraft may be anything, so the previous one's profile must not decide which
+    // names this connect's diagnostics and compatibility snapshot start out tracking.
+    this.profile = BUNDLED_PROFILES.generic;
     // Any previous state first returns to disconnected, then to connecting; both edges are in the table.
     this.store.setState((prev) => ({
-      ...initialSnapshot(GENERIC_PROFILE, this.policy.maxAttempts),
+      ...initialSnapshot(this.profile, this.policy.maxAttempts),
       state: transition(this.settled(prev.state), 'connect'),
     }));
     this.pendingPairing = null;
@@ -297,12 +338,18 @@ export class SimulatorSession {
     if (active === null) {
       return;
     }
-    const heading = active.dataRefsByName.get(GENERIC_DATAREFS.headingBug);
-    if (heading === undefined) {
+    const binding = writeBindingOf(active.profile, FEATURE_HEADING_CONTROL);
+    const heading = binding === null ? undefined : active.dataRefsByName.get(binding.name);
+    if (
+      heading === undefined ||
+      featureStatus(this.store.getSnapshot().compatibility, FEATURE_HEADING_CONTROL) !== 'available'
+    ) {
+      // R6: a control whose binding is missing or read-only is inert, and says why in the
+      // pilot's words rather than naming a DataRef the message has no room to explain.
       this.recordOperation({
         kind: 'write',
         ok: false,
-        message: 'Heading dataref is not resolved',
+        message: 'Heading control is not available on this aircraft',
         failure: null,
       });
       return;
@@ -335,14 +382,26 @@ export class SimulatorSession {
     if (active === null) {
       return;
     }
+    const binding = commandBindingOf(active.profile, FEATURE_HEADING_CONTROL);
+    const command = binding === null ? undefined : active.commandsByName.get(binding.name);
+    if (
+      command === undefined ||
+      featureStatus(this.store.getSnapshot().compatibility, FEATURE_HEADING_CONTROL) !== 'available'
+    ) {
+      this.recordOperation({
+        kind: 'command',
+        ok: false,
+        message: 'Heading control is not available on this aircraft',
+        failure: null,
+      });
+      return;
+    }
     try {
-      await this.timed(active.generation, () =>
-        active.client.activateCommand(active.headingUp.id, 0),
-      );
+      await this.timed(active.generation, () => active.client.activateCommand(command.id, 0));
       this.recordOperation({
         kind: 'command',
         ok: true,
-        message: `Activated ${GENERIC_COMMANDS.headingUp}`,
+        message: `Activated ${command.name}`,
         failure: null,
       });
     } catch (error) {
@@ -715,9 +774,89 @@ export class SimulatorSession {
   }
 
   /**
-   * Everything that happens on an already-open socket: resolve names, attach the update
-   * listener, subscribe. Separate from runSimulatorFlow so it can be retried on the same
-   * socket when X-Plane has no flight loaded yet.
+   * Phases 2 to 4: who is flying, which profile fits, and which of its names this aircraft has.
+   * Pure with respect to the session — nothing here touches the store, so the caller decides
+   * whether the result is still wanted.
+   */
+  private async resolveBindings(client: ProbeClient): Promise<SessionBindings> {
+    const identification = await identifyAircraft(client);
+    const selection = selectProfile(BUNDLED_PROFILES, identification.identity);
+    const profile = selection.profile;
+    let identity = identification.identity;
+    const results: BindingResults = { ...identification.results };
+    const dataRefs = [...identification.dataRefs];
+
+    const versionName = profile.addOnVersionDataRef;
+    if (versionName !== undefined) {
+      const read = await readAddOnVersion(client, versionName);
+      identity = { ...identity, addOnVersion: read.version };
+      results[versionName] = read.result;
+      if (read.dataRef !== null) {
+        dataRefs.push(read.dataRef);
+      }
+    }
+
+    const bindings = profileBindings(profile);
+    const probe = await probeBindings(client, bindings);
+    for (const [name, result] of Object.entries(probe.results)) {
+      results[name] = result;
+    }
+    dataRefs.push(...probe.dataRefs);
+
+    const dataRefsById = new Map<number, DataRefDescriptor>();
+    const dataRefsByName = new Map<string, DataRefDescriptor>();
+    for (const descriptor of dataRefs) {
+      dataRefsById.set(descriptor.id, descriptor);
+      dataRefsByName.set(descriptor.name, descriptor);
+    }
+
+    const dataRefSteps: Record<string, StepStatus> = {};
+    for (const name of snapshotDataRefNames(profile)) {
+      const result = results[name];
+      dataRefSteps[name] = result === undefined ? 'idle' : result.status === 'ok' ? 'ok' : 'failed';
+    }
+    const commandBindings = bindings.filter((binding) => binding.kind === 'command');
+    const commandStep: StepStatus =
+      commandBindings.length === 0
+        ? 'idle'
+        : commandBindings.every((binding) => results[binding.name]?.status === 'ok')
+          ? 'ok'
+          : 'failed';
+
+    return {
+      profile,
+      compatibility: {
+        identity,
+        identified: isIdentified(identity),
+        profileId: profile.id,
+        profileName: profile.name,
+        profileVersion: profile.version,
+        selection: selection.reason,
+        testedWith: profile.testedWith ?? [],
+        versionWarning: versionWarning(profile, identity),
+        features: deriveAvailability(profile, results),
+        bindings: results,
+        bindingLabels: bindingFeatureLabels(profile),
+        writabilityReported: probe.writabilityReported,
+        checkedAt: this.now(),
+      },
+      dataRefSteps,
+      commandStep,
+      dataRefsById,
+      dataRefsByName,
+      commandsByName: probe.commands,
+      allMissing: probe.allMissing,
+    };
+  }
+
+  /**
+   * Everything that happens on an already-open socket: check the simulator is ready, work out
+   * which aircraft is loaded and which of the profile's names it has, then subscribe. Separate
+   * from runSimulatorFlow so it can be retried on the same socket when X-Plane has no flight
+   * loaded yet.
+   *
+   * A name that does not resolve costs its feature, never the connection (R5, R6): failing the
+   * link would hide every feature that does work.
    */
   private async completeSessionSetup(
     generation: number,
@@ -726,139 +865,128 @@ export class SimulatorSession {
     unsubscribeClose: () => void,
     mode: FlowMode,
   ): Promise<FlowResult> {
-    const dataRefs = createDataRefRepository(client);
-    const commands = createCommandRepository(client);
-    const dataRefsById = new Map<number, DataRefDescriptor>();
-    const dataRefsByName = new Map<string, DataRefDescriptor>();
-    for (const name of MVP_DATAREF_NAMES) {
-      this.setDataRefStep(name, 'pending');
-    }
-    let headingUp: CommandDescriptor;
+    const abandon = (): FlowResult => {
+      unsubscribeClose();
+      client.disconnectWebSocket();
+      return 'failed';
+    };
+
+    // Phase 1. One count request answers "is a flight loaded" before any name is tried, so the
+    // main menu costs one request instead of a failed lookup per binding.
+    let count: number;
     try {
-      const resolved = await Promise.all(
-        MVP_DATAREF_NAMES.map(async (name) => {
-          try {
-            const descriptor = await dataRefs.resolve(name);
-            if (this.isCurrent(generation)) {
-              this.setDataRefStep(name, 'ok');
-            }
-            return descriptor;
-          } catch (error) {
-            if (this.isCurrent(generation)) {
-              this.setDataRefStep(name, 'failed');
-            }
-            throw error;
-          }
-        }),
-      );
-      if (!this.isCurrent(generation)) {
-        unsubscribeClose();
-        client.disconnectWebSocket();
-        return 'failed';
-      }
-      for (const descriptor of resolved) {
-        dataRefsById.set(descriptor.id, descriptor);
-        dataRefsByName.set(descriptor.name, descriptor);
-      }
-      this.setStep((d) => ({ ...d, command: 'pending' }));
-      headingUp = await commands.resolve(GENERIC_COMMANDS.headingUp);
-      if (!this.isCurrent(generation)) {
-        unsubscribeClose();
-        client.disconnectWebSocket();
-        return 'failed';
-      }
-      this.setStep((d) => ({ ...d, command: 'ok' }));
+      count = await this.timed(generation, () => client.getDataRefCount());
     } catch (error) {
       if (!this.isCurrent(generation)) {
-        unsubscribeClose();
-        client.disconnectWebSocket();
-        return 'failed';
-      }
-      // command only reaches 'pending' once the DataRefs resolved; a DataRef failure
-      // rejects Promise.all before the command lookup ever runs, so command stays 'idle'.
-      this.setStep((d) => ({ ...d, command: d.command === 'pending' ? 'failed' : d.command }));
-      const resolutionError = toAvionixError(error, {
-        code: 'DATAREF_NOT_FOUND',
-        message: 'Resolution failed',
-      });
-      const explained = await this.explainLookupMiss(client, resolutionError);
-      if (!this.isCurrent(generation)) {
-        unsubscribeClose();
-        client.disconnectWebSocket();
-        return 'failed';
-      }
-      if (explained.code === 'SIMULATOR_NOT_READY') {
-        this.holdForReadiness(generation, config, client, unsubscribeClose, mode, explained);
-        return 'held';
+        return abandon();
       }
       unsubscribeClose();
       client.disconnectWebSocket();
-      this.markFailure(explained, mode, 'resolution');
+      this.markFailure(
+        toAvionixError(error, {
+          code: 'NETWORK_ERROR',
+          message: 'X-Plane did not answer the DataRef count',
+        }),
+        mode,
+        'resolution',
+      );
       return 'failed';
+    }
+    if (!this.isCurrent(generation)) {
+      return abandon();
+    }
+    if (count === 0) {
+      this.holdForReadiness(
+        generation,
+        config,
+        client,
+        unsubscribeClose,
+        mode,
+        simulatorNotReady(),
+      );
+      return 'held';
     }
 
-    // Optional names must never fail the connect: a miss is recorded and left out of the
-    // subscription instead of throwing. Guarded throughout: `dataRefs.resolve` yields, and a
-    // disconnect() or fresh connect() landing here must not write diagnostics for a
-    // superseded generation.
-    const optional: DataRefDescriptor[] = [];
-    for (const name of OPTIONAL_DATAREF_NAMES) {
-      if (!this.isCurrent(generation)) {
-        break;
-      }
+    // Phases 2 to 4.
+    for (const name of Object.keys(this.store.getSnapshot().diagnostics.dataRefs)) {
       this.setDataRefStep(name, 'pending');
-      try {
-        const descriptor = await dataRefs.resolve(name);
-        if (this.isCurrent(generation)) {
-          optional.push(descriptor);
-          this.setDataRefStep(name, 'ok');
-        }
-      } catch {
-        if (this.isCurrent(generation)) {
-          this.setDataRefStep(name, 'failed');
-        }
-        this.logger.debug('optional dataref missing', { name });
+    }
+    this.setStep((d) => ({ ...d, command: 'pending' }));
+    let bindings: SessionBindings;
+    try {
+      bindings = await this.resolveBindings(client);
+    } catch (error) {
+      if (!this.isCurrent(generation)) {
+        return abandon();
       }
-    }
-    for (const descriptor of optional) {
-      dataRefsById.set(descriptor.id, descriptor);
-      dataRefsByName.set(descriptor.name, descriptor);
-    }
-    // Required resolution and the optional loop above both yield; a disconnect() or fresh
-    // connect() landing anywhere in that stretch must not install this.active for a
-    // generation that is no longer live, or its socket would never be torn down.
-    if (!this.isCurrent(generation)) {
       unsubscribeClose();
       client.disconnectWebSocket();
+      this.markFailure(
+        toAvionixError(error, { code: 'DATAREF_NOT_FOUND', message: 'Resolution failed' }),
+        mode,
+        'resolution',
+      );
       return 'failed';
+    }
+    if (!this.isCurrent(generation)) {
+      return abandon();
+    }
+
+    // The flight can be unloaded while the probe runs. Nothing resolving is either that, or a
+    // profile that does not fit this aircraft; only the count tells the two apart.
+    if (bindings.allMissing) {
+      let recount = count;
+      try {
+        recount = await client.getDataRefCount();
+      } catch (error) {
+        // A failed re-check must not invent a readiness hold: keep the count we already had.
+        this.logger.debug('dataref count re-check failed', { message: String(error) });
+      }
+      if (!this.isCurrent(generation)) {
+        return abandon();
+      }
+      if (recount === 0) {
+        this.holdForReadiness(
+          generation,
+          config,
+          client,
+          unsubscribeClose,
+          mode,
+          simulatorNotReady(),
+        );
+        return 'held';
+      }
     }
 
     const unsubscribeUpdates = client.onDataRefUpdate((updates) => {
-      if (this.isCurrent(generation)) {
-        this.applyUpdates(dataRefsById, updates);
-      }
+      this.applyUpdates(generation, updates);
     });
-    this.active = {
+    const active: ActiveConnection = {
       generation,
       config,
       client,
-      dataRefsById,
-      dataRefsByName,
-      headingUp,
+      profile: bindings.profile,
+      dataRefsById: bindings.dataRefsById,
+      dataRefsByName: bindings.dataRefsByName,
+      commandsByName: bindings.commandsByName,
+      subscribedIds: new Set<number>(),
       unsubscribe: () => {
         unsubscribeUpdates();
         unsubscribeClose();
       },
     };
+    this.active = active;
+    this.profile = bindings.profile;
+    this.applyBindings(bindings);
 
     this.setStep((d) => ({ ...d, subscription: 'pending' }));
+    const ids = [...bindings.dataRefsById.keys()];
     try {
-      await this.timed(generation, () =>
-        client.subscribeDataRefs([...dataRefsById.keys()].map((id) => ({ id }))),
-      );
+      await this.timed(generation, () => client.subscribeDataRefs(ids.map((id) => ({ id }))));
       if (!this.isCurrent(generation)) {
         return 'failed';
       }
+      active.subscribedIds = new Set(ids);
       this.setStep((d) => ({ ...d, subscription: 'ok' }));
       this.store.setState((prev) => ({
         ...prev,
@@ -901,6 +1029,19 @@ export class SimulatorSession {
       );
       return 'failed';
     }
+  }
+
+  /** Publishes one pipeline pass. The only place a compatibility result reaches the store. */
+  private applyBindings(bindings: SessionBindings): void {
+    this.store.setState((prev) => ({
+      ...prev,
+      compatibility: bindings.compatibility,
+      diagnostics: {
+        ...prev.diagnostics,
+        dataRefs: bindings.dataRefSteps,
+        command: bindings.commandStep,
+      },
+    }));
   }
 
   /**
@@ -990,42 +1131,12 @@ export class SimulatorSession {
     );
   }
 
-  /**
-   * A name lookup miss usually means X-Plane has not registered any DataRefs yet
-   * (main menu, flight still loading). Turn that case into SIMULATOR_NOT_READY so the
-   * user is told to load a flight instead of chasing a "missing" DataRef.
-   */
-  private async explainLookupMiss(
-    client: SimulatorClient,
-    error: AvionixError,
-  ): Promise<AvionixError> {
-    if (error.code !== 'DATAREF_NOT_FOUND' && error.code !== 'COMMAND_NOT_FOUND') {
-      return error;
+  private applyUpdates(generation: number, updates: DataRefUpdate[]): void {
+    const active = this.active;
+    if (active === null || !this.isCurrent(generation) || active.generation !== generation) {
+      return;
     }
-    let count: number;
-    try {
-      count = await client.getDataRefCount();
-    } catch (countError) {
-      this.logger.debug('dataref count check failed', { message: String(countError) });
-      return error;
-    }
-    if (count > 0) {
-      return error;
-    }
-    return new AvionixError({
-      code: 'SIMULATOR_NOT_READY',
-      message:
-        'X-Plane has no DataRefs registered yet (count is 0). Load a flight in X-Plane, ' +
-        'then connect again.',
-      retryable: true,
-      cause: error,
-    });
-  }
-
-  private applyUpdates(
-    dataRefsById: Map<number, DataRefDescriptor>,
-    updates: DataRefUpdate[],
-  ): void {
+    const dataRefsById = active.dataRefsById;
     this.store.setState((prev) => {
       const telemetry = { ...prev.telemetry };
       let health = prev.health;
@@ -1098,7 +1209,7 @@ export class SimulatorSession {
       this.store.setState((prev) => ({
         ...prev,
         diagnostics: {
-          ...initialDiagnostics(snapshotDataRefNames(GENERIC_PROFILE)),
+          ...initialDiagnostics(snapshotDataRefNames(this.profile)),
           connector: prev.connector === null ? 'direct' : 'paired',
         },
         telemetry: {},

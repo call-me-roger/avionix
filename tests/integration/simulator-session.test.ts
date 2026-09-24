@@ -104,7 +104,9 @@ describe('SimulatorSession against the mock X-Plane', () => {
     // a retry instead of failing the connect.
     expect(snap.state).toBe('connected');
     expect(snap.error?.code).toBe('SIMULATOR_NOT_READY');
-    expect(snap.diagnostics.dataRefs[GENERIC_DATAREFS.heartbeat]).toBe('failed');
+    // The readiness gate runs before any lookup, so nothing was probed: the step never left
+    // 'idle' rather than being reported as a name this aircraft does not have.
+    expect(snap.diagnostics.dataRefs[GENERIC_DATAREFS.heartbeat]).toBe('idle');
     expect(snap.health.readinessRetryAt).not.toBeNull();
     session.disconnect();
   });
