@@ -25,14 +25,11 @@ export function ControlPanel(props: Props) {
   const styles = useThemedStyles(makeStyles);
   const [heading, setHeading] = useState('90');
   const parsed = Number(heading);
-  const available = props.feature?.status === 'available';
-  const usable = props.enabled && available;
-  const reason =
-    available || props.feature === null
-      ? null
-      : `Heading control is not available on this aircraft: ${props.feature.missing
-          .map((miss) => miss.purpose)
-          .join(', ')}`;
+  // Matches `featureUsable` in simulator-session.ts exactly: `partial` still has controls to
+  // offer, since it exists precisely for a feature missing only an optional binding (R6).
+  const usableStatus = props.feature?.status === 'available' || props.feature?.status === 'partial';
+  const usable = props.enabled && usableStatus;
+  const reason = reasonFor(props.feature, usableStatus);
   const canWrite = usable && heading.trim() !== '' && Number.isFinite(parsed);
   return (
     <Section>
@@ -62,6 +59,24 @@ export function ControlPanel(props: Props) {
       <LastOperationRow lastOperation={props.lastOperation} />
     </Section>
   );
+}
+
+/**
+ * A reason renders only when the control is genuinely inert. `unknown` must not borrow
+ * `unavailable`'s wording: `deriveFeatureAvailability` guarantees `missing: []` for `unknown`, so
+ * that branch would otherwise print "... is not available on this aircraft: " with nothing after
+ * the colon, claiming "not available" when the truth is "not checked yet".
+ */
+function reasonFor(feature: FeatureAvailability | null, usableStatus: boolean): string | null {
+  if (feature === null || usableStatus) {
+    return null;
+  }
+  if (feature.status === 'unknown') {
+    return `${feature.label} has not been checked yet.`;
+  }
+  return `${feature.label} is not available on this aircraft: ${feature.missing
+    .map((miss) => miss.purpose)
+    .join(', ')}`;
 }
 
 /**

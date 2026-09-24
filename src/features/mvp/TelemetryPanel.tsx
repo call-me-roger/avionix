@@ -43,8 +43,10 @@ export function TelemetryPanel({ snapshot, now }: { snapshot: SessionSnapshot; n
       {ROWS.map((row) => {
         const binding = snapshot.compatibility.bindings[row.name];
         const sample = snapshot.telemetry[row.name];
-        if (binding !== undefined && binding.status !== 'ok') {
-          // A dash reads as "no data yet"; this value is not coming at all (R6).
+        if (binding !== undefined && binding.status === 'missing') {
+          // A dash reads as "no data yet"; this value is not coming at all (R6). `readOnly` is
+          // not this case: the DataRef resolved and its value reads fine — it only failed a
+          // write-capability check, which the compatibility screen reports, not this readout.
           return (
             <View key={row.name} style={styles.row}>
               <BodyText>{row.label}</BodyText>

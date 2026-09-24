@@ -241,6 +241,36 @@ describe('MvpScreen', () => {
     expect(screen.getByText('not available on this aircraft')).toBeTruthy();
   });
 
+  it('still shows a telemetry value when its binding is read-only', async () => {
+    const { services } = makeServices({
+      state: 'connected',
+      compatibility: {
+        ...base.compatibility,
+        checkedAt: 9_000,
+        bindings: {
+          [GENERIC_DATAREFS.airspeed]: {
+            name: GENERIC_DATAREFS.airspeed,
+            kind: 'dataref',
+            status: 'readOnly',
+          },
+        },
+      },
+      telemetry: {
+        [GENERIC_DATAREFS.airspeed]: { value: 124.3, receivedAt: Date.now() },
+      },
+    });
+    await renderScreen(services);
+    expect(screen.getByText('124.3')).toBeTruthy();
+    expect(screen.queryByText('not available on this aircraft')).toBeNull();
+  });
+
+  it('says heading control has not been checked yet, never a claim it cannot back up', async () => {
+    const { services } = makeServices({ state: 'disconnected' });
+    await renderScreen(services);
+    expect(screen.getByText('Heading control has not been checked yet.')).toBeTruthy();
+    expect(screen.queryByText(/:\s*$/)).toBeNull();
+  });
+
   it('opens the compatibility view from the aircraft summary', async () => {
     const { services } = makeServices({ state: 'connected' });
     await renderScreen(services);
