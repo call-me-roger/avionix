@@ -40,8 +40,9 @@ export const BINDING_MISS_LABEL: Record<'missing' | 'readOnly', string> = {
 };
 
 /**
- * R6, in order: a required miss costs the feature, an optional miss degrades it, anything
- * unprobed leaves it unknown. A feature is never reported healthy on incomplete evidence.
+ * R6, in order: a required miss costs the feature, anything unprobed leaves it unknown, an optional
+ * miss degrades it. A feature is never reported healthy on incomplete evidence. readOnly (R9) only
+ * counts as a miss for bindings declared write: true.
  */
 export function deriveFeatureAvailability(
   feature: FeatureSpec,
@@ -50,12 +51,19 @@ export function deriveFeatureAvailability(
   const missing: MissingBinding[] = [];
   let requiredMiss = false;
   let optionalMiss = false;
+  let unprobed = false;
+
   for (const binding of feature.bindings) {
     const result = results[binding.name];
     if (result === undefined) {
-      return { id: feature.id, label: feature.label, status: 'unknown', missing: [] };
+      unprobed = true;
+      continue;
     }
     if (result.status === 'ok') {
+      continue;
+    }
+    // readOnly only counts as a miss if the binding writes to the name (R9)
+    if (result.status === 'readOnly' && !binding.write) {
       continue;
     }
     missing.push({
@@ -70,12 +78,18 @@ export function deriveFeatureAvailability(
       optionalMiss = true;
     }
   }
+
+  // R6 ordering: required miss → unavailable, then unknown, then optional miss → partial, else available
   const status: FeatureStatus = requiredMiss
     ? 'unavailable'
-    : optionalMiss
-      ? 'partial'
-      : 'available';
-  return { id: feature.id, label: feature.label, status, missing };
+    : unprobed
+      ? 'unknown'
+      : optionalMiss
+        ? 'partial'
+        : 'available';
+  // unknown status never reports missing bindings, even if unprobed ones were confirmed
+  const finalMissing = status === 'unknown' ? [] : missing;
+  return { id: feature.id, label: feature.label, status, missing: finalMissing };
 }
 
 export function deriveAvailability(

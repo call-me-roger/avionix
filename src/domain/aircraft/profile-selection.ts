@@ -29,7 +29,7 @@ export function selectProfile(
 ): ProfileSelection {
   const candidates = catalog.named
     .filter((profile) => matches(profile.match, identity))
-    .sort((a, b) => a.id.localeCompare(b.id));
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const matched = candidates[0];
   return matched === undefined
     ? { profile: catalog.generic, reason: 'fallback' }

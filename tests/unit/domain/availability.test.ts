@@ -82,6 +82,48 @@ describe('deriveFeatureAvailability', () => {
       deriveFeatureAvailability({ id: 'empty', label: 'Empty', bindings: [] }, {}).status,
     ).toBe('available');
   });
+
+  it('is unavailable when a required binding is confirmed missing, even if another is never probed', () => {
+    const twoRequired: FeatureSpec = {
+      id: 'test',
+      label: 'Test',
+      bindings: [
+        { kind: 'dataref', name: 'com1', required: true, purpose: 'COM1' },
+        { kind: 'dataref', name: 'com2', required: true, purpose: 'COM2' },
+      ],
+    };
+    const derived = deriveFeatureAvailability(twoRequired, {
+      com1: { name: 'com1', kind: 'dataref', status: 'missing' },
+    });
+    expect(derived.status).toBe('unavailable');
+    expect(derived.missing.map((item) => item.name)).toEqual(['com1']);
+  });
+
+  it('treats readOnly as ok for an optional binding without write flag', () => {
+    const readOnlyOpt: FeatureSpec = {
+      id: 'test',
+      label: 'Test',
+      bindings: [{ kind: 'dataref', name: 'radar', required: false, purpose: 'Radar' }],
+    };
+    const derived = deriveFeatureAvailability(readOnlyOpt, {
+      radar: { name: 'radar', kind: 'dataref', status: 'readOnly' },
+    });
+    expect(derived.status).toBe('available');
+    expect(derived.missing).toEqual([]);
+  });
+
+  it('treats readOnly as ok for a required binding without write flag', () => {
+    const readOnlyReq: FeatureSpec = {
+      id: 'test',
+      label: 'Test',
+      bindings: [{ kind: 'dataref', name: 'altitude', required: true, purpose: 'Altitude' }],
+    };
+    const derived = deriveFeatureAvailability(readOnlyReq, {
+      altitude: { name: 'altitude', kind: 'dataref', status: 'readOnly' },
+    });
+    expect(derived.status).toBe('available');
+    expect(derived.missing).toEqual([]);
+  });
 });
 
 describe('deriveAvailability', () => {
