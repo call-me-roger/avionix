@@ -630,6 +630,9 @@ describe('SimulatorSession reconnect', () => {
     first.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });
     session.disconnect();
     expect(snapshot().state).toBe('disconnected');
+    // Load-bearing, not redundant: runNext() skips cancelled entries, so the runNext() below
+    // can no longer prove a cancelled callback was left uninvoked. This assertion is the only
+    // thing here that still checks disconnect() actually cancelled the timer.
     expect(scheduler.queue[0]?.cancelled).toBe(true);
     await scheduler.runNext();
     expect(snapshot().state).toBe('disconnected');
@@ -1741,6 +1744,23 @@ describe('aircraft changes', () => {
     [IDENTITY_DATAREFS.tailNumber]: { id: 7, valueType: 'data', value: base64(tail) },
   });
 
+  /**
+   * Parks every name lookup the pipeline makes from now on, so a pass can be held open mid-probe.
+   * Returns the release.
+   */
+  const gateLookups = (client: FakeClient): (() => void) => {
+    const lookup = client.findDataRef;
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    client.findDataRef = jest.fn(async (name: string) => {
+      await gate;
+      return lookup(name);
+    });
+    return open;
+  };
+
   it('re-identifies and re-probes without leaving connected', async () => {
     const client = new FakeClient();
     const { session, scheduler, snapshot } = setup({ clients: [client] });
@@ -1837,5 +1857,79 @@ describe('aircraft changes', () => {
     const callsBefore = client.findDataRef.mock.calls.length;
     await session.recheckCompatibility();
     expect(client.findDataRef.mock.calls.length).toBe(callsBefore);
+  });
+
+  it('keeps the last result when the probe resolves no dataref at all', async () => {
+    const client = new FakeClient();
+    const { session, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    client.emitUpdates([{ id: 2, value: 120, receivedAt: 1234 }]);
+    client.subscribed.length = 0;
+
+    // X-Plane is rebuilding its DataRef table for the new aircraft: the probe succeeds and
+    // finds nothing. Installing that would unsubscribe everything, identification included,
+    // and leave nothing that could ever announce the next aircraft.
+    client.dataRefs = {};
+    await session.recheckCompatibility();
+
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().compatibility.identity.tailNumber).toBe('N172SP');
+    expect(snapshot().telemetry[GENERIC_DATAREFS.airspeed]?.value).toBe(120);
+    expect(client.subscribed).toEqual([]);
+    expect(client.unsubscribed).toEqual([]);
+  });
+
+  it('installs nothing once the connection it was computed for has gone away', async () => {
+    const client = new FakeClient();
+    const { session, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    client.emitUpdates([{ id: 2, value: 120, receivedAt: 1234 }]);
+    const identityBefore = snapshot().compatibility.identity;
+
+    const release = gateLookups(client);
+    // A different aircraft, so anything this pass installs would be plain to see.
+    client.dataRefs = renameTail(without(client.dataRefs, GENERIC_DATAREFS.airspeed), 'N999XX');
+    client.subscribed.length = 0;
+    const pass = session.recheckCompatibility();
+    await flush();
+
+    session.disconnect();
+    release();
+    await pass;
+
+    expect(snapshot().state).toBe('disconnected');
+    expect(snapshot().compatibility.identity).toEqual(identityBefore);
+    // disconnect() emptied the telemetry; the dead pass must not have written over it either.
+    expect(snapshot().telemetry).toEqual({});
+    expect(client.subscribed).toEqual([]);
+    expect(client.unsubscribed).toEqual([]);
+  });
+
+  it('defers an aircraft change that arrives mid-pass instead of dropping it', async () => {
+    const client = new FakeClient();
+    const { session, scheduler, snapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+
+    const release = gateLookups(client);
+    client.dataRefs = renameTail(client.dataRefs, 'N999XX');
+    client.emitUpdates(identityUpdate('N999XX'));
+    await flush();
+    await scheduler.runNext();
+
+    // A second aircraft change while the first pass is still parked on its lookups. Its timer
+    // finds a pass in flight, so the change can only survive by being deferred.
+    client.emitUpdates(identityUpdate('N888XX'));
+    await flush();
+    await scheduler.runNext();
+
+    release();
+    await flush();
+    expect(snapshot().compatibility.identity.tailNumber).toBe('N999XX');
+
+    // The deferred pass, re-armed by the one that just finished, reads the aircraft now loaded.
+    client.dataRefs = renameTail(client.dataRefs, 'N888XX');
+    await scheduler.runNext();
+    expect(snapshot().compatibility.identity.tailNumber).toBe('N888XX');
+    expect(snapshot().state).toBe('connected');
   });
 });

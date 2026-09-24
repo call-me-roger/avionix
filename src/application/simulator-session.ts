@@ -175,6 +175,8 @@ export class SimulatorSession {
   private readinessHold: { client: SimulatorClient; unsubscribeClose: () => void } | null = null;
   private cancelRecheck: (() => void) | null = null;
   private recheckInFlight = false;
+  /** An aircraft change that arrived while a pass was already running, owed a pass of its own. */
+  private recheckPending = false;
   private token: string | null = null;
   private pendingPairing: PendingPairing | null = null;
   private pairInFlight = false;
@@ -481,6 +483,11 @@ export class SimulatorSession {
       this.cancelRecheck();
       this.cancelRecheck = null;
     }
+    // A pass still awaiting resolveBindings can no longer install anything — `this.active` has
+    // changed, and both its resume points compare by identity — so the session it belongs to is
+    // over. Clearing the flags here stops it from swallowing the next connection's first pass.
+    this.recheckInFlight = false;
+    this.recheckPending = false;
     if (this.cancelReconnect !== null) {
       this.cancelReconnect();
       this.cancelReconnect = null;
@@ -1285,13 +1292,29 @@ export class SimulatorSession {
    */
   private async runRecheck(generation: number): Promise<void> {
     const active = this.active;
-    if (active === null || active.generation !== generation || this.recheckInFlight) {
+    if (active === null || active.generation !== generation) {
+      return;
+    }
+    if (this.recheckInFlight) {
+      // Deferred, never dropped: the pass already running read the previous aircraft's table, so
+      // the change that just arrived is owed a pass of its own. Its `finally` re-arms one.
+      this.recheckPending = true;
       return;
     }
     this.recheckInFlight = true;
     try {
       const bindings = await this.resolveBindings(active.client);
       if (this.active !== active || !this.isCurrent(generation)) {
+        return;
+      }
+      // X-Plane tears its DataRef table down and rebuilds it when the aircraft changes, so a
+      // pass that lands mid-rebuild succeeds with nothing resolved. Installing that would
+      // unsubscribe every id — the identification DataRefs included — prune all telemetry and
+      // publish an unidentified aircraft with nothing left subscribed to ever say otherwise.
+      // Treat it exactly like a failed pass: keep the last result and let the next update, which
+      // is still subscribed, re-arm the pipeline.
+      if (bindings.noDataRefsResolved) {
+        this.logger.debug('compatibility re-check resolved no dataref, keeping the last result');
         return;
       }
       const nextIds = new Set(bindings.dataRefsById.keys());
@@ -1301,6 +1324,11 @@ export class SimulatorSession {
       // frame on an aircraft change that usually keeps most of its names.
       if (removed.length > 0) {
         await active.client.unsubscribeDataRefs(removed.map((id) => ({ id })));
+      }
+      // A teardown landing in this gap would leave the subscribe below running against a closed
+      // socket, reporting a re-check failure for a connection that is simply gone.
+      if (this.active !== active) {
+        return;
       }
       if (added.length > 0) {
         await active.client.subscribeDataRefs(added.map((id) => ({ id })));
@@ -1321,6 +1349,15 @@ export class SimulatorSession {
       this.logger.warn('compatibility re-check failed', { message: String(error) });
     } finally {
       this.recheckInFlight = false;
+      if (this.recheckPending) {
+        this.recheckPending = false;
+        // Through the debounce rather than straight back into runRecheck, so a burst of changes
+        // arriving during a slow pass cannot spin. `teardown()` clears the flag, so this only
+        // re-arms for a connection that is still the live one.
+        if (this.active === active && this.isCurrent(generation)) {
+          this.scheduleRecheck(generation);
+        }
+      }
     }
   }
 
