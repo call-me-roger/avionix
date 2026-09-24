@@ -2,11 +2,12 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import React from 'react';
 
 import { ConnectorDiscovery } from '@/application/connector-discovery';
-import { ALL_DATAREF_NAMES, MVP_DATAREFS } from '@/application/mvp-bindings';
+import { MVP_DATAREFS } from '@/application/mvp-bindings';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
+import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import { LINK_LABEL } from '@/features/health/LinkStatusBar';
 import { MvpScreen } from '@/features/mvp/MvpScreen';
@@ -22,7 +23,7 @@ function makeServices(
   browser: FakeServiceBrowser = createFakeServiceBrowser(),
 ) {
   const store = new Store<SessionSnapshot>({
-    ...initialSnapshot(ALL_DATAREF_NAMES, 5),
+    ...initialSnapshot(GENERIC_PROFILE, 5),
     ...snapshot,
   });
   const session = {

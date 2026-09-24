@@ -1,5 +1,5 @@
+import { snapshotDataRefNames } from '@/application/compatibility';
 import {
-  ALL_DATAREF_NAMES,
   MVP_COMMAND_HEADING_UP,
   MVP_DATAREFS,
   MVP_DATAREF_NAMES,
@@ -15,6 +15,7 @@ import {
   initialSnapshot,
 } from '@/application/session-snapshot';
 import { Store } from '@/application/store';
+import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import {
   type XPlaneConnectionConfig,
   createConnectionConfig,
@@ -131,7 +132,7 @@ export class SimulatorSession {
 
   constructor(private readonly deps: SimulatorSessionDeps) {
     this.policy = deps.reconnectPolicy ?? DEFAULT_RECONNECT_POLICY;
-    this.store = new Store(initialSnapshot(ALL_DATAREF_NAMES, this.policy.maxAttempts));
+    this.store = new Store(initialSnapshot(GENERIC_PROFILE, this.policy.maxAttempts));
     this.scheduler = deps.scheduler ?? realScheduler;
     this.random = deps.random ?? Math.random;
     this.logger = deps.logger ?? silentLogger;
@@ -147,7 +148,7 @@ export class SimulatorSession {
     const generation = this.nextGeneration();
     // Any previous state first returns to disconnected, then to connecting; both edges are in the table.
     this.store.setState((prev) => ({
-      ...initialSnapshot(ALL_DATAREF_NAMES, this.policy.maxAttempts),
+      ...initialSnapshot(GENERIC_PROFILE, this.policy.maxAttempts),
       state: transition(this.settled(prev.state), 'connect'),
     }));
     this.pendingPairing = null;
@@ -1098,7 +1099,7 @@ export class SimulatorSession {
       this.store.setState((prev) => ({
         ...prev,
         diagnostics: {
-          ...initialDiagnostics(ALL_DATAREF_NAMES),
+          ...initialDiagnostics(snapshotDataRefNames(GENERIC_PROFILE)),
           connector: prev.connector === null ? 'direct' : 'paired',
         },
         telemetry: {},

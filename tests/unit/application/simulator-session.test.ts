@@ -1,3 +1,4 @@
+import { snapshotDataRefNames } from '@/application/compatibility';
 import { MVP_COMMAND_HEADING_UP, MVP_DATAREFS } from '@/application/mvp-bindings';
 import type { PairingTokenStore } from '@/application/pairing-token-store';
 import { createPairingTokenStore } from '@/application/pairing-token-store';
@@ -7,6 +8,7 @@ import {
   SimulatorSession,
   type SimulatorSessionDeps,
 } from '@/application/simulator-session';
+import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import type { XPlaneConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
@@ -1005,12 +1007,9 @@ describe('SimulatorSession when the token dies mid-session', () => {
       command: 'idle',
       subscription: 'idle',
     });
-    expect(Object.values(snapshot().diagnostics.dataRefs)).toEqual([
-      'idle',
-      'idle',
-      'idle',
-      'idle',
-    ]);
+    expect(Object.values(snapshot().diagnostics.dataRefs)).toEqual(
+      snapshotDataRefNames(GENERIC_PROFILE).map(() => 'idle'),
+    );
   });
 
   it('returns to pairing when a command activation is rejected', async () => {

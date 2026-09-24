@@ -1,13 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 
-import {
-  ALL_DATAREF_NAMES,
-  MVP_COMMAND_HEADING_UP,
-  MVP_DATAREFS,
-} from '@/application/mvp-bindings';
+import { MVP_COMMAND_HEADING_UP, MVP_DATAREFS } from '@/application/mvp-bindings';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
+import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import { createConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import { DiagnosticsScreen } from '@/features/health/DiagnosticsScreen';
@@ -20,7 +17,7 @@ jest.mock('@/platform/share', () => ({
 }));
 
 async function renderScreen(patch: Partial<SessionSnapshot> = {}) {
-  const base = initialSnapshot(ALL_DATAREF_NAMES, 5);
+  const base = initialSnapshot(GENERIC_PROFILE, 5);
   const snapshot: SessionSnapshot = { ...base, ...patch };
   const onRetry = jest.fn();
   const onDisconnect = jest.fn();
@@ -38,7 +35,7 @@ async function renderScreen(patch: Partial<SessionSnapshot> = {}) {
 }
 
 const failedAtCapabilities = (): Partial<SessionSnapshot> => {
-  const base = initialSnapshot(ALL_DATAREF_NAMES, 5);
+  const base = initialSnapshot(GENERIC_PROFILE, 5);
   return {
     state: 'error',
     config: createConnectionConfig('192.168.1.10', '8086'),
@@ -71,7 +68,7 @@ describe('DiagnosticsScreen', () => {
   });
 
   it('names an unresolved value and the feature that needs it', async () => {
-    const base = initialSnapshot(ALL_DATAREF_NAMES, 5);
+    const base = initialSnapshot(GENERIC_PROFILE, 5);
     await renderScreen({
       diagnostics: {
         ...base.diagnostics,
@@ -83,7 +80,7 @@ describe('DiagnosticsScreen', () => {
   });
 
   it('names an unresolved command and the feature that needs it', async () => {
-    const base = initialSnapshot(ALL_DATAREF_NAMES, 5);
+    const base = initialSnapshot(GENERIC_PROFILE, 5);
     await renderScreen({
       diagnostics: { ...base.diagnostics, command: 'failed' },
     });
@@ -127,7 +124,7 @@ describe('DiagnosticsScreen', () => {
   });
 
   it('still reports the last known state while disconnected', async () => {
-    const base = initialSnapshot(ALL_DATAREF_NAMES, 5);
+    const base = initialSnapshot(GENERIC_PROFILE, 5);
     await renderScreen({
       state: 'disconnected',
       diagnostics: { ...base.diagnostics, websocket: 'ok' },
@@ -148,7 +145,7 @@ describe('DiagnosticsScreen', () => {
     // snapshot after a failure keeps both — unlike the case above, which starts from a clean
     // `error: null` slate. The screen must take the "Problem" branch, not double up with
     // "Last problem" too, and must still say nothing from the raw message.
-    const base = initialSnapshot(ALL_DATAREF_NAMES, 5);
+    const base = initialSnapshot(GENERIC_PROFILE, 5);
     await renderScreen({
       state: 'disconnected',
       diagnostics: { ...base.diagnostics, websocket: 'failed' },

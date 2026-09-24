@@ -1,14 +1,14 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 
-import { ALL_DATAREF_NAMES } from '@/application/mvp-bindings';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
+import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import { LinkStatusBar } from '@/features/health/LinkStatusBar';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { ThemeProvider } from '@/theme/theme-context';
 
 async function renderBar(patch: Partial<SessionSnapshot>, onOpen = jest.fn()) {
-  const base = initialSnapshot(ALL_DATAREF_NAMES, 5);
+  const base = initialSnapshot(GENERIC_PROFILE, 5);
   const snapshot: SessionSnapshot = { ...base, ...patch };
   await render(
     <ThemeProvider storage={createMemorySettingsStorage()}>
@@ -19,7 +19,7 @@ async function renderBar(patch: Partial<SessionSnapshot>, onOpen = jest.fn()) {
 }
 
 const connected = (health: Partial<SessionSnapshot['health']>): Partial<SessionSnapshot> => {
-  const base = initialSnapshot(ALL_DATAREF_NAMES, 5);
+  const base = initialSnapshot(GENERIC_PROFILE, 5);
   return { state: 'connected', health: { ...base.health, ...health } };
 };
 

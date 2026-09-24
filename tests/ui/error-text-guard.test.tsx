@@ -2,13 +2,13 @@ import { render, screen } from '@testing-library/react-native';
 import React from 'react';
 
 import type { DiscoverySnapshot } from '@/application/connector-discovery';
-import { ALL_DATAREF_NAMES } from '@/application/mvp-bindings';
 import {
   type LastOperation,
   type SessionSnapshot,
   initialSnapshot,
 } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
+import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import { createConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError, type AvionixErrorCode } from '@/domain/errors/avionix-error';
 import { DiscoveredConnectors } from '@/features/connection/DiscoveredConnectors';
@@ -54,7 +54,7 @@ const ALL_CODES: AvionixErrorCode[] = [
 ];
 
 function snapshotFor(code: AvionixErrorCode): SessionSnapshot {
-  const base = initialSnapshot(ALL_DATAREF_NAMES, 5);
+  const base = initialSnapshot(GENERIC_PROFILE, 5);
   return {
     ...base,
     state: 'error',

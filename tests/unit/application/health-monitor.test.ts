@@ -1,8 +1,9 @@
 import { HEALTH_TICK_MS, HealthMonitor } from '@/application/health-monitor';
-import { ALL_DATAREF_NAMES, OPTIONAL_DATAREFS } from '@/application/mvp-bindings';
+import { OPTIONAL_DATAREFS } from '@/application/mvp-bindings';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import type { Scheduler } from '@/application/simulator-session';
 import { Store } from '@/application/store';
+import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 
 class FakeScheduler implements Scheduler {
   private queue: Array<{ callback: () => void; delayMs: number }> = [];
@@ -30,7 +31,7 @@ class FakeScheduler implements Scheduler {
 }
 
 function setup(patch: (snapshot: SessionSnapshot) => SessionSnapshot) {
-  const store = new Store(patch(initialSnapshot(ALL_DATAREF_NAMES, 5)));
+  const store = new Store(patch(initialSnapshot(GENERIC_PROFILE, 5)));
   const scheduler = new FakeScheduler();
   let clock = 10_000;
   const monitor = new HealthMonitor({

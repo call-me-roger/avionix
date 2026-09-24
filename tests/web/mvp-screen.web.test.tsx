@@ -2,11 +2,11 @@ import React, { act } from 'react';
 import { type Root, createRoot } from 'react-dom/client';
 
 import { ConnectorDiscovery } from '@/application/connector-discovery';
-import { ALL_DATAREF_NAMES } from '@/application/mvp-bindings';
 import { initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
+import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import { LINK_LABEL } from '@/features/health/LinkStatusBar';
 import { MvpScreen } from '@/features/mvp/MvpScreen';
 import { silentLogger } from '@/infrastructure/logging/logger';
@@ -28,7 +28,7 @@ function services(): AppServices {
       logger: silentLogger,
     }),
     session: {
-      store: new Store(initialSnapshot(ALL_DATAREF_NAMES, 5)),
+      store: new Store(initialSnapshot(GENERIC_PROFILE, 5)),
       connect: async () => undefined,
       disconnect: () => undefined,
       pair: async () => undefined,
