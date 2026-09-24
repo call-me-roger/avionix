@@ -60,6 +60,15 @@ Record results at the bottom.
 | 31 | Open diagnostics and share | The shared text has no token, no pairing code, no URL and no raw error | |
 | 32 | Park on the ramp with engines off for two minutes | Values stay marked live throughout | |
 | 33 | While connected mid-flight, return to the main menu in X-Plane (do not reload a flight) | Expected, not a bug: `flightLoaded`/"No flight loaded" is only set by the connect-time resolution path, so a mid-session return to the menu is not detected as that case. The heartbeat simply stops advancing, so the status bar reports "X-Plane is paused or not running" instead of a distinct "No flight loaded" message. Loading a flight again brings values back without reconnecting | |
+| 34 | Load the default Cessna 172 and connect | The Aircraft panel names it ("Cessna 172 SP (C172) · N172SP"), the profile reads "Generic X-Plane aircraft 1.0.0 · generic fallback", and the verdict is "All features available" | |
+| 35 | Connect with a default airliner instead | Identified the same way; all features available | |
+| 36 | While connected, load a different aircraft in X-Plane | The Aircraft panel names the new one within a few seconds; the status bar never leaves "Connected" | |
+| 37 | Open "Compatibility details" while connected and press "Check again" | Every feature is listed with a status; the check completes and the link stays connected | |
+| 38 | Disconnect, then open "Compatibility details" | It says "Last checked … Not current." and "Check again" is disabled | |
+| 39 | Connect while X-Plane sits at the main menu, then open the Aircraft panel | "Not checked yet"; starting a flight fills it in without reconnecting | |
+| 40 | Share the diagnostics summary with an aircraft loaded | The Aircraft block names the aircraft, the profile and every feature's status, with no URL, token or raw error | |
+| 41 | If X-Plane is older than 12.4.3, or an add-on aircraft lacks the Laminar heading-bug DataRef | Older sim: the compatibility view notes write capability is not reported and the control stays usable. Missing name: the heading buttons are disabled and name what is missing | |
+| 42 | Turn on VoiceOver (iOS) or TalkBack (Android), then swipe to the Aircraft panel | The whole row is announced as one button, ending with "Open compatibility details", and activating it opens the compatibility view | |
 
 ## Failure hints
 

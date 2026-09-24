@@ -79,3 +79,19 @@ Verified against Laminar Research's `DataRefs.txt` and `Commands.txt`.
 | Flight value | `sim/cockpit2/gauges/indicators/airspeed_kts_pilot` | float, knots | Indicated airspeed |
 | Writable | `sim/cockpit2/autopilot/heading_dial_deg_mag_pilot` | float, degrees magnetic | Heading bug; harmless; visible on the HSI |
 | Command | `sim/autopilot/heading_up` | command | Increments the heading bug by 1°, so the subscription shows the effect |
+
+## Aircraft identification
+
+| Role | Name | Type | Source |
+|---|---|---|---|
+| ICAO type code | `sim/aircraft/view/acf_ICAO` | data (base64 text) | Community convention, not confirmed in a Laminar-authored document |
+| Description | `sim/aircraft/view/acf_descrip` | data (base64 text) | Community convention |
+| Tail number | `sim/aircraft/view/acf_tailnum` | data (base64 text) | Community convention |
+
+All three are optional: Avionix records a miss, falls back to the generic profile, and says so in
+the compatibility view. A `data` value is base64, padded with NUL to the DataRef's declared length;
+`decodeDataRefString` decodes it and cuts at the first NUL, driven by the descriptor's
+`value_type` rather than by the shape of the value.
+
+The `/api/v3/aircraft` REST resource is listed in Laminar's API index but its payload shape was
+never confirmed, so Avionix does not use it.
