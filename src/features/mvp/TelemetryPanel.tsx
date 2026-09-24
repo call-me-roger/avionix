@@ -1,8 +1,8 @@
 import React from 'react';
 import { View } from 'react-native';
 
-import { MVP_DATAREFS } from '@/application/mvp-bindings';
 import type { SessionSnapshot, TelemetrySample } from '@/application/session-snapshot';
+import { GENERIC_DATAREFS } from '@/domain/aircraft/profiles/generic';
 import { BodyText, Section, SectionTitle } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
@@ -21,9 +21,9 @@ function formatValue(sample: TelemetrySample | undefined): string {
 }
 
 const ROWS: { label: string; name: string }[] = [
-  { label: 'Sim running time (s)', name: MVP_DATAREFS.heartbeat },
-  { label: 'Indicated airspeed (kt)', name: MVP_DATAREFS.airspeed },
-  { label: 'Heading bug (deg)', name: MVP_DATAREFS.heading },
+  { label: 'Sim running time (s)', name: GENERIC_DATAREFS.heartbeat },
+  { label: 'Indicated airspeed (kt)', name: GENERIC_DATAREFS.airspeed },
+  { label: 'Heading bug (deg)', name: GENERIC_DATAREFS.headingBug },
 ];
 
 const makeStyles = (theme: Theme) => ({

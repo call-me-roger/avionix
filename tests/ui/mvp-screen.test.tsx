@@ -2,12 +2,11 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import React from 'react';
 
 import { ConnectorDiscovery } from '@/application/connector-discovery';
-import { MVP_DATAREFS } from '@/application/mvp-bindings';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
-import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
+import { GENERIC_DATAREFS, GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import { LINK_LABEL } from '@/features/health/LinkStatusBar';
 import { MvpScreen } from '@/features/mvp/MvpScreen';
@@ -86,14 +85,14 @@ describe('MvpScreen', () => {
         command: 'ok',
         subscription: 'ok',
         dataRefs: {
-          [MVP_DATAREFS.heartbeat]: 'ok',
-          [MVP_DATAREFS.airspeed]: 'ok',
-          [MVP_DATAREFS.heading]: 'ok',
+          [GENERIC_DATAREFS.heartbeat]: 'ok',
+          [GENERIC_DATAREFS.airspeed]: 'ok',
+          [GENERIC_DATAREFS.headingBug]: 'ok',
         },
       },
       telemetry: {
-        [MVP_DATAREFS.airspeed]: { value: 124.3, receivedAt: Date.now() },
-        [MVP_DATAREFS.heading]: { value: 270, receivedAt: Date.now() },
+        [GENERIC_DATAREFS.airspeed]: { value: 124.3, receivedAt: Date.now() },
+        [GENERIC_DATAREFS.headingBug]: { value: 270, receivedAt: Date.now() },
       },
     });
     await renderScreen(services);
@@ -123,9 +122,9 @@ describe('MvpScreen', () => {
         command: 'idle',
         subscription: 'idle',
         dataRefs: {
-          [MVP_DATAREFS.heartbeat]: 'idle',
-          [MVP_DATAREFS.airspeed]: 'idle',
-          [MVP_DATAREFS.heading]: 'idle',
+          [GENERIC_DATAREFS.heartbeat]: 'idle',
+          [GENERIC_DATAREFS.airspeed]: 'idle',
+          [GENERIC_DATAREFS.headingBug]: 'idle',
         },
       },
     });
@@ -441,9 +440,9 @@ describe('MvpScreen pairing mode', () => {
         command: 'ok',
         subscription: 'ok',
         dataRefs: {
-          [MVP_DATAREFS.heartbeat]: 'ok',
-          [MVP_DATAREFS.airspeed]: 'ok',
-          [MVP_DATAREFS.heading]: 'ok',
+          [GENERIC_DATAREFS.heartbeat]: 'ok',
+          [GENERIC_DATAREFS.airspeed]: 'ok',
+          [GENERIC_DATAREFS.headingBug]: 'ok',
         },
       },
     });

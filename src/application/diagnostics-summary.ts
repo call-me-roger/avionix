@@ -1,5 +1,5 @@
-import { BINDING_FEATURE, MVP_COMMAND_HEADING_UP } from '@/application/mvp-bindings';
 import type { ConnectorStep, SessionSnapshot, StepStatus } from '@/application/session-snapshot';
+import { GENERIC_COMMANDS } from '@/domain/aircraft/profiles/generic';
 import { explainFailure } from '@/domain/health/failure-explanation';
 import { ageMs, formatAge } from '@/domain/health/freshness';
 import { ACTIVITY_LABEL } from '@/domain/health/simulator-activity';
@@ -74,13 +74,12 @@ export function formatDiagnosticsSummary(snapshot: SessionSnapshot, now: number)
   lines.push(`  Capabilities: ${stepLabel(diagnostics.capabilities)}`);
   lines.push(`  Live data channel: ${stepLabel(diagnostics.websocket)}`);
   for (const [name, status] of Object.entries(diagnostics.dataRefs)) {
-    const feature = BINDING_FEATURE[name] ?? 'unknown feature';
+    const feature = snapshot.compatibility.bindingLabels[name] ?? 'unknown feature';
     lines.push(`  Value ${name} (${feature}): ${stepLabel(status)}`);
   }
-  const commandFeature = BINDING_FEATURE[MVP_COMMAND_HEADING_UP] ?? 'unknown feature';
-  lines.push(
-    `  Control: ${MVP_COMMAND_HEADING_UP} (${commandFeature}): ${stepLabel(diagnostics.command)}`,
-  );
+  const commandName = GENERIC_COMMANDS.headingUp;
+  const commandFeature = snapshot.compatibility.bindingLabels[commandName] ?? 'unknown feature';
+  lines.push(`  Control: ${commandName} (${commandFeature}): ${stepLabel(diagnostics.command)}`);
   lines.push(`  Subscription: ${stepLabel(diagnostics.subscription)}`);
 
   if (error !== null) {

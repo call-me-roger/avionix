@@ -1,9 +1,8 @@
 import { HEALTH_TICK_MS, HealthMonitor } from '@/application/health-monitor';
-import { OPTIONAL_DATAREFS } from '@/application/mvp-bindings';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import type { Scheduler } from '@/application/simulator-session';
 import { Store } from '@/application/store';
-import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
+import { GENERIC_DATAREFS, GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 
 class FakeScheduler implements Scheduler {
   private queue: Array<{ callback: () => void; delayMs: number }> = [];
@@ -65,7 +64,7 @@ describe('HealthMonitor', () => {
   it('reports paused when the paused dataref says so', () => {
     const { store, monitor } = setup((s) => ({
       ...connected(s, 5_000),
-      telemetry: { [OPTIONAL_DATAREFS.paused]: { value: 1, receivedAt: 5_000 } },
+      telemetry: { [GENERIC_DATAREFS.paused]: { value: 1, receivedAt: 5_000 } },
     }));
     monitor.refresh();
     expect(store.getSnapshot().health.activity).toBe('paused');
@@ -74,7 +73,7 @@ describe('HealthMonitor', () => {
   it('reports stalled when the paused dataref says the sim is not paused', () => {
     const { store, monitor } = setup((s) => ({
       ...connected(s, 5_000),
-      telemetry: { [OPTIONAL_DATAREFS.paused]: { value: 0, receivedAt: 5_000 } },
+      telemetry: { [GENERIC_DATAREFS.paused]: { value: 0, receivedAt: 5_000 } },
     }));
     monitor.refresh();
     expect(store.getSnapshot().health.activity).toBe('stalled');

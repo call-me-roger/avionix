@@ -1,10 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 
-import { MVP_COMMAND_HEADING_UP, MVP_DATAREFS } from '@/application/mvp-bindings';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
-import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
+import {
+  GENERIC_COMMANDS,
+  GENERIC_DATAREFS,
+  GENERIC_PROFILE,
+} from '@/domain/aircraft/profiles/generic';
 import { createConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import { DiagnosticsScreen } from '@/features/health/DiagnosticsScreen';
@@ -72,10 +75,10 @@ describe('DiagnosticsScreen', () => {
     await renderScreen({
       diagnostics: {
         ...base.diagnostics,
-        dataRefs: { ...base.diagnostics.dataRefs, [MVP_DATAREFS.airspeed]: 'failed' },
+        dataRefs: { ...base.diagnostics.dataRefs, [GENERIC_DATAREFS.airspeed]: 'failed' },
       },
     });
-    expect(screen.getByText(new RegExp(MVP_DATAREFS.airspeed))).toBeTruthy();
+    expect(screen.getByText(new RegExp(GENERIC_DATAREFS.airspeed))).toBeTruthy();
     expect(screen.getByText(/Live telemetry/)).toBeTruthy();
   });
 
@@ -85,7 +88,7 @@ describe('DiagnosticsScreen', () => {
       diagnostics: { ...base.diagnostics, command: 'failed' },
     });
     expect(
-      screen.getByText(`Control: ${MVP_COMMAND_HEADING_UP} (Heading control): failed`),
+      screen.getByText(`Control: ${GENERIC_COMMANDS.headingUp} (Heading control): failed`),
     ).toBeTruthy();
   });
 

@@ -1,5 +1,4 @@
 import { snapshotDataRefNames } from '@/application/compatibility';
-import { MVP_COMMAND_HEADING_UP, MVP_DATAREFS } from '@/application/mvp-bindings';
 import type { PairingTokenStore } from '@/application/pairing-token-store';
 import { createPairingTokenStore } from '@/application/pairing-token-store';
 import { createMemorySettingsStorage } from '@/application/settings-store';
@@ -8,7 +7,11 @@ import {
   SimulatorSession,
   type SimulatorSessionDeps,
 } from '@/application/simulator-session';
-import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
+import {
+  GENERIC_COMMANDS,
+  GENERIC_DATAREFS,
+  GENERIC_PROFILE,
+} from '@/domain/aircraft/profiles/generic';
 import type { XPlaneConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
@@ -45,9 +48,9 @@ class FakeClient implements SimulatorClient {
       return null;
     }
     const ids: Record<string, number> = {
-      [MVP_DATAREFS.heartbeat]: 1,
-      [MVP_DATAREFS.airspeed]: 2,
-      [MVP_DATAREFS.heading]: 3,
+      [GENERIC_DATAREFS.heartbeat]: 1,
+      [GENERIC_DATAREFS.airspeed]: 2,
+      [GENERIC_DATAREFS.headingBug]: 3,
       ['sim/time/paused']: 4,
     };
     const id = ids[name];
@@ -55,7 +58,7 @@ class FakeClient implements SimulatorClient {
   });
 
   findCommand = jest.fn(async (name: string) =>
-    name === MVP_COMMAND_HEADING_UP ? { id: 9, name, description: 'up' } : null,
+    name === GENERIC_COMMANDS.headingUp ? { id: 9, name, description: 'up' } : null,
   );
 
   getDataRefValue = jest.fn(async () => 0);
@@ -316,9 +319,9 @@ describe('SimulatorSession connect flow', () => {
         command: 'ok',
         subscription: 'ok',
         dataRefs: {
-          [MVP_DATAREFS.heartbeat]: 'ok',
-          [MVP_DATAREFS.airspeed]: 'ok',
-          [MVP_DATAREFS.heading]: 'ok',
+          [GENERIC_DATAREFS.heartbeat]: 'ok',
+          [GENERIC_DATAREFS.airspeed]: 'ok',
+          [GENERIC_DATAREFS.headingBug]: 'ok',
           // The optional dataref resolves too by default and is subscribed alongside the
           // required ones (id 4 below).
           'sim/time/paused': 'ok',
@@ -365,19 +368,19 @@ describe('SimulatorSession connect flow', () => {
 
   it('marks a missing dataref failed and reports DATAREF_NOT_FOUND', async () => {
     const client = new FakeClient();
-    client.missingDataRef = MVP_DATAREFS.airspeed;
+    client.missingDataRef = GENERIC_DATAREFS.airspeed;
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
     expect(snapshot().state).toBe('error');
     expect(snapshot().error?.code).toBe('DATAREF_NOT_FOUND');
-    expect(snapshot().diagnostics.dataRefs[MVP_DATAREFS.airspeed]).toBe('failed');
-    expect(snapshot().diagnostics.dataRefs[MVP_DATAREFS.heartbeat]).toBe('ok');
+    expect(snapshot().diagnostics.dataRefs[GENERIC_DATAREFS.airspeed]).toBe('failed');
+    expect(snapshot().diagnostics.dataRefs[GENERIC_DATAREFS.heartbeat]).toBe('ok');
     expect(snapshot().diagnostics.command).toBe('idle');
   });
 
   it('reports SIMULATOR_NOT_READY when a dataref is missing and X-Plane has no datarefs, holding the link open', async () => {
     const client = new FakeClient();
-    client.missingDataRef = MVP_DATAREFS.heartbeat;
+    client.missingDataRef = GENERIC_DATAREFS.heartbeat;
     client.dataRefCount = 0;
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
@@ -387,14 +390,14 @@ describe('SimulatorSession connect flow', () => {
     expect(snapshot().error?.code).toBe('SIMULATOR_NOT_READY');
     expect(snapshot().error?.message).toContain('Load a flight');
     expect(snapshot().error?.retryable).toBe(true);
-    expect(snapshot().diagnostics.dataRefs[MVP_DATAREFS.heartbeat]).toBe('failed');
+    expect(snapshot().diagnostics.dataRefs[GENERIC_DATAREFS.heartbeat]).toBe('failed');
     expect(snapshot().health.readinessRetryAt).not.toBeNull();
     expect(client.socketOpen).toBe(true);
   });
 
   it('keeps DATAREF_NOT_FOUND when the count check itself fails', async () => {
     const client = new FakeClient();
-    client.missingDataRef = MVP_DATAREFS.heartbeat;
+    client.missingDataRef = GENERIC_DATAREFS.heartbeat;
     client.getDataRefCount.mockRejectedValueOnce(new Error('network'));
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
@@ -419,8 +422,8 @@ describe('SimulatorSession connect flow', () => {
       { id: 777, value: 1, receivedAt: 5 },
     ]);
     expect(snapshot().telemetry).toEqual({
-      [MVP_DATAREFS.heartbeat]: { value: 42.5, receivedAt: 5 },
-      [MVP_DATAREFS.heading]: { value: 270, receivedAt: 5 },
+      [GENERIC_DATAREFS.heartbeat]: { value: 42.5, receivedAt: 5 },
+      [GENERIC_DATAREFS.headingBug]: { value: 270, receivedAt: 5 },
     });
   });
 
@@ -1123,7 +1126,7 @@ describe('SimulatorSession pairing edge cases', () => {
     expect(snapshot().diagnostics.command).toBe('idle');
     // disconnect() no longer resets diagnostics (F-02 R11): the step was 'pending' the
     // moment disconnect() ran, and the late resolve is ignored rather than overwriting it.
-    expect(snapshot().diagnostics.dataRefs[MVP_DATAREFS.heartbeat]).toBe('pending');
+    expect(snapshot().diagnostics.dataRefs[GENERIC_DATAREFS.heartbeat]).toBe('pending');
   });
 });
 
@@ -1340,7 +1343,7 @@ describe('no flight loaded', () => {
   it('keeps the link open and retries instead of failing the connect', async () => {
     const client = new FakeClient();
     client.dataRefCount = 0;
-    client.missingDataRef = MVP_DATAREFS.airspeed;
+    client.missingDataRef = GENERIC_DATAREFS.airspeed;
     const { session, scheduler, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.10', '8086');
     await flush();
@@ -1367,7 +1370,7 @@ describe('no flight loaded', () => {
   it('still fails the connect when a name is genuinely missing and a flight is loaded', async () => {
     const client = new FakeClient();
     client.dataRefCount = 3;
-    client.missingDataRef = MVP_DATAREFS.airspeed;
+    client.missingDataRef = GENERIC_DATAREFS.airspeed;
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.10', '8086');
 
@@ -1378,7 +1381,7 @@ describe('no flight loaded', () => {
   it('cancels the readiness retry on disconnect and closes the held socket', async () => {
     const client = new FakeClient();
     client.dataRefCount = 0;
-    client.missingDataRef = MVP_DATAREFS.airspeed;
+    client.missingDataRef = GENERIC_DATAREFS.airspeed;
     const { session, scheduler, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.10', '8086');
     await flush();
@@ -1396,7 +1399,7 @@ describe('no flight loaded', () => {
     const first = new FakeClient();
     const second = new FakeClient();
     second.dataRefCount = 0;
-    second.missingDataRef = MVP_DATAREFS.airspeed;
+    second.missingDataRef = GENERIC_DATAREFS.airspeed;
     const { session, scheduler, snapshot } = setup({ clients: [first, second] });
     await session.connect('192.168.1.100', 8086);
     first.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });
@@ -1418,7 +1421,7 @@ describe('no flight loaded', () => {
     const first = new FakeClient();
     const second = new FakeClient();
     second.dataRefCount = 0;
-    second.missingDataRef = MVP_DATAREFS.airspeed;
+    second.missingDataRef = GENERIC_DATAREFS.airspeed;
     const { session, scheduler, snapshot } = setup({ clients: [first, second] });
     await session.connect('192.168.1.100', 8086);
     first.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });
@@ -1436,7 +1439,7 @@ describe('no flight loaded', () => {
     const first = new FakeClient();
     const second = new FakeClient();
     second.dataRefCount = 0;
-    second.missingDataRef = MVP_DATAREFS.airspeed;
+    second.missingDataRef = GENERIC_DATAREFS.airspeed;
     const { session, scheduler, snapshot } = setup({ clients: [first, second] });
     await session.connect('192.168.1.100', 8086);
     first.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });

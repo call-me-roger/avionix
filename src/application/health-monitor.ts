@@ -1,5 +1,5 @@
-import { OPTIONAL_DATAREFS } from '@/application/mvp-bindings';
 import type { SessionSnapshot } from '@/application/session-snapshot';
+import { GENERIC_DATAREFS } from '@/domain/aircraft/profiles/generic';
 import { type Scheduler, realScheduler } from '@/application/simulator-session';
 import type { Store } from '@/application/store';
 import { ageMs, isLive } from '@/domain/health/freshness';
@@ -20,7 +20,7 @@ export interface HealthMonitorDeps {
 }
 
 function readPaused(snapshot: SessionSnapshot): 0 | 1 | null {
-  const sample = snapshot.telemetry[OPTIONAL_DATAREFS.paused];
+  const sample = snapshot.telemetry[GENERIC_DATAREFS.paused];
   if (sample === undefined || typeof sample.value !== 'number') {
     return null;
   }

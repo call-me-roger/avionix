@@ -1,10 +1,5 @@
 import { snapshotDataRefNames } from '@/application/compatibility';
-import {
-  MVP_COMMAND_HEADING_UP,
-  MVP_DATAREFS,
-  MVP_DATAREF_NAMES,
-  OPTIONAL_DATAREF_NAMES,
-} from '@/application/mvp-bindings';
+import { MVP_DATAREF_NAMES, OPTIONAL_DATAREF_NAMES } from '@/application/mvp-bindings';
 import type { PairingTokenStore } from '@/application/pairing-token-store';
 import {
   type FailureRef,
@@ -15,7 +10,11 @@ import {
   initialSnapshot,
 } from '@/application/session-snapshot';
 import { Store } from '@/application/store';
-import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
+import {
+  GENERIC_COMMANDS,
+  GENERIC_DATAREFS,
+  GENERIC_PROFILE,
+} from '@/domain/aircraft/profiles/generic';
 import {
   type XPlaneConnectionConfig,
   createConnectionConfig,
@@ -298,7 +297,7 @@ export class SimulatorSession {
     if (active === null) {
       return;
     }
-    const heading = active.dataRefsByName.get(MVP_DATAREFS.heading);
+    const heading = active.dataRefsByName.get(GENERIC_DATAREFS.headingBug);
     if (heading === undefined) {
       this.recordOperation({
         kind: 'write',
@@ -343,7 +342,7 @@ export class SimulatorSession {
       this.recordOperation({
         kind: 'command',
         ok: true,
-        message: `Activated ${MVP_COMMAND_HEADING_UP}`,
+        message: `Activated ${GENERIC_COMMANDS.headingUp}`,
         failure: null,
       });
     } catch (error) {
@@ -762,7 +761,7 @@ export class SimulatorSession {
         dataRefsByName.set(descriptor.name, descriptor);
       }
       this.setStep((d) => ({ ...d, command: 'pending' }));
-      headingUp = await commands.resolve(MVP_COMMAND_HEADING_UP);
+      headingUp = await commands.resolve(GENERIC_COMMANDS.headingUp);
       if (!this.isCurrent(generation)) {
         unsubscribeClose();
         client.disconnectWebSocket();
@@ -1041,7 +1040,7 @@ export class SimulatorSession {
         // Only a *changed* value counts as a heartbeat: a paused simulator that re-sends
         // the same number must not read as live.
         if (
-          descriptor.name === MVP_DATAREFS.heartbeat &&
+          descriptor.name === GENERIC_DATAREFS.heartbeat &&
           typeof update.value === 'number' &&
           update.value !== health.lastHeartbeatValue
         ) {

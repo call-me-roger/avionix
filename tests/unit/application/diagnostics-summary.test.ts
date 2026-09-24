@@ -1,7 +1,6 @@
 import { formatDiagnosticsSummary } from '@/application/diagnostics-summary';
-import { MVP_COMMAND_HEADING_UP } from '@/application/mvp-bindings';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
-import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
+import { GENERIC_COMMANDS, GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import { createConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError } from '@/domain/errors/avionix-error';
 
@@ -81,7 +80,7 @@ describe('formatDiagnosticsSummary', () => {
       { ...base, diagnostics: { ...base.diagnostics, command: 'failed' } },
       10_000,
     );
-    expect(text).toContain(`Control: ${MVP_COMMAND_HEADING_UP} (Heading control): failed`);
+    expect(text).toContain(`Control: ${GENERIC_COMMANDS.headingUp} (Heading control): failed`);
   });
 
   it('humanizes the connector step instead of printing the raw value', () => {

@@ -1,7 +1,7 @@
-import { MVP_DATAREFS } from '@/application/mvp-bindings';
 import { createPairingTokenStore } from '@/application/pairing-token-store';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { SimulatorSession } from '@/application/simulator-session';
+import { GENERIC_DATAREFS } from '@/domain/aircraft/profiles/generic';
 import { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
@@ -69,17 +69,17 @@ describe('SimulatorSession against the mock X-Plane', () => {
     expect(snap().apiVersion).toBe('v3');
     expect(snap().capabilities?.simulatorVersion).toBe('12.4.0');
 
-    await until(() => snap().telemetry[MVP_DATAREFS.heartbeat]?.value === 12.5);
+    await until(() => snap().telemetry[GENERIC_DATAREFS.heartbeat]?.value === 12.5);
     server.setDataRefValue('sim/time/total_running_time_sec', 20);
-    await until(() => snap().telemetry[MVP_DATAREFS.heartbeat]?.value === 20);
+    await until(() => snap().telemetry[GENERIC_DATAREFS.heartbeat]?.value === 20);
 
     await session.writeHeading(123);
     expect(snap().lastOperation).toMatchObject({ kind: 'write', ok: true });
-    await until(() => snap().telemetry[MVP_DATAREFS.heading]?.value === 123);
+    await until(() => snap().telemetry[GENERIC_DATAREFS.headingBug]?.value === 123);
 
     await session.activateHeadingUp();
     expect(snap().lastOperation).toMatchObject({ kind: 'command', ok: true });
-    await until(() => snap().telemetry[MVP_DATAREFS.heading]?.value === 124);
+    await until(() => snap().telemetry[GENERIC_DATAREFS.headingBug]?.value === 124);
 
     session.disconnect();
     expect(snap().state).toBe('disconnected');
@@ -104,7 +104,7 @@ describe('SimulatorSession against the mock X-Plane', () => {
     // a retry instead of failing the connect.
     expect(snap.state).toBe('connected');
     expect(snap.error?.code).toBe('SIMULATOR_NOT_READY');
-    expect(snap.diagnostics.dataRefs[MVP_DATAREFS.heartbeat]).toBe('failed');
+    expect(snap.diagnostics.dataRefs[GENERIC_DATAREFS.heartbeat]).toBe('failed');
     expect(snap.health.readinessRetryAt).not.toBeNull();
     session.disconnect();
   });
@@ -124,7 +124,7 @@ describe('SimulatorSession against the mock X-Plane', () => {
     server.terminateAllSockets();
     await until(() => snap().state === 'reconnecting');
     await until(() => snap().state === 'connected');
-    await until(() => snap().telemetry[MVP_DATAREFS.heartbeat] !== undefined);
+    await until(() => snap().telemetry[GENERIC_DATAREFS.heartbeat] !== undefined);
     session.disconnect();
   });
 
@@ -133,10 +133,10 @@ describe('SimulatorSession against the mock X-Plane', () => {
     const b = createSession();
     await Promise.all([a.connect(server.host, server.port), b.connect(server.host, server.port)]);
     expect(server.connectionCount).toBe(2);
-    await until(() => a.store.getSnapshot().telemetry[MVP_DATAREFS.heading] !== undefined);
-    await until(() => b.store.getSnapshot().telemetry[MVP_DATAREFS.heading] !== undefined);
+    await until(() => a.store.getSnapshot().telemetry[GENERIC_DATAREFS.headingBug] !== undefined);
+    await until(() => b.store.getSnapshot().telemetry[GENERIC_DATAREFS.headingBug] !== undefined);
     await a.writeHeading(45);
-    await until(() => b.store.getSnapshot().telemetry[MVP_DATAREFS.heading]?.value === 45);
+    await until(() => b.store.getSnapshot().telemetry[GENERIC_DATAREFS.headingBug]?.value === 45);
     expect(b.store.getSnapshot().state).toBe('connected');
     a.disconnect();
     await until(() => server.connectionCount === 1);
