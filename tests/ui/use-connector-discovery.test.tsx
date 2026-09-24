@@ -25,6 +25,7 @@ function setup() {
       pair: async () => undefined,
       writeHeading: async () => undefined,
       activateHeadingUp: async () => undefined,
+      recheckCompatibility: async () => undefined,
     },
     healthMonitor: { start: jest.fn(), stop: jest.fn(), refresh: jest.fn() },
   };

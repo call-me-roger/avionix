@@ -33,6 +33,7 @@ function services(storage = createMemorySettingsStorage()): AppServices {
       pair: async () => undefined,
       writeHeading: async () => undefined,
       activateHeadingUp: async () => undefined,
+      recheckCompatibility: async () => undefined,
     },
     healthMonitor: { start: () => undefined, stop: () => undefined, refresh: () => undefined },
   };

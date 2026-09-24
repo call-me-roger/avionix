@@ -17,5 +17,14 @@ export function useSimulatorSession() {
   const pair = useCallback((code: string) => session.pair(code), [session]);
   const writeHeading = useCallback((value: number) => session.writeHeading(value), [session]);
   const activateHeadingUp = useCallback(() => session.activateHeadingUp(), [session]);
-  return { snapshot, connect, disconnect, pair, writeHeading, activateHeadingUp };
+  const recheckCompatibility = useCallback(() => session.recheckCompatibility(), [session]);
+  return {
+    snapshot,
+    connect,
+    disconnect,
+    pair,
+    writeHeading,
+    activateHeadingUp,
+    recheckCompatibility,
+  };
 }

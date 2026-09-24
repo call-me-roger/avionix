@@ -1,7 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
+import { featureOf } from '@/application/compatibility';
+import { FEATURE_HEADING_CONTROL } from '@/domain/aircraft/profiles/generic';
 import type { DiscoveredConnector } from '@/domain/discovery/discovered-connector';
+import { AircraftSummary } from '@/features/aircraft/AircraftSummary';
+import { CompatibilityScreen } from '@/features/aircraft/CompatibilityScreen';
 import { ConnectionForm } from '@/features/connection/ConnectionForm';
 import { DiscoveredConnectors } from '@/features/connection/DiscoveredConnectors';
 import { DiagnosticsScreen } from '@/features/health/DiagnosticsScreen';
@@ -29,13 +33,21 @@ const makeStyles = (theme: Theme) => ({
 });
 
 export function MvpScreen() {
-  const { snapshot, connect, disconnect, pair, writeHeading, activateHeadingUp } =
-    useSimulatorSession();
+  const {
+    snapshot,
+    connect,
+    disconnect,
+    pair,
+    writeHeading,
+    activateHeadingUp,
+    recheckCompatibility,
+  } = useSimulatorSession();
   const settings = useConnectionSettings();
   const discovery = useConnectorDiscovery(snapshot.state);
   const styles = useThemedStyles(makeStyles);
   const [now, setNow] = useState(() => Date.now());
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showCompatibility, setShowCompatibility] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -43,6 +55,8 @@ export function MvpScreen() {
   }, []);
 
   const onToggleDiagnostics = useCallback(() => setShowDiagnostics((open) => !open), []);
+  const onToggleCompatibility = useCallback(() => setShowCompatibility((open) => !open), []);
+  const onRecheck = useCallback(() => void recheckCompatibility(), [recheckCompatibility]);
 
   const onConnect = useCallback(() => {
     void settings.persist();
@@ -107,9 +121,18 @@ export function MvpScreen() {
             onDisconnect={disconnect}
           />
         ) : null}
+        <AircraftSummary
+          snapshot={snapshot}
+          now={now}
+          onOpenCompatibility={onToggleCompatibility}
+        />
+        {showCompatibility ? (
+          <CompatibilityScreen snapshot={snapshot} now={now} onRecheck={onRecheck} />
+        ) : null}
         <TelemetryPanel snapshot={snapshot} now={now} />
         <ControlPanel
           enabled={snapshot.state === 'connected'}
+          feature={featureOf(snapshot.compatibility, FEATURE_HEADING_CONTROL)}
           lastOperation={snapshot.lastOperation}
           onWriteHeading={(value) => void writeHeading(value)}
           onHeadingUp={() => void activateHeadingUp()}

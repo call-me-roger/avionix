@@ -11,6 +11,8 @@ import { createMemorySettingsStorage } from '@/application/settings-store';
 import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import { createConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError, type AvionixErrorCode } from '@/domain/errors/avionix-error';
+import { AircraftSummary } from '@/features/aircraft/AircraftSummary';
+import { CompatibilityScreen } from '@/features/aircraft/CompatibilityScreen';
 import { DiscoveredConnectors } from '@/features/connection/DiscoveredConnectors';
 import { DiagnosticsScreen } from '@/features/health/DiagnosticsScreen';
 import { LinkStatusBar } from '@/features/health/LinkStatusBar';
@@ -102,10 +104,17 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
         <DiscoveredConnectors snapshot={discoverySnapshotFor(code)} enabled onSelect={jest.fn()} />
         <ControlPanel
           enabled
+          feature={null}
           lastOperation={lastOperationFor(code)}
           onWriteHeading={jest.fn()}
           onHeadingUp={jest.fn()}
         />
+        <AircraftSummary
+          snapshot={snapshotFor(code)}
+          now={10_000}
+          onOpenCompatibility={jest.fn()}
+        />
+        <CompatibilityScreen snapshot={snapshotFor(code)} now={10_000} onRecheck={jest.fn()} />
       </ThemeProvider>,
     );
     expect(screen.queryByText(new RegExp('http://'))).toBeNull();
