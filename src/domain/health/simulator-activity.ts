@@ -10,6 +10,8 @@ export type SimulatorActivity =
 
 export interface ActivityInput {
   linkState: ConnectionState;
+  /** Whether the profile's heartbeat DataRef resolved on this aircraft at all. */
+  heartbeatAvailable: boolean;
   /** The heartbeat DataRef changed value within the staleness threshold. */
   heartbeatAdvancing: boolean;
   /** `sim/time/paused`, or null when that DataRef did not resolve. */
@@ -23,6 +25,11 @@ export function deriveActivity(input: ActivityInput): SimulatorActivity {
   }
   if (!input.flightLoaded) {
     return 'noFlight';
+  }
+  // No heartbeat DataRef means no evidence either way. "Paused or not running" would be a
+  // guess dressed as a reading.
+  if (!input.heartbeatAvailable) {
+    return 'unknown';
   }
   if (input.heartbeatAdvancing) {
     return 'running';

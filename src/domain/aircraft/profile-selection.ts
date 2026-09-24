@@ -3,6 +3,12 @@ import type { AircraftProfile, MatchRule, ProfileCatalog } from '@/domain/aircra
 
 export type SelectionReason = 'matched' | 'fallback';
 
+/** Why this profile is in use, in the pilot's words. Shared by the view and the summary. */
+export const SELECTION_LABEL: Record<SelectionReason, string> = {
+  matched: 'matched to this aircraft',
+  fallback: 'generic fallback',
+};
+
 export interface ProfileSelection {
   profile: AircraftProfile;
   reason: SelectionReason;

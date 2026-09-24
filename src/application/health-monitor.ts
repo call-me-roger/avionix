@@ -64,8 +64,11 @@ export class HealthMonitor {
     const now = this.now();
     this.store.setState((prev) => {
       const heartbeatAdvancing = isLive(ageMs(prev.health.lastHeartbeatAt, now));
+      const heartbeatAvailable =
+        prev.compatibility.bindings[GENERIC_DATAREFS.heartbeat]?.status === 'ok';
       const activity = deriveActivity({
         linkState: prev.state,
+        heartbeatAvailable,
         heartbeatAdvancing,
         paused: readPaused(prev),
         flightLoaded: prev.health.flightLoaded,

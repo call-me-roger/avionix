@@ -1,5 +1,8 @@
 import type { ConnectorStep, SessionSnapshot, StepStatus } from '@/application/session-snapshot';
+import { identityLabel } from '@/domain/aircraft/aircraft-identity';
+import { BINDING_MISS_LABEL, FEATURE_STATUS_LABEL } from '@/domain/aircraft/availability';
 import { GENERIC_COMMANDS } from '@/domain/aircraft/profiles/generic';
+import { SELECTION_LABEL } from '@/domain/aircraft/profile-selection';
 import { explainFailure } from '@/domain/health/failure-explanation';
 import { ageMs, formatAge } from '@/domain/health/freshness';
 import { ACTIVITY_LABEL } from '@/domain/health/simulator-activity';
@@ -66,6 +69,34 @@ export function formatDiagnosticsSummary(snapshot: SessionSnapshot, now: number)
       snapshot.apiVersion === null ? '' : ` (using ${snapshot.apiVersion})`
     }`,
   );
+  lines.push('');
+
+  const { compatibility } = snapshot;
+  lines.push('Aircraft');
+  lines.push(`  Aircraft: ${identityLabel(compatibility.identity) ?? 'not reported by X-Plane'}`);
+  lines.push(
+    `  Profile: ${compatibility.profileName} ${compatibility.profileVersion} (${SELECTION_LABEL[compatibility.selection]})`,
+  );
+  if (compatibility.identity.addOnVersion !== null) {
+    lines.push(`  Add-on version: ${compatibility.identity.addOnVersion}`);
+  }
+  if (compatibility.versionWarning !== null) {
+    lines.push(`  Warning: ${compatibility.versionWarning}`);
+  }
+  lines.push(
+    `  Checked: ${
+      compatibility.checkedAt === null ? 'not yet' : formatAge(ageMs(compatibility.checkedAt, now))
+    }`,
+  );
+  for (const feature of compatibility.features) {
+    lines.push(`  ${feature.label}: ${FEATURE_STATUS_LABEL[feature.status]}`);
+    for (const miss of feature.missing) {
+      lines.push(`    ${miss.purpose} — ${miss.name} — ${BINDING_MISS_LABEL[miss.status]}`);
+    }
+  }
+  if (!compatibility.writabilityReported) {
+    lines.push('  This X-Plane version does not report which values can be written.');
+  }
   lines.push('');
 
   lines.push('Steps');

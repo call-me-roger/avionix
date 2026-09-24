@@ -46,6 +46,17 @@ const connected = (snapshot: SessionSnapshot, lastHeartbeatAt: number): SessionS
   ...snapshot,
   state: 'connected',
   health: { ...snapshot.health, flightLoaded: true, lastHeartbeatAt, lastHeartbeatValue: 1 },
+  compatibility: {
+    ...snapshot.compatibility,
+    bindings: {
+      ...snapshot.compatibility.bindings,
+      [GENERIC_DATAREFS.heartbeat]: {
+        name: GENERIC_DATAREFS.heartbeat,
+        kind: 'dataref',
+        status: 'ok',
+      },
+    },
+  },
 });
 
 describe('HealthMonitor', () => {
@@ -92,6 +103,17 @@ describe('HealthMonitor', () => {
     }));
     monitor.refresh();
     expect(store.getSnapshot().health.activity).toBe('noFlight');
+  });
+
+  it('reports the simulator state unknown when the heartbeat dataref is not on this aircraft', () => {
+    const store = new Store(initialSnapshot(GENERIC_PROFILE));
+    store.setState((prev) => ({
+      ...prev,
+      state: 'connected',
+      health: { ...prev.health, flightLoaded: true, lastHeartbeatAt: null },
+    }));
+    new HealthMonitor({ store, now: () => 10_000 }).refresh();
+    expect(store.getSnapshot().health.activity).toBe('unknown');
   });
 
   it('does not notify subscribers when nothing derived changed', () => {
