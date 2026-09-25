@@ -14,8 +14,13 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
   development build; Expo Go and the web keep the typed host and port.
 - Detect the X-Plane version and the supported Web API versions; use the highest of v2/v3.
 - Resolve DataRefs and commands by name (ids are session-specific and never stored).
-- Subscribe to three DataRefs over WebSocket and display live values.
+- Subscribe to the loaded profile's DataRefs over WebSocket (up to seven today: four telemetry
+  names and the three identification ones) and display live values.
 - Write the autopilot heading bug and activate `sim/autopilot/heading_up`.
+- Identify the loaded aircraft and name it, its profile and its add-on version in an Aircraft
+  panel on the main screen; a new aircraft is picked up without reconnecting.
+- A compatibility view behind that panel: every feature with its status, and every binding the
+  aircraft does not have named with the DataRef or command it needed, plus a "Check again" button.
 - Bounded automatic reconnect after an unexpected socket loss.
 - A diagnostics panel that shows exactly which step failed.
 - Light / dark theme with a system / light / dark toggle; the choice is persisted.
@@ -92,12 +97,12 @@ emulator specifics and `docs/testing/xplane-smoke-test.md` for the manual verifi
 - At the main menu X-Plane exposes no DataRefs; Avionix reports `SIMULATOR_NOT_READY` until a
   flight is loaded.
 
-- Only the three MVP DataRefs and one command are wired up.
+- Only the generic profile's DataRefs and its one command are wired up; no add-on profile ships yet.
 - iOS App Transport Security for plain `http://` to an IP literal is only exercised in Expo Go;
   a development build must confirm the `NSAllowsLocalNetworking` setting in `app.json`.
 - Connector discovery needs the development build (`react-native-zeroconf` is a native module);
   in Expo Go and on the web the host must be typed.
-- Base64 `data` DataRefs are displayed raw.
+- Base64 `data` DataRefs are decoded to text (this is how the aircraft is identified).
 - `npm run build:validate` prints an informational "Using src/app as the root directory for Expo
   Router" line; this is a cosmetic log from the Expo CLI noticing the `src/app` folder name,
   expo-router is not installed, and `index.ts` / `App.tsx` remain the actual entry point.

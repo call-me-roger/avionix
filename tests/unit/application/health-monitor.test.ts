@@ -1,8 +1,8 @@
 import { HEALTH_TICK_MS, HealthMonitor } from '@/application/health-monitor';
-import { ALL_DATAREF_NAMES, OPTIONAL_DATAREFS } from '@/application/mvp-bindings';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import type { Scheduler } from '@/application/simulator-session';
 import { Store } from '@/application/store';
+import { GENERIC_DATAREFS, GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 
 class FakeScheduler implements Scheduler {
   private queue: Array<{ callback: () => void; delayMs: number }> = [];
@@ -30,7 +30,7 @@ class FakeScheduler implements Scheduler {
 }
 
 function setup(patch: (snapshot: SessionSnapshot) => SessionSnapshot) {
-  const store = new Store(patch(initialSnapshot(ALL_DATAREF_NAMES, 5)));
+  const store = new Store(patch(initialSnapshot(GENERIC_PROFILE, 5)));
   const scheduler = new FakeScheduler();
   let clock = 10_000;
   const monitor = new HealthMonitor({
@@ -46,6 +46,17 @@ const connected = (snapshot: SessionSnapshot, lastHeartbeatAt: number): SessionS
   ...snapshot,
   state: 'connected',
   health: { ...snapshot.health, flightLoaded: true, lastHeartbeatAt, lastHeartbeatValue: 1 },
+  compatibility: {
+    ...snapshot.compatibility,
+    bindings: {
+      ...snapshot.compatibility.bindings,
+      [GENERIC_DATAREFS.heartbeat]: {
+        name: GENERIC_DATAREFS.heartbeat,
+        kind: 'dataref',
+        status: 'ok',
+      },
+    },
+  },
 });
 
 describe('HealthMonitor', () => {
@@ -64,7 +75,7 @@ describe('HealthMonitor', () => {
   it('reports paused when the paused dataref says so', () => {
     const { store, monitor } = setup((s) => ({
       ...connected(s, 5_000),
-      telemetry: { [OPTIONAL_DATAREFS.paused]: { value: 1, receivedAt: 5_000 } },
+      telemetry: { [GENERIC_DATAREFS.paused]: { value: 1, receivedAt: 5_000 } },
     }));
     monitor.refresh();
     expect(store.getSnapshot().health.activity).toBe('paused');
@@ -73,7 +84,7 @@ describe('HealthMonitor', () => {
   it('reports stalled when the paused dataref says the sim is not paused', () => {
     const { store, monitor } = setup((s) => ({
       ...connected(s, 5_000),
-      telemetry: { [OPTIONAL_DATAREFS.paused]: { value: 0, receivedAt: 5_000 } },
+      telemetry: { [GENERIC_DATAREFS.paused]: { value: 0, receivedAt: 5_000 } },
     }));
     monitor.refresh();
     expect(store.getSnapshot().health.activity).toBe('stalled');
@@ -92,6 +103,17 @@ describe('HealthMonitor', () => {
     }));
     monitor.refresh();
     expect(store.getSnapshot().health.activity).toBe('noFlight');
+  });
+
+  it('reports the simulator state unknown when the heartbeat dataref is not on this aircraft', () => {
+    const store = new Store(initialSnapshot(GENERIC_PROFILE));
+    store.setState((prev) => ({
+      ...prev,
+      state: 'connected',
+      health: { ...prev.health, flightLoaded: true, lastHeartbeatAt: null },
+    }));
+    new HealthMonitor({ store, now: () => 10_000 }).refresh();
+    expect(store.getSnapshot().health.activity).toBe('unknown');
   });
 
   it('does not notify subscribers when nothing derived changed', () => {

@@ -2,11 +2,15 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import React from 'react';
 
 import { ConnectorDiscovery } from '@/application/connector-discovery';
-import { ALL_DATAREF_NAMES, MVP_DATAREFS } from '@/application/mvp-bindings';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
+import {
+  FEATURE_HEADING_CONTROL,
+  GENERIC_DATAREFS,
+  GENERIC_PROFILE,
+} from '@/domain/aircraft/profiles/generic';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import { LINK_LABEL } from '@/features/health/LinkStatusBar';
 import { MvpScreen } from '@/features/mvp/MvpScreen';
@@ -17,12 +21,31 @@ import { darkTheme, lightTheme } from '@/theme/tokens';
 
 import { type FakeServiceBrowser, createFakeServiceBrowser } from '../support/fake-service-browser';
 
+const base = initialSnapshot(GENERIC_PROFILE, 5);
+
+/**
+ * A fresh snapshot leaves every feature 'unknown' until the first probe completes. Tests that
+ * exercise the heading controls on a `connected` fixture built by hand (never actually probed)
+ * need to say the aircraft supports heading control, or the gate this task adds would leave the
+ * button inert for a reason unrelated to what the test is checking.
+ */
+function headingControlAvailable(): SessionSnapshot['compatibility'] {
+  return {
+    ...base.compatibility,
+    features: base.compatibility.features.map((feature) =>
+      feature.id === FEATURE_HEADING_CONTROL
+        ? { ...feature, status: 'available' as const }
+        : feature,
+    ),
+  };
+}
+
 function makeServices(
   snapshot: Partial<SessionSnapshot> = {},
   browser: FakeServiceBrowser = createFakeServiceBrowser(),
 ) {
   const store = new Store<SessionSnapshot>({
-    ...initialSnapshot(ALL_DATAREF_NAMES, 5),
+    ...initialSnapshot(GENERIC_PROFILE, 5),
     ...snapshot,
   });
   const session = {
@@ -34,6 +57,7 @@ function makeServices(
     }),
     writeHeading: jest.fn(async () => undefined),
     activateHeadingUp: jest.fn(async () => undefined),
+    recheckCompatibility: jest.fn(async () => undefined),
   };
   const discovery = new ConnectorDiscovery({ browser, logger: silentLogger });
   const healthMonitor = { start: jest.fn(), stop: jest.fn(), refresh: jest.fn() };
@@ -85,14 +109,14 @@ describe('MvpScreen', () => {
         command: 'ok',
         subscription: 'ok',
         dataRefs: {
-          [MVP_DATAREFS.heartbeat]: 'ok',
-          [MVP_DATAREFS.airspeed]: 'ok',
-          [MVP_DATAREFS.heading]: 'ok',
+          [GENERIC_DATAREFS.heartbeat]: 'ok',
+          [GENERIC_DATAREFS.airspeed]: 'ok',
+          [GENERIC_DATAREFS.headingBug]: 'ok',
         },
       },
       telemetry: {
-        [MVP_DATAREFS.airspeed]: { value: 124.3, receivedAt: Date.now() },
-        [MVP_DATAREFS.heading]: { value: 270, receivedAt: Date.now() },
+        [GENERIC_DATAREFS.airspeed]: { value: 124.3, receivedAt: Date.now() },
+        [GENERIC_DATAREFS.headingBug]: { value: 270, receivedAt: Date.now() },
       },
     });
     await renderScreen(services);
@@ -122,9 +146,9 @@ describe('MvpScreen', () => {
         command: 'idle',
         subscription: 'idle',
         dataRefs: {
-          [MVP_DATAREFS.heartbeat]: 'idle',
-          [MVP_DATAREFS.airspeed]: 'idle',
-          [MVP_DATAREFS.heading]: 'idle',
+          [GENERIC_DATAREFS.heartbeat]: 'idle',
+          [GENERIC_DATAREFS.airspeed]: 'idle',
+          [GENERIC_DATAREFS.headingBug]: 'idle',
         },
       },
     });
@@ -136,7 +160,10 @@ describe('MvpScreen', () => {
   });
 
   it('writes the heading and activates the command, showing the last operation', async () => {
-    const { services, session, store } = makeServices({ state: 'connected' });
+    const { services, session, store } = makeServices({
+      state: 'connected',
+      compatibility: headingControlAvailable(),
+    });
     await renderScreen(services);
     await fireEvent.changeText(screen.getByLabelText('Heading to write'), '95');
     await fireEvent.press(screen.getByText('Write heading'));
@@ -160,6 +187,95 @@ describe('MvpScreen', () => {
         screen.getByText('Last operation: OK Activated sim/autopilot/heading_up'),
       ).toBeTruthy(),
     );
+  });
+
+  it('disables the heading controls and says why when the aircraft cannot support them', async () => {
+    const { services, session } = makeServices({
+      state: 'connected',
+      compatibility: {
+        ...base.compatibility,
+        checkedAt: 9_000,
+        features: [
+          {
+            id: 'heading-control',
+            label: 'Heading control',
+            status: 'unavailable',
+            missing: [
+              {
+                name: GENERIC_DATAREFS.headingBug,
+                kind: 'dataref',
+                purpose: 'Heading bug, written when you set a heading',
+                status: 'missing',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    await renderScreen(services);
+    expect(
+      screen.getByText(
+        'Heading control is not available on this aircraft: Heading bug, written when you set a heading',
+      ),
+    ).toBeTruthy();
+    await fireEvent.press(screen.getByText('Heading up'));
+    expect(session.activateHeadingUp).not.toHaveBeenCalled();
+  });
+
+  it('says a telemetry value is not on this aircraft rather than showing a dash', async () => {
+    const { services } = makeServices({
+      state: 'connected',
+      compatibility: {
+        ...base.compatibility,
+        checkedAt: 9_000,
+        bindings: {
+          [GENERIC_DATAREFS.airspeed]: {
+            name: GENERIC_DATAREFS.airspeed,
+            kind: 'dataref',
+            status: 'missing',
+          },
+        },
+      },
+    });
+    await renderScreen(services);
+    expect(screen.getByText('not available on this aircraft')).toBeTruthy();
+  });
+
+  it('still shows a telemetry value when its binding is read-only', async () => {
+    const { services } = makeServices({
+      state: 'connected',
+      compatibility: {
+        ...base.compatibility,
+        checkedAt: 9_000,
+        bindings: {
+          [GENERIC_DATAREFS.airspeed]: {
+            name: GENERIC_DATAREFS.airspeed,
+            kind: 'dataref',
+            status: 'readOnly',
+          },
+        },
+      },
+      telemetry: {
+        [GENERIC_DATAREFS.airspeed]: { value: 124.3, receivedAt: Date.now() },
+      },
+    });
+    await renderScreen(services);
+    expect(screen.getByText('124.3')).toBeTruthy();
+    expect(screen.queryByText('not available on this aircraft')).toBeNull();
+  });
+
+  it('says heading control has not been checked yet, never a claim it cannot back up', async () => {
+    const { services } = makeServices({ state: 'disconnected' });
+    await renderScreen(services);
+    expect(screen.getByText('Heading control has not been checked yet.')).toBeTruthy();
+    expect(screen.queryByText(/:\s*$/)).toBeNull();
+  });
+
+  it('opens the compatibility view from the aircraft summary', async () => {
+    const { services } = makeServices({ state: 'connected' });
+    await renderScreen(services);
+    await fireEvent.press(screen.getByText('Compatibility details'));
+    expect(screen.getByText('Aircraft compatibility')).toBeTruthy();
   });
 
   it('renders a failed operation as a cause and an action, never the raw protocol message', async () => {
@@ -440,9 +556,9 @@ describe('MvpScreen pairing mode', () => {
         command: 'ok',
         subscription: 'ok',
         dataRefs: {
-          [MVP_DATAREFS.heartbeat]: 'ok',
-          [MVP_DATAREFS.airspeed]: 'ok',
-          [MVP_DATAREFS.heading]: 'ok',
+          [GENERIC_DATAREFS.heartbeat]: 'ok',
+          [GENERIC_DATAREFS.airspeed]: 'ok',
+          [GENERIC_DATAREFS.headingBug]: 'ok',
         },
       },
     });

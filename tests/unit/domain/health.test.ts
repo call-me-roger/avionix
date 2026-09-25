@@ -8,6 +8,7 @@ import { STALE_AFTER_MS, ageMs, formatAge, isLive } from '@/domain/health/freshn
 
 const base: ActivityInput = {
   linkState: 'connected',
+  heartbeatAvailable: true,
   heartbeatAdvancing: true,
   paused: null,
   flightLoaded: true,
@@ -39,6 +40,30 @@ describe('deriveActivity', () => {
 
   it.each(cases)('%s', (_name, patch, expected) => {
     expect(deriveActivity({ ...base, ...patch })).toBe(expected);
+  });
+
+  it('is unknown when the aircraft has no heartbeat dataref to judge by', () => {
+    expect(
+      deriveActivity({
+        linkState: 'connected',
+        heartbeatAvailable: false,
+        heartbeatAdvancing: false,
+        paused: null,
+        flightLoaded: true,
+      }),
+    ).toBe('unknown');
+  });
+
+  it('still reports no flight loaded before it worries about the heartbeat', () => {
+    expect(
+      deriveActivity({
+        linkState: 'connected',
+        heartbeatAvailable: false,
+        heartbeatAdvancing: false,
+        paused: null,
+        flightLoaded: false,
+      }),
+    ).toBe('noFlight');
   });
 
   it('labels every activity with non-empty user-facing text', () => {

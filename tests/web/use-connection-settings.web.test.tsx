@@ -3,11 +3,11 @@ import { type Root, createRoot } from 'react-dom/client';
 import { Text } from 'react-native';
 
 import { ConnectorDiscovery } from '@/application/connector-discovery';
-import { MVP_DATAREF_NAMES } from '@/application/mvp-bindings';
 import { initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage, saveConnectionSettings } from '@/application/settings-store';
 import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
+import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import { useConnectionSettings } from '@/hooks/useConnectionSettings';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { platformDefaultConnection } from '@/platform/default-connection';
@@ -27,12 +27,13 @@ function services(storage = createMemorySettingsStorage()): AppServices {
       logger: silentLogger,
     }),
     session: {
-      store: new Store(initialSnapshot(MVP_DATAREF_NAMES)),
+      store: new Store(initialSnapshot(GENERIC_PROFILE)),
       connect: async () => undefined,
       disconnect: () => undefined,
       pair: async () => undefined,
       writeHeading: async () => undefined,
       activateHeadingUp: async () => undefined,
+      recheckCompatibility: async () => undefined,
     },
     healthMonitor: { start: () => undefined, stop: () => undefined, refresh: () => undefined },
   };

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Button, View } from 'react-native';
 
 import type { LastOperation } from '@/application/session-snapshot';
+import type { FeatureAvailability } from '@/domain/aircraft/availability';
 import { FailureNotice } from '@/features/health/FailureNotice';
 import { BodyText, Section, SectionTitle, ThemedTextInput } from '@/theme/primitives';
 import { useTheme, useThemedStyles } from '@/theme/theme-context';
@@ -9,6 +10,7 @@ import type { Theme } from '@/theme/tokens';
 
 interface Props {
   enabled: boolean;
+  feature: FeatureAvailability | null;
   lastOperation: LastOperation | null;
   onWriteHeading: (value: number) => void;
   onHeadingUp: () => void;
@@ -23,7 +25,12 @@ export function ControlPanel(props: Props) {
   const styles = useThemedStyles(makeStyles);
   const [heading, setHeading] = useState('90');
   const parsed = Number(heading);
-  const canWrite = props.enabled && heading.trim() !== '' && Number.isFinite(parsed);
+  // Matches `featureUsable` in simulator-session.ts exactly: `partial` still has controls to
+  // offer, since it exists precisely for a feature missing only an optional binding (R6).
+  const usableStatus = props.feature?.status === 'available' || props.feature?.status === 'partial';
+  const usable = props.enabled && usableStatus;
+  const reason = reasonFor(props.feature, usableStatus);
+  const canWrite = usable && heading.trim() !== '' && Number.isFinite(parsed);
   return (
     <Section>
       <SectionTitle>Test controls</SectionTitle>
@@ -44,13 +51,32 @@ export function ControlPanel(props: Props) {
         <Button
           title="Heading up"
           onPress={props.onHeadingUp}
-          disabled={!props.enabled}
+          disabled={!usable}
           color={theme.colors.primary}
         />
       </View>
+      {reason === null ? null : <BodyText muted>{reason}</BodyText>}
       <LastOperationRow lastOperation={props.lastOperation} />
     </Section>
   );
+}
+
+/**
+ * A reason renders only when the control is genuinely inert. `unknown` must not borrow
+ * `unavailable`'s wording: `deriveFeatureAvailability` guarantees `missing: []` for `unknown`, so
+ * that branch would otherwise print "... is not available on this aircraft: " with nothing after
+ * the colon, claiming "not available" when the truth is "not checked yet".
+ */
+function reasonFor(feature: FeatureAvailability | null, usableStatus: boolean): string | null {
+  if (feature === null || usableStatus) {
+    return null;
+  }
+  if (feature.status === 'unknown') {
+    return `${feature.label} has not been checked yet.`;
+  }
+  return `${feature.label} is not available on this aircraft: ${feature.missing
+    .map((miss) => miss.purpose)
+    .join(', ')}`;
 }
 
 /**

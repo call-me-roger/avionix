@@ -1,6 +1,10 @@
 import { formatDiagnosticsSummary } from '@/application/diagnostics-summary';
-import { ALL_DATAREF_NAMES, MVP_COMMAND_HEADING_UP } from '@/application/mvp-bindings';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
+import {
+  GENERIC_COMMANDS,
+  GENERIC_DATAREFS,
+  GENERIC_PROFILE,
+} from '@/domain/aircraft/profiles/generic';
 import { createConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError } from '@/domain/errors/avionix-error';
 
@@ -8,7 +12,7 @@ const SECRET_TOKEN = 'avx_7f3c9d2b1a8e4f60';
 const PAIRING_CODE = '481920';
 
 function snapshotWithSecrets(): SessionSnapshot {
-  const base = initialSnapshot(ALL_DATAREF_NAMES, 5);
+  const base = initialSnapshot(GENERIC_PROFILE, 5);
   return {
     ...base,
     state: 'error',
@@ -69,27 +73,75 @@ describe('formatDiagnosticsSummary', () => {
   });
 
   it('works on a snapshot that never connected', () => {
-    const text = formatDiagnosticsSummary(initialSnapshot(ALL_DATAREF_NAMES, 5), 10_000);
+    const text = formatDiagnosticsSummary(initialSnapshot(GENERIC_PROFILE, 5), 10_000);
     expect(text).toContain('Avionix diagnostics');
     expect(text).toContain('no data yet');
   });
 
   it('names the failing command and the feature that needs it, like the DataRef rows', () => {
-    const base = initialSnapshot(ALL_DATAREF_NAMES, 5);
+    const base = initialSnapshot(GENERIC_PROFILE, 5);
     const text = formatDiagnosticsSummary(
       { ...base, diagnostics: { ...base.diagnostics, command: 'failed' } },
       10_000,
     );
-    expect(text).toContain(`Control: ${MVP_COMMAND_HEADING_UP} (Heading control): failed`);
+    expect(text).toContain(`Control: ${GENERIC_COMMANDS.headingUp} (Heading control): failed`);
   });
 
   it('humanizes the connector step instead of printing the raw value', () => {
-    const base = initialSnapshot(ALL_DATAREF_NAMES, 5);
+    const base = initialSnapshot(GENERIC_PROFILE, 5);
     const text = formatDiagnosticsSummary(
       { ...base, diagnostics: { ...base.diagnostics, connector: 'direct' } },
       10_000,
     );
     expect(text).toContain('Connector: not needed, talking to X-Plane directly');
     expect(text).not.toMatch(/Steps\n {2}Connector: direct/);
+  });
+
+  it('states the aircraft, the profile and what each feature can do', () => {
+    const snapshot = initialSnapshot(GENERIC_PROFILE);
+    const withAircraft: SessionSnapshot = {
+      ...snapshot,
+      compatibility: {
+        ...snapshot.compatibility,
+        identity: {
+          icaoType: 'C172',
+          description: 'Cessna 172 SP',
+          tailNumber: 'N172SP',
+          addOnVersion: null,
+        },
+        identified: true,
+        checkedAt: 9_000,
+        features: [
+          { id: 'connection-health', label: 'Connection health', status: 'available', missing: [] },
+          {
+            id: 'flight-telemetry',
+            label: 'Live telemetry',
+            status: 'unavailable',
+            missing: [
+              {
+                name: GENERIC_DATAREFS.airspeed,
+                kind: 'dataref',
+                purpose: 'Indicated airspeed',
+                status: 'missing',
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const text = formatDiagnosticsSummary(withAircraft, 10_000);
+    expect(text).toContain('Aircraft: Cessna 172 SP (C172) · N172SP');
+    expect(text).toContain('Profile: Generic X-Plane aircraft 1.0.0 (generic fallback)');
+    expect(text).toContain('Connection health: available');
+    expect(text).toContain('Live telemetry: not available on this aircraft');
+    expect(text).toContain(
+      `Indicated airspeed — ${GENERIC_DATAREFS.airspeed} — not present on this aircraft`,
+    );
+  });
+
+  it('says when X-Plane did not report the aircraft', () => {
+    const text = formatDiagnosticsSummary(initialSnapshot(GENERIC_PROFILE), 10_000);
+    expect(text).toContain('Aircraft: not reported by X-Plane');
+    expect(text).toContain('Checked: not yet');
   });
 });

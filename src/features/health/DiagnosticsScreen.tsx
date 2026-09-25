@@ -6,8 +6,8 @@ import {
   formatDiagnosticsSummary,
   stepLabel,
 } from '@/application/diagnostics-summary';
-import { BINDING_FEATURE, MVP_COMMAND_HEADING_UP } from '@/application/mvp-bindings';
 import type { ConnectorStep, SessionSnapshot, StepStatus } from '@/application/session-snapshot';
+import { GENERIC_COMMANDS } from '@/domain/aircraft/profiles/generic';
 import { ageMs, formatAge } from '@/domain/health/freshness';
 import { ACTIVITY_LABEL } from '@/domain/health/simulator-activity';
 import { FailureNotice } from '@/features/health/FailureNotice';
@@ -97,11 +97,11 @@ export function DiagnosticsScreen({
       </BodyText>
       {Object.entries(diagnostics.dataRefs).map(([name, status]) => (
         <BodyText key={name} tone={stepTone(status)}>
-          {`${name} (${BINDING_FEATURE[name] ?? 'unknown feature'}): ${stepLabel(status)}`}
+          {`${name} (${snapshot.compatibility.bindingLabels[name] ?? 'unknown feature'}): ${stepLabel(status)}`}
         </BodyText>
       ))}
       <BodyText tone={stepTone(diagnostics.command)}>
-        {`Control: ${MVP_COMMAND_HEADING_UP} (${BINDING_FEATURE[MVP_COMMAND_HEADING_UP] ?? 'unknown feature'}): ${stepLabel(diagnostics.command)}`}
+        {`Control: ${GENERIC_COMMANDS.headingUp} (${snapshot.compatibility.bindingLabels[GENERIC_COMMANDS.headingUp] ?? 'unknown feature'}): ${stepLabel(diagnostics.command)}`}
       </BodyText>
       <BodyText tone={stepTone(diagnostics.subscription)}>
         {`Subscription: ${stepLabel(diagnostics.subscription)}`}

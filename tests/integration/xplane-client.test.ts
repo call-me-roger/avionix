@@ -123,6 +123,8 @@ describe.each(['v2', 'v3'] as const)('XPlaneClient over %s', (apiVersion) => {
       id: 1001,
       name: 'sim/time/total_running_time_sec',
       valueType: 'float',
+      // The mock now reports is_writable, as X-Plane 12.4.3 and newer do.
+      isWritable: false,
     });
     await expect(client.findDataRef('sim/does/not/exist')).resolves.toBeNull();
     await expect(client.findCommand('sim/autopilot/heading_up')).resolves.toEqual({
@@ -134,14 +136,14 @@ describe.each(['v2', 'v3'] as const)('XPlaneClient over %s', (apiVersion) => {
   });
 
   it('reports the dataref count', async () => {
-    await expect(client.getDataRefCount()).resolves.toBe(5);
+    await expect(client.getDataRefCount()).resolves.toBe(8);
   });
 
   it('reads scalar, array, indexed and data values', async () => {
     await expect(client.getDataRefValue(1003)).resolves.toBe(270);
     await expect(client.getDataRefValue(1004)).resolves.toEqual([10, 20, 30]);
     await expect(client.getDataRefValue(1004, 1)).resolves.toBe(20);
-    await expect(client.getDataRefValue(1005)).resolves.toBe('TklsNzc=');
+    await expect(client.getDataRefValue(1005)).resolves.toBe('TjE3MlNQ');
     await expect(codeOf(client.getDataRefValue(999999))).resolves.toBe('DATAREF_NOT_FOUND');
   });
 

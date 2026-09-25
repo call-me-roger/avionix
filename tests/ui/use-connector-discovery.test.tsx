@@ -3,11 +3,11 @@ import React from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { ConnectorDiscovery } from '@/application/connector-discovery';
-import { MVP_DATAREF_NAMES } from '@/application/mvp-bindings';
 import { initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
+import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import type { ConnectionState } from '@/domain/connection/connection-state';
 import { useConnectorDiscovery } from '@/hooks/useConnectorDiscovery';
 import { silentLogger } from '@/infrastructure/logging/logger';
@@ -19,12 +19,13 @@ function setup() {
     settingsStorage: createMemorySettingsStorage(),
     discovery: new ConnectorDiscovery({ browser, logger: silentLogger }),
     session: {
-      store: new Store(initialSnapshot(MVP_DATAREF_NAMES)),
+      store: new Store(initialSnapshot(GENERIC_PROFILE)),
       connect: async () => undefined,
       disconnect: () => undefined,
       pair: async () => undefined,
       writeHeading: async () => undefined,
       activateHeadingUp: async () => undefined,
+      recheckCompatibility: async () => undefined,
     },
     healthMonitor: { start: jest.fn(), stop: jest.fn(), refresh: jest.fn() },
   };

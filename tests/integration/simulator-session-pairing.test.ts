@@ -1,7 +1,7 @@
-import { MVP_DATAREFS } from '@/application/mvp-bindings';
 import { createPairingTokenStore } from '@/application/pairing-token-store';
 import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
 import { type Scheduler, SimulatorSession } from '@/application/simulator-session';
+import { GENERIC_DATAREFS } from '@/domain/aircraft/profiles/generic';
 import { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
@@ -107,7 +107,9 @@ describe('SimulatorSession pairing against the mock connector', () => {
     expect(first.store.getSnapshot().state).toBe('connected');
     expect(first.store.getSnapshot().diagnostics.connector).toBe('paired');
     expect(server.issuedTokens).toEqual(['mock-token-1']);
-    await until(() => first.store.getSnapshot().telemetry[MVP_DATAREFS.heartbeat] !== undefined);
+    await until(
+      () => first.store.getSnapshot().telemetry[GENERIC_DATAREFS.heartbeat] !== undefined,
+    );
     first.disconnect();
     await until(() => server.connectionCount === 0);
 

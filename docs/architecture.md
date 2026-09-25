@@ -4,8 +4,8 @@
 
 | Layer | Directory | Depends on | Contains |
 |---|---|---|---|
-| Domain | `src/domain` | nothing | `AvionixError`, connection config validation, URL derivation, the connection state table, API version negotiation, simulator types, the `SimulatorClient` port, the `ServiceBrowser` port and `DiscoveredConnector` |
-| Infrastructure | `src/infrastructure` | domain | zod schemas and mappers for X-Plane payloads, `HttpTransport`, `WebSocketTransport` + `RequestManager`, `XPlaneClient`, `ConnectorClient`, name resolution caches, logging, AsyncStorage adapter, `ZeroconfServiceBrowser` and the null browser |
+| Domain | `src/domain` | nothing | `AvionixError`, connection config validation, URL derivation, the connection state table, API version negotiation, simulator types, the `SimulatorClient` port, the `ServiceBrowser` port, `DiscoveredConnector`, aircraft profiles, identification and availability |
+| Infrastructure | `src/infrastructure` | domain | zod schemas and mappers for X-Plane payloads, `HttpTransport`, `WebSocketTransport` + `RequestManager`, `XPlaneClient`, `ConnectorClient`, logging, AsyncStorage adapter, `ZeroconfServiceBrowser` and the null browser |
 | Application | `src/application` | domain, infrastructure | `SimulatorSession` (connect flow, diagnostics, telemetry, reconnect), `PairingTokenStore`, `Store`, snapshot types, settings, `ConnectorDiscovery` |
 | UI | `src/app`, `src/hooks`, `src/features` | application | composition root, React context, hooks, plain React Native components |
 | Platform | `src/platform` | infrastructure | the only platform-specific code: the web connection default and the `ServiceBrowser` factory (`service-browser.ts` for native, `service-browser.web.ts` for the web) |
@@ -38,9 +38,10 @@ TextInput → MvpScreen → useSimulatorSession().connect(host, port)
       4. negotiateApiVersion                      (domain)
       5. XPlaneClient.connectWebSocket            (WebSocketTransport)
       6. state = connected
-      7. resolve MVP DataRefs + command by name   (ResolutionCache → REST)
-      8. dataref_subscribe_values                 (WebSocket)
-      9. dataref_update_values → DataRefUpdate[] → snapshot.telemetry
+      7. GET /api/v3/datarefs/count                (readiness gate; 0 → hold, no probing)
+      8. identify the aircraft, select a profile, probe every name it declares
+      9. dataref_subscribe_values                  (WebSocket; identification DataRefs included)
+     10. dataref_update_values → DataRefUpdate[] → snapshot.telemetry
   → Store notifies → useSyncExternalStore re-renders the screen
 ```
 
@@ -100,6 +101,50 @@ opens (spec step 9); DataRef resolution and subscription happen afterwards and c
 Reconnect uses exponential backoff (1 s, 2 s, 4 s, 8 s, 16 s, ±20 % jitter, 5 attempts) and reruns
 the whole connect flow, including capabilities and name resolution, because X-Plane may have
 restarted and DataRef ids are session-specific.
+
+## Aircraft compatibility
+
+A **profile** is the single registry of the DataRef and command names a feature needs
+(`src/domain/aircraft/profile.ts`). It is named, versioned, and declares one `BindingSpec` per
+name: what the binding is for, whether the feature is useless without it, and whether the app
+writes to it. `GENERIC_PROFILE` covers Laminar names and is the fallback for every aircraft; the
+catalog's `named` list is empty until an aircraft-specific profile arrives in Stage 4.
+
+Every connect runs four phases inside `SimulatorSession`:
+
+1. `GET /api/v3/datarefs/count`. Zero means no flight is loaded: hold for readiness and probe
+   nothing.
+2. Identify: read `acf_ICAO`, `acf_descrip` and `acf_tailnum`, which are `data`-typed DataRefs
+   carrying base64 text. All three are optional.
+3. Select: `selectProfile` matches the ICAO code against the catalog, lowest profile id first, and
+   falls back to the generic profile.
+4. Probe: resolve every name the profile declares, six lookups at a time, recording `ok`,
+   `missing` or `readOnly` per name.
+
+A flight can be unloaded while the probe is still running, and X-Plane tears its DataRef table
+down and rebuilds it when that happens, so a pass that lands mid-rebuild can come back with
+nothing resolved even though the profile fits the aircraft. The session tells that apart from a
+genuine mismatch by re-checking `datarefs/count`, but only when **no DataRef resolved**: a resolved
+command is not evidence either way, because a command survives a flight unload in X-Plane's command
+table, so counting one would make the mid-probe-unload case unreachable. A zero re-count parks the
+connection in the same readiness hold as the initial gate; a non-zero re-count means the aircraft
+genuinely does not have the profile's names, and the probe's results stand.
+
+A name that does not resolve costs its **feature**, never the connection: `deriveFeatureAvailability`
+turns the per-name results into `available` / `partial` / `unavailable`, and a surface whose feature
+is not `available` renders inert with the reason. The connect still fails on transport, capabilities,
+WebSocket and subscription errors.
+
+The identification DataRefs are subscribed like any other value, so a new aircraft arrives as an
+ordinary update; the session debounces that for 250 ms and re-runs phases 2 to 4 on the open
+connection, reconciling the subscription as a delta. The same no-DataRef-resolved check guards this
+ongoing pass: one that lands mid-rebuild keeps the last good result rather than unsubscribing every
+id and reporting an unidentified aircraft with nothing left to prove otherwise.
+`recheckCompatibility()` is the same pass on demand, behind the "Check again" button.
+
+`isWritable` is reported only by X-Plane 12.4.3 and newer. An explicit `false` on a binding the app
+writes to makes the feature unavailable; an absent flag is treated as writable, and the view says
+write capability was not reported.
 
 ## Error model
 

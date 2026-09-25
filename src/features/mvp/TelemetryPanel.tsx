@@ -1,8 +1,8 @@
 import React from 'react';
 import { View } from 'react-native';
 
-import { MVP_DATAREFS } from '@/application/mvp-bindings';
 import type { SessionSnapshot, TelemetrySample } from '@/application/session-snapshot';
+import { GENERIC_DATAREFS } from '@/domain/aircraft/profiles/generic';
 import { BodyText, Section, SectionTitle } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
@@ -21,9 +21,9 @@ function formatValue(sample: TelemetrySample | undefined): string {
 }
 
 const ROWS: { label: string; name: string }[] = [
-  { label: 'Sim running time (s)', name: MVP_DATAREFS.heartbeat },
-  { label: 'Indicated airspeed (kt)', name: MVP_DATAREFS.airspeed },
-  { label: 'Heading bug (deg)', name: MVP_DATAREFS.heading },
+  { label: 'Sim running time (s)', name: GENERIC_DATAREFS.heartbeat },
+  { label: 'Indicated airspeed (kt)', name: GENERIC_DATAREFS.airspeed },
+  { label: 'Heading bug (deg)', name: GENERIC_DATAREFS.headingBug },
 ];
 
 const makeStyles = (theme: Theme) => ({
@@ -41,7 +41,19 @@ export function TelemetryPanel({ snapshot, now }: { snapshot: SessionSnapshot; n
     <Section>
       <SectionTitle>Live telemetry</SectionTitle>
       {ROWS.map((row) => {
+        const binding = snapshot.compatibility.bindings[row.name];
         const sample = snapshot.telemetry[row.name];
+        if (binding !== undefined && binding.status === 'missing') {
+          // A dash reads as "no data yet"; this value is not coming at all (R6). `readOnly` is
+          // not this case: the DataRef resolved and its value reads fine — it only failed a
+          // write-capability check, which the compatibility screen reports, not this readout.
+          return (
+            <View key={row.name} style={styles.row}>
+              <BodyText>{row.label}</BodyText>
+              <BodyText muted>not available on this aircraft</BodyText>
+            </View>
+          );
+        }
         const age =
           sample === undefined
             ? ''

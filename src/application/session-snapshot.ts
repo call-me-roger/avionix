@@ -1,3 +1,9 @@
+import {
+  type CompatibilitySnapshot,
+  initialCompatibility,
+  snapshotDataRefNames,
+} from '@/application/compatibility';
+import type { AircraftProfile } from '@/domain/aircraft/profile';
 import type { XPlaneConnectionConfig } from '@/domain/connection/connection-config';
 import type { ConnectionState } from '@/domain/connection/connection-state';
 import type { ConnectorInfo } from '@/domain/connector/connector-info';
@@ -98,6 +104,7 @@ export interface SessionSnapshot {
   error: AvionixError | null;
   reconnectAttempt: number;
   health: SessionHealth;
+  compatibility: CompatibilitySnapshot;
 }
 
 export function initialDiagnostics(dataRefNames: readonly string[]): SessionDiagnostics {
@@ -116,21 +123,24 @@ export function initialDiagnostics(dataRefNames: readonly string[]): SessionDiag
   };
 }
 
-export function initialSnapshot(
-  dataRefNames: readonly string[],
-  reconnectBudget = 5,
-): SessionSnapshot {
+/**
+ * A fresh snapshot for a session about to connect with `profile` selected. The profile decides
+ * which DataRef names the diagnostics track, so the steps the screen shows always match the
+ * names the session is about to resolve.
+ */
+export function initialSnapshot(profile: AircraftProfile, reconnectBudget = 5): SessionSnapshot {
   return {
     state: 'disconnected',
     config: null,
     connector: null,
     capabilities: null,
     apiVersion: null,
-    diagnostics: initialDiagnostics(dataRefNames),
+    diagnostics: initialDiagnostics(snapshotDataRefNames(profile)),
     telemetry: {},
     lastOperation: null,
     error: null,
     reconnectAttempt: 0,
     health: initialHealth(reconnectBudget),
+    compatibility: initialCompatibility(profile),
   };
 }

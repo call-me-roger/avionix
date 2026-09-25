@@ -4,10 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Readable } from 'node:stream';
 
-import { MVP_DATAREFS } from '@/application/mvp-bindings';
 import { createPairingTokenStore } from '@/application/pairing-token-store';
 import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
 import { SimulatorSession } from '@/application/simulator-session';
+import { GENERIC_DATAREFS } from '@/domain/aircraft/profiles/generic';
 import { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
@@ -173,7 +173,7 @@ describe('pairing through the real Avionix Connector', () => {
     expect(snap().error).toBeNull();
 
     xplane.setDataRefValue('sim/time/total_running_time_sec', 42);
-    await until(() => snap().telemetry[MVP_DATAREFS.heartbeat]?.value === 42);
+    await until(() => snap().telemetry[GENERIC_DATAREFS.heartbeat]?.value === 42);
 
     await expect(createPairingTokenStore(storage).get('127.0.0.1', bridgePort)).resolves.toEqual(
       expect.any(String),
