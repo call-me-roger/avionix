@@ -153,7 +153,11 @@ write capability was not reported.
 panel or Setup below it, and a switcher (a bottom bar in portrait, a side rail in landscape).
 Routes are one persisted value (`avionix.panels`: hidden panel ids and the last route), not a
 navigation library, and rotation only moves the switcher, so a panel and a half-typed entry
-survive it.
+survive it. Android draws edge to edge, and iPhones have a notch or Dynamic Island and a home
+indicator, so the shell reads `useSafeAreaInsets()` (`SafeAreaProvider` wraps the app): the status
+bar clears the top, the portrait bar the bottom, the landscape rail the left edge and the panel
+the right. Tapping the status bar opens Setup with the diagnostics at its top, above the
+connection form.
 
 A panel is a `PanelDescriptor` (`src/domain/panels/panel.ts`: id, title, the profile features
 it reads, and which device classes and orientations it supports) paired with a component in
@@ -170,8 +174,10 @@ Every panel is built from four primitives that carry the framework's rules:
 - `ControlButton` is disabled when the link is not live, when its feature is not usable
   (`controlAvailability`, with the reason under it) or while its own operation is pending, is at
   least 48 dp in both directions, supports a two-press confirmation, and shows only its own
-  outcome from `snapshot.operations`.
-- `ValueEntry` validates a number in the pilot's words before `ControlButton` sends it.
+  outcome from `snapshot.operations`. Enabled is a filled button, disabled an outline, so the two
+  differ in shape and not only in shade (the night palette has little shade to spare).
+- `ValueEntry` accepts a plain decimal only (a minus sign only where the range allows one) and
+  validates it in the pilot's words before `ControlButton` sends it.
 
 Controls act through `SimulatorSession.write(featureId, name, value)` and
 `activate(featureId, name)`, which refuse any name that is not a binding of that feature in the
@@ -180,12 +186,15 @@ text: a failure is a `{ code, step }` pair rendered by `FailureNotice`.
 
 The shell calls `setDemand` with the visible panel's features. The session keeps identification,
 connection health and those features' DataRefs subscribed, reconciling the socket as a delta
-(added before removed, one change at a time). A value it stops carrying is pruned, and comes back
+(added before removed, one change at a time; a re-check installs its new bindings under the same
+lock, and a failed change is retried by the next `setDemand`, even with the same demand). A value
+it stops carrying is pruned, and comes back
 in the first update after it is subscribed again. Last known values survive a dropped link, so a
 panel still shows them, marked not live.
 
 While a panel is on screen and the link is connected or reconnecting, the screen is held awake
-through `expo-keep-awake` (a wake lock on the web, best effort). Night is a third palette: black
+through `expo-keep-awake` (a wake lock on the web, best effort; holds and releases run one after
+another, so a release never races a wake-lock request still in flight). Night is a third palette: black
 background, nothing brighter than a relative luminance of 0.30.
 
 ## Error model

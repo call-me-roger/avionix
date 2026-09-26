@@ -65,7 +65,7 @@ describe('the panel framework against the mock X-Plane', () => {
     await server.stop();
   });
 
-  it('moves the subscription with the visible panel, by the delta only', async () => {
+  it('moves the subscription with the visible panel', async () => {
     const session = createSession();
     session.setDemand([FEATURE_FLIGHT_TELEMETRY, FEATURE_HEADING_CONTROL]);
     await session.connect(server.host, server.port);
