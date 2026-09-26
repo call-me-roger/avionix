@@ -507,29 +507,38 @@ describe('SimulatorSession connect flow', () => {
 });
 
 describe('SimulatorSession operations', () => {
-  it('writes the heading and records success', async () => {
+  const HEADING = GENERIC_DATAREFS.headingBug;
+  const HEADING_UP = GENERIC_COMMANDS.headingUp;
+
+  it('writes a binding of the feature and records the outcome against its name', async () => {
     const { session, clients, snapshot } = setup();
     await session.connect('192.168.1.100', 8086);
-    await session.writeHeading(95);
+    await session.write(FEATURE_HEADING_CONTROL, HEADING, 95);
     expect(clients[0]?.writes).toEqual([{ id: 3, value: 95 }]);
-    expect(snapshot().lastOperation).toEqual({
-      kind: 'write',
-      ok: true,
-      message: 'Wrote heading 95',
+    expect(snapshot().operations[HEADING]).toEqual({
+      status: 'ok',
       failure: null,
+      refusal: null,
       at: 1234,
     });
   });
 
-  it('rejects headings outside 0..360 without calling the client', async () => {
+  it('is pending while the write is in flight', async () => {
     const { session, clients, snapshot } = setup();
     await session.connect('192.168.1.100', 8086);
-    await session.writeHeading(400);
-    expect(clients[0]?.writes).toEqual([]);
-    expect(snapshot().lastOperation?.ok).toBe(false);
+    let release: () => void = () => undefined;
+    clients[0]?.setDataRefValue.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (release = resolve)),
+    );
+    const writing = session.write(FEATURE_HEADING_CONTROL, HEADING, 95);
+    await flush();
+    expect(snapshot().operations[HEADING]?.status).toBe('pending');
+    release();
+    await writing;
+    expect(snapshot().operations[HEADING]?.status).toBe('ok');
   });
 
-  it('records a failed write', async () => {
+  it('records a failed write as a failure ref, never as text', async () => {
     const { session, clients, snapshot } = setup();
     await session.connect('192.168.1.100', 8086);
     clients[0]?.setDataRefValue.mockRejectedValueOnce(
@@ -539,52 +548,104 @@ describe('SimulatorSession operations', () => {
         simulatorErrorCode: 'dataref_is_readonly',
       }),
     );
-    await session.writeHeading(10);
-    expect(snapshot().lastOperation).toMatchObject({
-      kind: 'write',
-      ok: false,
-      // The raw AvionixError text is kept here only for the logger; ControlPanel must never
-      // render it (F-02 R9) — it renders `failure` through FailureNotice instead.
-      message: expect.stringContaining('read only'),
+    await session.write(FEATURE_HEADING_CONTROL, HEADING, 10);
+    expect(snapshot().operations[HEADING]).toEqual({
+      status: 'failed',
       failure: { code: 'WRITE_FAILED', step: 'operation' },
+      refusal: null,
+      at: 1234,
     });
+    expect(JSON.stringify(snapshot().operations)).not.toContain('read only');
     expect(snapshot().state).toBe('connected');
   });
 
-  it('activates the heading-up command', async () => {
+  it('activates a command binding of the feature', async () => {
     const { session, clients, snapshot } = setup();
     await session.connect('192.168.1.100', 8086);
-    await session.activateHeadingUp();
+    await session.activate(FEATURE_HEADING_CONTROL, HEADING_UP);
     expect(clients[0]?.activations).toEqual([9]);
-    expect(snapshot().lastOperation).toMatchObject({
-      kind: 'command',
-      ok: true,
-      failure: null,
-    });
+    expect(snapshot().operations[HEADING_UP]).toMatchObject({ status: 'ok', failure: null });
   });
 
-  it('records a failed command activation with a failure ref, not a raw message', async () => {
+  it('passes a hold duration through to the command', async () => {
+    const { session, clients } = setup();
+    await session.connect('192.168.1.100', 8086);
+    await session.activate(FEATURE_HEADING_CONTROL, HEADING_UP, 2);
+    expect(clients[0]?.activateCommand).toHaveBeenCalledWith(9, 2);
+  });
+
+  it('records a failed command activation with a failure ref', async () => {
     const { session, clients, snapshot } = setup();
     await session.connect('192.168.1.100', 8086);
     clients[0]?.activateCommand.mockRejectedValueOnce(
       new AvionixError({ code: 'COMMAND_FAILED', message: 'X-Plane answered HTTP 500' }),
     );
-    await session.activateHeadingUp();
-    expect(snapshot().lastOperation).toMatchObject({
-      kind: 'command',
-      ok: false,
+    await session.activate(FEATURE_HEADING_CONTROL, HEADING_UP);
+    expect(snapshot().operations[HEADING_UP]).toMatchObject({
+      status: 'failed',
       failure: { code: 'COMMAND_FAILED', step: 'operation' },
+      refusal: null,
     });
   });
 
-  it('refuses operations while not connected', async () => {
-    const { session, snapshot } = setup();
-    await session.writeHeading(10);
-    expect(snapshot().lastOperation).toMatchObject({
-      ok: false,
-      message: expect.stringContaining('not connected'),
+  it('refuses while not connected, without calling the client', async () => {
+    const { session, clients, snapshot } = setup();
+    await session.write(FEATURE_HEADING_CONTROL, HEADING, 10);
+    await session.activate(FEATURE_HEADING_CONTROL, HEADING_UP);
+    expect(clients[0]?.setDataRefValue).not.toHaveBeenCalled();
+    expect(snapshot().operations[HEADING]).toMatchObject({
+      status: 'failed',
       failure: null,
+      refusal: 'notConnected',
     });
+    expect(snapshot().operations[HEADING_UP]?.refusal).toBe('notConnected');
+  });
+
+  it.each([
+    ['a name outside the feature', FEATURE_FLIGHT_TELEMETRY, GENERIC_DATAREFS.headingBug],
+    ['a binding that is not written', FEATURE_FLIGHT_TELEMETRY, GENERIC_DATAREFS.airspeed],
+    ['a name no profile declares', FEATURE_HEADING_CONTROL, 'sim/not/a/binding'],
+    ['an unknown feature', 'no-such-feature', GENERIC_DATAREFS.headingBug],
+  ])('refuses to write %s', async (_label, featureId, name) => {
+    const { session, clients, snapshot } = setup();
+    await session.connect('192.168.1.100', 8086);
+    await session.write(featureId, name, 1);
+    expect(clients[0]?.writes).toEqual([]);
+    expect(snapshot().operations[name]).toMatchObject({ status: 'failed', refusal: 'unavailable' });
+  });
+
+  it('refuses to activate a DataRef as if it were a command', async () => {
+    const { session, clients, snapshot } = setup();
+    await session.connect('192.168.1.100', 8086);
+    await session.activate(FEATURE_HEADING_CONTROL, HEADING);
+    expect(clients[0]?.activations).toEqual([]);
+    expect(snapshot().operations[HEADING]?.refusal).toBe('unavailable');
+  });
+
+  it('keeps the outcomes across a disconnect and resets them on the next connect', async () => {
+    const { session, snapshot } = setup();
+    await session.connect('192.168.1.100', 8086);
+    await session.write(FEATURE_HEADING_CONTROL, HEADING, 95);
+    session.disconnect();
+    expect(snapshot().operations[HEADING]?.status).toBe('ok');
+    await session.connect('192.168.1.100', 8086);
+    expect(snapshot().operations).toEqual({});
+  });
+
+  it('a result from before the last connect is dropped', async () => {
+    const { session, clients, snapshot } = setup();
+    await session.connect('192.168.1.100', 8086);
+    let fail: (error: unknown) => void = () => undefined;
+    clients[0]?.setDataRefValue.mockImplementationOnce(
+      () => new Promise<void>((_resolve, reject) => (fail = reject)),
+    );
+    const writing = session.write(FEATURE_HEADING_CONTROL, HEADING, 95);
+    await flush();
+    await session.connect('192.168.1.100', 8086);
+    fail(new AvionixError({ code: 'UNAUTHORIZED', message: 'gone' }));
+    await writing;
+    expect(snapshot().operations[HEADING]).toBeUndefined();
+    expect(snapshot().state).toBe('connected');
   });
 });
 
@@ -1036,11 +1097,14 @@ describe('SimulatorSession when the token dies mid-session', () => {
     await session.connect('192.168.1.100', 8080);
     expect(snapshot().state).toBe('connected');
 
-    await session.writeHeading(180);
+    await session.write(FEATURE_HEADING_CONTROL, GENERIC_DATAREFS.headingBug, 180);
 
     expect(snapshot().state).toBe('pairing');
     expect(snapshot().error?.code).toBe('UNAUTHORIZED');
-    expect(snapshot().lastOperation).toMatchObject({ kind: 'write', ok: false });
+    expect(snapshot().operations[GENERIC_DATAREFS.headingBug]).toMatchObject({
+      status: 'failed',
+      failure: { code: 'UNAUTHORIZED', step: 'operation' },
+    });
     await expect(inner.get('192.168.1.100', 8080)).resolves.toBeNull();
   });
 
@@ -1053,7 +1117,7 @@ describe('SimulatorSession when the token dies mid-session', () => {
     await session.connect('192.168.1.100', 8080);
     expect(snapshot().diagnostics.websocket).toBe('ok');
 
-    await session.writeHeading(180);
+    await session.write(FEATURE_HEADING_CONTROL, GENERIC_DATAREFS.headingBug, 180);
 
     expect(snapshot().state).toBe('pairing');
     expect(snapshot().diagnostics).toMatchObject({
@@ -1078,11 +1142,14 @@ describe('SimulatorSession when the token dies mid-session', () => {
     const { session, snapshot, inner } = await connectedToConnector(client);
     await session.connect('192.168.1.100', 8080);
 
-    await session.activateHeadingUp();
+    await session.activate(FEATURE_HEADING_CONTROL, GENERIC_COMMANDS.headingUp);
 
     expect(snapshot().state).toBe('pairing');
     expect(snapshot().error?.code).toBe('UNAUTHORIZED');
-    expect(snapshot().lastOperation).toMatchObject({ kind: 'command', ok: false });
+    expect(snapshot().operations[GENERIC_COMMANDS.headingUp]).toMatchObject({
+      status: 'failed',
+      failure: { code: 'UNAUTHORIZED', step: 'operation' },
+    });
     await expect(inner.get('192.168.1.100', 8080)).resolves.toBeNull();
   });
 });
@@ -1312,10 +1379,10 @@ describe('health facts', () => {
     expect(client.socketOpen).toBe(false);
     expect(snapshot().state).toBe('disconnected');
 
-    await session.writeHeading(10);
-    expect(snapshot().lastOperation).toMatchObject({
-      ok: false,
-      message: expect.stringContaining('not connected'),
+    await session.write(FEATURE_HEADING_CONTROL, GENERIC_DATAREFS.headingBug, 10);
+    expect(snapshot().operations[GENERIC_DATAREFS.headingBug]).toMatchObject({
+      status: 'failed',
+      refusal: 'notConnected',
     });
   });
 
@@ -1569,12 +1636,12 @@ describe('aircraft compatibility', () => {
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
     expect(featureStatus(snapshot().compatibility, FEATURE_HEADING_CONTROL)).toBe('unavailable');
-    await session.writeHeading(180);
+    await session.write(FEATURE_HEADING_CONTROL, GENERIC_DATAREFS.headingBug, 180);
     expect(client.writes).toEqual([]);
-    expect(snapshot().lastOperation).toMatchObject({
-      ok: false,
-      message: 'Heading control is not available on this aircraft',
+    expect(snapshot().operations[GENERIC_DATAREFS.headingBug]).toMatchObject({
+      status: 'failed',
       failure: null,
+      refusal: 'unavailable',
     });
   });
 
@@ -1597,14 +1664,13 @@ describe('aircraft compatibility', () => {
     expect(snapshot().diagnostics.command).toBe('failed');
     expect(featureStatus(snapshot().compatibility, FEATURE_HEADING_CONTROL)).toBe('unavailable');
 
-    await session.activateHeadingUp();
+    await session.activate(FEATURE_HEADING_CONTROL, GENERIC_COMMANDS.headingUp);
 
     expect(client.activations).toEqual([]);
-    expect(snapshot().lastOperation).toMatchObject({
-      kind: 'command',
-      ok: false,
-      message: 'Heading control is not available on this aircraft',
+    expect(snapshot().operations[GENERIC_COMMANDS.headingUp]).toMatchObject({
+      status: 'failed',
       failure: null,
+      refusal: 'unavailable',
     });
   });
 
@@ -1647,10 +1713,10 @@ describe('aircraft compatibility', () => {
       },
     }));
 
-    await session.writeHeading(95);
+    await session.write(FEATURE_HEADING_CONTROL, GENERIC_DATAREFS.headingBug, 95);
 
     expect(clients[0]?.writes).toEqual([{ id: 3, value: 95 }]);
-    expect(snapshot().lastOperation).toMatchObject({ kind: 'write', ok: true });
+    expect(snapshot().operations[GENERIC_DATAREFS.headingBug]).toMatchObject({ status: 'ok' });
   });
 
   it('probes nothing at all when X-Plane has no flight loaded', async () => {

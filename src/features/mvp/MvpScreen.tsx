@@ -2,7 +2,11 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
 import { featureOf } from '@/application/compatibility';
-import { FEATURE_HEADING_CONTROL } from '@/domain/aircraft/profiles/generic';
+import {
+  FEATURE_HEADING_CONTROL,
+  GENERIC_COMMANDS,
+  GENERIC_DATAREFS,
+} from '@/domain/aircraft/profiles/generic';
 import type { DiscoveredConnector } from '@/domain/discovery/discovered-connector';
 import { AircraftSummary } from '@/features/aircraft/AircraftSummary';
 import { CompatibilityScreen } from '@/features/aircraft/CompatibilityScreen';
@@ -33,15 +37,8 @@ const makeStyles = (theme: Theme) => ({
 });
 
 export function MvpScreen() {
-  const {
-    snapshot,
-    connect,
-    disconnect,
-    pair,
-    writeHeading,
-    activateHeadingUp,
-    recheckCompatibility,
-  } = useSimulatorSession();
+  const { snapshot, connect, disconnect, pair, write, activate, recheckCompatibility } =
+    useSimulatorSession();
   const settings = useConnectionSettings();
   const discovery = useConnectorDiscovery(snapshot.state);
   const styles = useThemedStyles(makeStyles);
@@ -133,9 +130,11 @@ export function MvpScreen() {
         <ControlPanel
           enabled={snapshot.state === 'connected'}
           feature={featureOf(snapshot.compatibility, FEATURE_HEADING_CONTROL)}
-          lastOperation={snapshot.lastOperation}
-          onWriteHeading={(value) => void writeHeading(value)}
-          onHeadingUp={() => void activateHeadingUp()}
+          operations={snapshot.operations}
+          onWriteHeading={(value) =>
+            void write(FEATURE_HEADING_CONTROL, GENERIC_DATAREFS.headingBug, value)
+          }
+          onHeadingUp={() => void activate(FEATURE_HEADING_CONTROL, GENERIC_COMMANDS.headingUp)}
         />
       </ScrollView>
     </View>

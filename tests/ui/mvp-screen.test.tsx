@@ -8,6 +8,7 @@ import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
 import {
   FEATURE_HEADING_CONTROL,
+  GENERIC_COMMANDS,
   GENERIC_DATAREFS,
   GENERIC_PROFILE,
 } from '@/domain/aircraft/profiles/generic';
@@ -55,8 +56,8 @@ function makeServices(
     pair: jest.fn(async (code: string) => {
       void code;
     }),
-    writeHeading: jest.fn(async () => undefined),
-    activateHeadingUp: jest.fn(async () => undefined),
+    write: jest.fn(async () => undefined),
+    activate: jest.fn(async () => undefined),
     recheckCompatibility: jest.fn(async () => undefined),
   };
   const discovery = new ConnectorDiscovery({ browser, logger: silentLogger });
@@ -159,7 +160,7 @@ describe('MvpScreen', () => {
     expect(screen.getByText('Capabilities: failed')).toBeTruthy();
   });
 
-  it('writes the heading and activates the command, showing the last operation', async () => {
+  it('writes the heading and activates the command, showing each outcome', async () => {
     const { services, session, store } = makeServices({
       state: 'connected',
       compatibility: headingControlAvailable(),
@@ -167,26 +168,29 @@ describe('MvpScreen', () => {
     await renderScreen(services);
     await fireEvent.changeText(screen.getByLabelText('Heading to write'), '95');
     await fireEvent.press(screen.getByText('Write heading'));
-    await waitFor(() => expect(session.writeHeading).toHaveBeenCalledWith(95));
+    await waitFor(() =>
+      expect(session.write).toHaveBeenCalledWith(
+        FEATURE_HEADING_CONTROL,
+        GENERIC_DATAREFS.headingBug,
+        95,
+      ),
+    );
     await fireEvent.press(screen.getByText('Heading up'));
-    await waitFor(() => expect(session.activateHeadingUp).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(session.activate).toHaveBeenCalledWith(
+        FEATURE_HEADING_CONTROL,
+        GENERIC_COMMANDS.headingUp,
+      ),
+    );
     await act(async () => {
       store.setState((prev) => ({
         ...prev,
-        lastOperation: {
-          kind: 'command',
-          ok: true,
-          message: 'Activated sim/autopilot/heading_up',
-          failure: null,
-          at: 1,
+        operations: {
+          [GENERIC_COMMANDS.headingUp]: { status: 'ok', failure: null, refusal: null, at: 1 },
         },
       }));
     });
-    await waitFor(() =>
-      expect(
-        screen.getByText('Last operation: OK Activated sim/autopilot/heading_up'),
-      ).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText('Heading up: OK')).toBeTruthy());
   });
 
   it('disables the heading controls and says why when the aircraft cannot support them', async () => {
@@ -219,7 +223,7 @@ describe('MvpScreen', () => {
       ),
     ).toBeTruthy();
     await fireEvent.press(screen.getByText('Heading up'));
-    expect(session.activateHeadingUp).not.toHaveBeenCalled();
+    expect(session.activate).not.toHaveBeenCalled();
   });
 
   it('says a telemetry value is not on this aircraft rather than showing a dash', async () => {
@@ -278,23 +282,35 @@ describe('MvpScreen', () => {
     expect(screen.getByText('Aircraft compatibility')).toBeTruthy();
   });
 
+  it('refuses a heading outside 0 to 360 before anything is sent', async () => {
+    const { services, session } = makeServices({
+      state: 'connected',
+      compatibility: headingControlAvailable(),
+    });
+    await renderScreen(services);
+    await fireEvent.changeText(screen.getByLabelText('Heading to write'), '400');
+    expect(screen.getByText('Heading must be between 0 and 360')).toBeTruthy();
+    await fireEvent.press(screen.getByText('Write heading'));
+    expect(session.write).not.toHaveBeenCalled();
+  });
+
   it('renders a failed operation as a cause and an action, never the raw protocol message', async () => {
     const { services, store } = makeServices({ state: 'connected' });
     await renderScreen(services);
     await act(async () => {
       store.setState((prev) => ({
         ...prev,
-        lastOperation: {
-          kind: 'write',
-          ok: false,
-          message:
-            'Writing dataref 12 failed: X-Plane answered HTTP 403 for PATCH /api/v2/datarefs/12/value',
-          failure: { code: 'HTTP_ERROR', step: 'operation' },
-          at: 1,
+        operations: {
+          [GENERIC_DATAREFS.headingBug]: {
+            status: 'failed',
+            failure: { code: 'HTTP_ERROR', step: 'operation' },
+            refusal: null,
+            at: 1,
+          },
         },
       }));
     });
-    await waitFor(() => expect(screen.getByText('Last operation: FAILED')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Heading write: FAILED')).toBeTruthy());
     expect(screen.getByText('X-Plane refused the request.')).toBeTruthy();
     expect(screen.queryByText(/HTTP 403/)).toBeNull();
     expect(screen.queryByText(/\/api\/v2\/datarefs/)).toBeNull();

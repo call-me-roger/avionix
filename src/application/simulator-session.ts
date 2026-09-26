@@ -14,7 +14,8 @@ import {
 import type { PairingTokenStore } from '@/application/pairing-token-store';
 import {
   type FailureRef,
-  type LastOperation,
+  type OperationOutcome,
+  type OperationRefusal,
   type SessionSnapshot,
   type StepStatus,
   type TelemetrySample,
@@ -27,10 +28,10 @@ import type { BindingResults } from '@/domain/aircraft/availability';
 import { deriveAvailability } from '@/domain/aircraft/availability';
 import { identityFieldFor } from '@/domain/aircraft/identity-datarefs';
 import type { AircraftProfile } from '@/domain/aircraft/profile';
-import { commandBindingOf, profileBindings, writeBindingOf } from '@/domain/aircraft/profile';
+import { findFeature, profileBindings } from '@/domain/aircraft/profile';
 import { selectProfile } from '@/domain/aircraft/profile-selection';
 import { BUNDLED_PROFILES } from '@/domain/aircraft/profiles/catalog';
-import { FEATURE_HEADING_CONTROL, GENERIC_DATAREFS } from '@/domain/aircraft/profiles/generic';
+import { GENERIC_DATAREFS } from '@/domain/aircraft/profiles/generic';
 import { versionWarning } from '@/domain/aircraft/version-check';
 import {
   type XPlaneConnectionConfig,
@@ -43,7 +44,12 @@ import type { ConnectStep } from '@/domain/health/failure-explanation';
 import { type ApiVersion, negotiateApiVersion } from '@/domain/simulator/api-version';
 import { decodeDataRefString } from '@/domain/simulator/dataref-string';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
-import type { CommandDescriptor, DataRefDescriptor, DataRefUpdate } from '@/domain/simulator/types';
+import type {
+  CommandDescriptor,
+  DataRefDescriptor,
+  DataRefUpdate,
+  DataRefValue,
+} from '@/domain/simulator/types';
 import type { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { type Logger, silentLogger } from '@/infrastructure/logging/logger';
 import { type AuthProvider, noAuth } from '@/infrastructure/xplane/auth';
@@ -190,6 +196,12 @@ export class SimulatorSession {
   /** Serializes the token store writes so a late clear cannot undo a later pairing. */
   private tokenWrites: Promise<void> = Promise.resolve();
   private roundTrips: number[] = [];
+  /**
+   * Bumped by every `connect()`. An operation settling after a later connect belongs to a session
+   * the pilot has left, possibly on another simulator, so its outcome must not appear against the
+   * new session's control.
+   */
+  private operationsEpoch = 0;
 
   constructor(private readonly deps: SimulatorSessionDeps) {
     this.policy = deps.reconnectPolicy ?? DEFAULT_RECONNECT_POLICY;
@@ -201,6 +213,7 @@ export class SimulatorSession {
   }
 
   async connect(host: string, port: string | number): Promise<void> {
+    this.operationsEpoch += 1;
     this.teardown();
     // A fresh connect (possibly to a different host) must not let samples from whatever was
     // measured before contaminate this session's median. An automatic reconnect to the same
@@ -348,53 +361,39 @@ export class SimulatorSession {
     );
   }
 
-  async writeHeading(value: number): Promise<void> {
-    if (!Number.isFinite(value) || value < 0 || value > 360) {
-      this.recordOperation({
-        kind: 'write',
-        ok: false,
-        message: 'Heading must be between 0 and 360',
-        failure: null,
-      });
-      return;
-    }
-    const active = this.requireActive('write');
+  /**
+   * Writes one DataRef on behalf of a panel control (F-04). `name` must be a `write: true` DataRef
+   * binding of `featureId` in the active profile: a panel cannot write a name the compatibility
+   * check never vouched for. The outcome is recorded against `name` (R9); nothing here or in any
+   * panel displays the written value, which arrives from the simulator like any other (R10).
+   */
+  async write(featureId: string, name: string, value: DataRefValue): Promise<void> {
+    const epoch = this.operationsEpoch;
+    const active = this.connectedOrRefuse(epoch, name);
     if (active === null) {
       return;
     }
-    const binding = writeBindingOf(active.profile, FEATURE_HEADING_CONTROL);
-    const heading = binding === null ? undefined : active.dataRefsByName.get(binding.name);
-    if (heading === undefined || !this.featureUsable(FEATURE_HEADING_CONTROL)) {
-      // R6: a control whose binding is missing or read-only is inert, and says why in the
-      // pilot's words rather than naming a DataRef the message has no room to explain.
-      this.recordOperation({
-        kind: 'write',
-        ok: false,
-        message: 'Heading control is not available on this aircraft',
-        failure: null,
-      });
+    const binding = findFeature(active.profile, featureId)?.bindings.find(
+      (candidate) =>
+        candidate.kind === 'dataref' && candidate.name === name && candidate.write === true,
+    );
+    const descriptor = binding === undefined ? undefined : active.dataRefsByName.get(name);
+    if (descriptor === undefined || !this.featureUsable(featureId)) {
+      this.refuse(epoch, name, 'unavailable');
       return;
     }
+    this.recordOutcome(epoch, name, { status: 'pending', failure: null, refusal: null });
     try {
-      await this.timed(active.generation, () => active.client.setDataRefValue(heading.id, value));
-      this.recordOperation({
-        kind: 'write',
-        ok: true,
-        message: `Wrote heading ${value}`,
-        failure: null,
-      });
+      await this.timed(active.generation, () =>
+        active.client.setDataRefValue(descriptor.id, value),
+      );
+      this.recordOutcome(epoch, name, { status: 'ok', failure: null, refusal: null });
     } catch (error) {
-      const avionixError = toAvionixError(error, { code: 'WRITE_FAILED', message: 'Write failed' });
-      // `message` keeps the raw AvionixError text for the logger only; the UI renders the
-      // failure through FailureNotice(code, step), never this string (F-02 R9).
-      this.recordOperation({
-        kind: 'write',
-        ok: false,
-        message: avionixError.message,
-        failure: { code: avionixError.code, step: 'operation' },
-      });
-      // Writes go over authenticated HTTP, so this is a place the connector can disown us.
-      this.returnToPairingIfUnauthorized(avionixError);
+      this.recordFailure(
+        epoch,
+        name,
+        toAvionixError(error, { code: 'WRITE_FAILED', message: 'Write failed' }),
+      );
     }
   }
 
@@ -412,42 +411,33 @@ export class SimulatorSession {
     await this.runRecheck(active.generation);
   }
 
-  async activateHeadingUp(): Promise<void> {
-    const active = this.requireActive('command');
+  /** Presses (or, with `durationSec`, holds) a command binding of `featureId`. */
+  async activate(featureId: string, name: string, durationSec = 0): Promise<void> {
+    const epoch = this.operationsEpoch;
+    const active = this.connectedOrRefuse(epoch, name);
     if (active === null) {
       return;
     }
-    const binding = commandBindingOf(active.profile, FEATURE_HEADING_CONTROL);
-    const command = binding === null ? undefined : active.commandsByName.get(binding.name);
-    if (command === undefined || !this.featureUsable(FEATURE_HEADING_CONTROL)) {
-      this.recordOperation({
-        kind: 'command',
-        ok: false,
-        message: 'Heading control is not available on this aircraft',
-        failure: null,
-      });
+    const binding = findFeature(active.profile, featureId)?.bindings.find(
+      (candidate) => candidate.kind === 'command' && candidate.name === name,
+    );
+    const command = binding === undefined ? undefined : active.commandsByName.get(name);
+    if (command === undefined || !this.featureUsable(featureId)) {
+      this.refuse(epoch, name, 'unavailable');
       return;
     }
+    this.recordOutcome(epoch, name, { status: 'pending', failure: null, refusal: null });
     try {
-      await this.timed(active.generation, () => active.client.activateCommand(command.id, 0));
-      this.recordOperation({
-        kind: 'command',
-        ok: true,
-        message: `Activated ${command.name}`,
-        failure: null,
-      });
+      await this.timed(active.generation, () =>
+        active.client.activateCommand(command.id, durationSec),
+      );
+      this.recordOutcome(epoch, name, { status: 'ok', failure: null, refusal: null });
     } catch (error) {
-      const avionixError = toAvionixError(error, {
-        code: 'COMMAND_FAILED',
-        message: 'Command failed',
-      });
-      this.recordOperation({
-        kind: 'command',
-        ok: false,
-        message: avionixError.message,
-        failure: { code: avionixError.code, step: 'operation' },
-      });
-      this.returnToPairingIfUnauthorized(avionixError);
+      this.recordFailure(
+        epoch,
+        name,
+        toAvionixError(error, { code: 'COMMAND_FAILED', message: 'Command failed' }),
+      );
     }
   }
 
@@ -506,22 +496,47 @@ export class SimulatorSession {
     return status === 'available' || status === 'partial';
   }
 
-  private requireActive(kind: LastOperation['kind']): ActiveConnection | null {
+  private connectedOrRefuse(epoch: number, name: string): ActiveConnection | null {
     const active = this.active;
     if (active === null || this.store.getSnapshot().state !== 'connected') {
-      this.recordOperation({
-        kind,
-        ok: false,
-        message: 'Avionix is not connected to X-Plane',
-        failure: null,
-      });
+      this.refuse(epoch, name, 'notConnected');
       return null;
     }
     return active;
   }
 
-  private recordOperation(operation: Omit<LastOperation, 'at'>): void {
-    this.store.setState((prev) => ({ ...prev, lastOperation: { ...operation, at: this.now() } }));
+  private refuse(epoch: number, name: string, refusal: OperationRefusal): void {
+    this.recordOutcome(epoch, name, { status: 'failed', failure: null, refusal });
+  }
+
+  /**
+   * `AvionixError.message` is deliberately neither stored nor logged: it can carry URLs, and the
+   * WebSocket URL carries the connector token. The code is enough for FailureNotice and the log.
+   */
+  private recordFailure(epoch: number, name: string, error: AvionixError): void {
+    if (epoch !== this.operationsEpoch) {
+      return;
+    }
+    this.logger.warn('operation failed', { code: error.code });
+    this.recordOutcome(epoch, name, {
+      status: 'failed',
+      failure: { code: error.code, step: 'operation' },
+      refusal: null,
+    });
+    // Writes and commands go over authenticated HTTP, so this is a place the connector can
+    // disown us.
+    this.returnToPairingIfUnauthorized(error);
+  }
+
+  private recordOutcome(epoch: number, name: string, outcome: Omit<OperationOutcome, 'at'>): void {
+    if (epoch !== this.operationsEpoch) {
+      return;
+    }
+    const at = this.now();
+    this.store.setState((prev) => ({
+      ...prev,
+      operations: { ...prev.operations, [name]: { ...outcome, at } },
+    }));
   }
 
   /**

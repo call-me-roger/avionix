@@ -1,7 +1,7 @@
 import { createPairingTokenStore } from '@/application/pairing-token-store';
 import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
 import { type Scheduler, SimulatorSession } from '@/application/simulator-session';
-import { GENERIC_DATAREFS } from '@/domain/aircraft/profiles/generic';
+import { FEATURE_HEADING_CONTROL, GENERIC_DATAREFS } from '@/domain/aircraft/profiles/generic';
 import { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
@@ -170,11 +170,14 @@ describe('SimulatorSession pairing against the mock connector', () => {
     // The connector forgets this device while the session is up: the next authenticated
     // request (a heading write over HTTP, not the socket) is what finds out.
     server.setRejectAllTokens(true);
-    await session.writeHeading(180);
+    await session.write(FEATURE_HEADING_CONTROL, GENERIC_DATAREFS.headingBug, 180);
 
     expect(session.store.getSnapshot().state).toBe('pairing');
     expect(session.store.getSnapshot().error?.code).toBe('UNAUTHORIZED');
-    expect(session.store.getSnapshot().lastOperation).toMatchObject({ kind: 'write', ok: false });
+    expect(session.store.getSnapshot().operations[GENERIC_DATAREFS.headingBug]).toMatchObject({
+      status: 'failed',
+      failure: { code: 'UNAUTHORIZED', step: 'operation' },
+    });
     await expect(tokenStore.get(server.host, server.port)).resolves.toBeNull();
     await until(() => server.connectionCount === 0);
     session.disconnect();

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Button, View } from 'react-native';
 
-import type { LastOperation } from '@/application/session-snapshot';
+import type { OperationOutcome, SessionSnapshot } from '@/application/session-snapshot';
 import type { FeatureAvailability } from '@/domain/aircraft/availability';
+import { GENERIC_COMMANDS, GENERIC_DATAREFS } from '@/domain/aircraft/profiles/generic';
 import { FailureNotice } from '@/features/health/FailureNotice';
 import { BodyText, Section, SectionTitle, ThemedTextInput } from '@/theme/primitives';
 import { useTheme, useThemedStyles } from '@/theme/theme-context';
@@ -11,7 +12,7 @@ import type { Theme } from '@/theme/tokens';
 interface Props {
   enabled: boolean;
   feature: FeatureAvailability | null;
-  lastOperation: LastOperation | null;
+  operations: SessionSnapshot['operations'];
   onWriteHeading: (value: number) => void;
   onHeadingUp: () => void;
 }
@@ -30,7 +31,7 @@ export function ControlPanel(props: Props) {
   const usableStatus = props.feature?.status === 'available' || props.feature?.status === 'partial';
   const usable = props.enabled && usableStatus;
   const reason = reasonFor(props.feature, usableStatus);
-  const canWrite = usable && heading.trim() !== '' && Number.isFinite(parsed);
+  const inRange = heading.trim() !== '' && Number.isFinite(parsed) && parsed >= 0 && parsed <= 360;
   return (
     <Section>
       <SectionTitle>Test controls</SectionTitle>
@@ -41,11 +42,14 @@ export function ControlPanel(props: Props) {
         onChangeText={setHeading}
         keyboardType="numeric"
       />
+      {heading.trim() !== '' && !inRange ? (
+        <BodyText tone="danger">Heading must be between 0 and 360</BodyText>
+      ) : null}
       <View style={styles.row}>
         <Button
           title="Write heading"
           onPress={() => props.onWriteHeading(parsed)}
-          disabled={!canWrite}
+          disabled={!usable || !inRange}
           color={theme.colors.primary}
         />
         <Button
@@ -56,7 +60,8 @@ export function ControlPanel(props: Props) {
         />
       </View>
       {reason === null ? null : <BodyText muted>{reason}</BodyText>}
-      <LastOperationRow lastOperation={props.lastOperation} />
+      <OutcomeRow label="Heading write" outcome={props.operations[GENERIC_DATAREFS.headingBug]} />
+      <OutcomeRow label="Heading up" outcome={props.operations[GENERIC_COMMANDS.headingUp]} />
     </Section>
   );
 }
@@ -79,25 +84,27 @@ function reasonFor(feature: FeatureAvailability | null, usableStatus: boolean): 
     .join(', ')}`;
 }
 
-/**
- * `lastOperation.message` is safe to render only for the success copy and for the plain-language
- * validation messages this component synthesizes itself (never for an `AvionixError`-derived
- * failure, which carries `failure` instead and must go through `FailureNotice` — F-02 R9).
- */
-function LastOperationRow({ lastOperation }: { lastOperation: LastOperation | null }) {
-  if (lastOperation === null) {
-    return <BodyText>Last operation: -</BodyText>;
+/** A failure renders only through FailureNotice (F-02 R9); a refusal in fixed plain words. */
+function OutcomeRow({ label, outcome }: { label: string; outcome: OperationOutcome | undefined }) {
+  if (outcome === undefined || outcome.status === 'pending') {
+    return null;
   }
-  if (lastOperation.ok) {
-    return <BodyText>{`Last operation: OK ${lastOperation.message}`}</BodyText>;
+  if (outcome.status === 'ok') {
+    return <BodyText>{`${label}: OK`}</BodyText>;
   }
-  if (lastOperation.failure === null) {
-    return <BodyText tone="danger">{`Last operation: FAILED ${lastOperation.message}`}</BodyText>;
+  if (outcome.failure !== null) {
+    return (
+      <View>
+        <BodyText tone="danger">{`${label}: FAILED`}</BodyText>
+        <FailureNotice code={outcome.failure.code} step={outcome.failure.step} />
+      </View>
+    );
   }
   return (
-    <View>
-      <BodyText tone="danger">Last operation: FAILED</BodyText>
-      <FailureNotice code={lastOperation.failure.code} step={lastOperation.failure.step} />
-    </View>
+    <BodyText tone="danger">
+      {outcome.refusal === 'notConnected'
+        ? `${label}: not sent, Avionix is not connected to X-Plane`
+        : `${label}: not sent, not available on this aircraft`}
+    </BodyText>
   );
 }

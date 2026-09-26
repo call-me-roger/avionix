@@ -3,12 +3,16 @@ import React from 'react';
 
 import type { DiscoverySnapshot } from '@/application/connector-discovery';
 import {
-  type LastOperation,
+  type OperationOutcome,
   type SessionSnapshot,
   initialSnapshot,
 } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
-import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
+import {
+  GENERIC_COMMANDS,
+  GENERIC_DATAREFS,
+  GENERIC_PROFILE,
+} from '@/domain/aircraft/profiles/generic';
 import { createConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError, type AvionixErrorCode } from '@/domain/errors/avionix-error';
 import { AircraftSummary } from '@/features/aircraft/AircraftSummary';
@@ -75,19 +79,8 @@ function discoverySnapshotFor(code: AvionixErrorCode): DiscoverySnapshot {
   };
 }
 
-/**
- * The raw text is planted in `message` too, on purpose: `ControlPanel` must ignore it and
- * render `failure` through `FailureNotice` instead, exactly as `simulator-session.ts` never
- * does for a real `WRITE_FAILED`/`COMMAND_FAILED`.
- */
-function lastOperationFor(code: AvionixErrorCode): LastOperation {
-  return {
-    kind: 'write',
-    ok: false,
-    message: RAW,
-    failure: { code, step: 'operation' },
-    at: 10_000,
-  };
+function failedOutcome(code: AvionixErrorCode): OperationOutcome {
+  return { status: 'failed', failure: { code, step: 'operation' }, refusal: null, at: 10_000 };
 }
 
 describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
@@ -105,7 +98,10 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
         <ControlPanel
           enabled
           feature={null}
-          lastOperation={lastOperationFor(code)}
+          operations={{
+            [GENERIC_DATAREFS.headingBug]: failedOutcome(code),
+            [GENERIC_COMMANDS.headingUp]: failedOutcome(code),
+          }}
           onWriteHeading={jest.fn()}
           onHeadingUp={jest.fn()}
         />

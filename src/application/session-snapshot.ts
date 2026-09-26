@@ -82,13 +82,19 @@ export interface TelemetrySample {
   receivedAt: number;
 }
 
-export interface LastOperation {
-  kind: 'write' | 'command';
-  ok: boolean;
-  /** Success copy only. A failure is never described here — see `failure`. */
-  message: string;
-  /** Set on a failure that came from an `AvionixError`; the only route to `FailureNotice`. */
+/** Why an operation was not sent at all. Rendered from a fixed table of plain-language copy. */
+export type OperationRefusal = 'notConnected' | 'unavailable';
+
+/**
+ * The last operation a control caused, keyed in `SessionSnapshot.operations` by the binding name
+ * it targeted, so a failure is shown against that control and nowhere else (F-04 R9).
+ */
+export interface OperationOutcome {
+  status: 'pending' | 'ok' | 'failed';
+  /** An AvionixError-derived failure; rendered only through FailureNotice. */
   failure: FailureRef | null;
+  /** A refusal before anything was sent. */
+  refusal: OperationRefusal | null;
   at: number;
 }
 
@@ -100,7 +106,7 @@ export interface SessionSnapshot {
   apiVersion: ApiVersion | null;
   diagnostics: SessionDiagnostics;
   telemetry: Record<string, TelemetrySample | undefined>;
-  lastOperation: LastOperation | null;
+  operations: Readonly<Record<string, OperationOutcome | undefined>>;
   error: AvionixError | null;
   reconnectAttempt: number;
   health: SessionHealth;
@@ -137,7 +143,7 @@ export function initialSnapshot(profile: AircraftProfile, reconnectBudget = 5): 
     apiVersion: null,
     diagnostics: initialDiagnostics(snapshotDataRefNames(profile)),
     telemetry: {},
-    lastOperation: null,
+    operations: {},
     error: null,
     reconnectAttempt: 0,
     health: initialHealth(reconnectBudget),
