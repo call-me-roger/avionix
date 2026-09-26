@@ -8,7 +8,7 @@ import { ThemeProvider, useTheme } from '@/theme/theme-context';
 
 function ThemedStatusBar() {
   const theme = useTheme();
-  return <StatusBar style={theme.mode === 'dark' ? 'light' : 'dark'} />;
+  return <StatusBar style={theme.mode === 'light' ? 'dark' : 'light'} />;
 }
 
 export function AvionixApp() {
