@@ -69,6 +69,18 @@ Record results at the bottom.
 | 40 | Share the diagnostics summary with an aircraft loaded | The Aircraft block names the aircraft, the profile and every feature's status, with no URL, token or raw error | |
 | 41 | If X-Plane is older than 12.4.3, or an add-on aircraft lacks the Laminar heading-bug DataRef | Older sim: the compatibility view notes write capability is not reported and the control stays usable. Missing name: the heading buttons are disabled and name what is missing | |
 | 42 | Turn on VoiceOver (iOS) or TalkBack (Android), then swipe to the Aircraft panel | The whole row is announced as one button, ending with "Open compatibility details", and activating it opens the compatibility view | |
+| 43 | First launch on a phone | Opens on Setup; the switcher at the bottom shows Basic data, Heading and Setup | |
+| 44 | Connect, open Heading, lock the device for 2 minutes without touching it … then open it | Screen never slept while Heading was open and connected | |
+| 45 | On Heading, background the app for 1 minute, return | Screen slept normally while backgrounded; Heading is still the panel shown | |
+| 46 | Type `12` in New heading, rotate the phone to landscape | The switcher moves to the left side; `12` is still in the field | |
+| 47 | Tap Setup, force-quit, reopen; then open Heading, force-quit, reopen | Reopens on Setup, then on Heading | |
+| 48 | Stop X-Plane's sim (pause off, quit to menu) with Basic data open | One notice at the top; every value muted and marked not live; Set and Heading up disabled | |
+| 49 | In Setup → Display, choose Night in a dark room | Black background, dim warm text, nothing bright white; Connect button still readable | |
+| 50 | Set the device to dark mode, choose System (night) | Night colours; switch the device to light mode → light colours | |
+| 51 | On a tablet, both orientations, every panel | Controls are comfortably pressable; the switcher is a side rail in landscape | |
+| 52 | Hide Basic data in Setup → Panels | It leaves the switcher; Heading's switch cannot be turned off | |
+
+Rows 44 and 45 verify the keep-awake hold, the one behaviour no automated test can observe.
 
 ## Failure hints
 

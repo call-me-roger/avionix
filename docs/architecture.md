@@ -4,11 +4,11 @@
 
 | Layer | Directory | Depends on | Contains |
 |---|---|---|---|
-| Domain | `src/domain` | nothing | `AvionixError`, connection config validation, URL derivation, the connection state table, API version negotiation, simulator types, the `SimulatorClient` port, the `ServiceBrowser` port, `DiscoveredConnector`, aircraft profiles, identification and availability |
+| Domain | `src/domain` | nothing | `AvionixError`, connection config validation, URL derivation, the connection state table, API version negotiation, simulator types, the `SimulatorClient` port, the `ServiceBrowser` port, `DiscoveredConnector`, aircraft profiles, identification and availability, panel rules (device layout, panel fit, link status, control availability, keep-awake policy) |
 | Infrastructure | `src/infrastructure` | domain | zod schemas and mappers for X-Plane payloads, `HttpTransport`, `WebSocketTransport` + `RequestManager`, `XPlaneClient`, `ConnectorClient`, logging, AsyncStorage adapter, `ZeroconfServiceBrowser` and the null browser |
-| Application | `src/application` | domain, infrastructure | `SimulatorSession` (connect flow, diagnostics, telemetry, reconnect), `PairingTokenStore`, `Store`, snapshot types, settings, `ConnectorDiscovery` |
+| Application | `src/application` | domain, infrastructure | `SimulatorSession` (connect flow, diagnostics, telemetry, reconnect), `PairingTokenStore`, `Store`, snapshot types, settings, `ConnectorDiscovery`, `panel-layout`, `subscription-demand` |
 | UI | `src/app`, `src/hooks`, `src/features` | application | composition root, React context, hooks, plain React Native components |
-| Platform | `src/platform` | infrastructure | the only platform-specific code: the web connection default and the `ServiceBrowser` factory (`service-browser.ts` for native, `service-browser.web.ts` for the web) |
+| Platform | `src/platform` | infrastructure | the only platform-specific code: the web connection default, the `ServiceBrowser` factory (`service-browser.ts` for native, `service-browser.web.ts` for the web) and the keep-awake wrapper |
 
 Dependencies point downwards only. `src/domain` and `src/application` never import React or
 React Native; `tests/unit` and `tests/integration` run them in plain Node.
@@ -28,7 +28,7 @@ protocol behind that port means:
 ## Data flow
 
 ```
-TextInput → MvpScreen → useSimulatorSession().connect(host, port)
+SetupScreen (in AppShell) → useSimulatorSession().connect(host, port)
   → SimulatorSession.connect
       1. validate host/port                       (domain)
       2. GET /avionix/info                        (ConnectorClient)
@@ -40,7 +40,8 @@ TextInput → MvpScreen → useSimulatorSession().connect(host, port)
       6. state = connected
       7. GET /api/v3/datarefs/count                (readiness gate; 0 → hold, no probing)
       8. identify the aircraft, select a profile, probe every name it declares
-      9. dataref_subscribe_values                  (WebSocket; identification DataRefs included)
+      9. dataref_subscribe_values                  (WebSocket; identification, health and the
+                                                     visible panel's features — setDemand)
      10. dataref_update_values → DataRefUpdate[] → snapshot.telemetry
   → Store notifies → useSyncExternalStore re-renders the screen
 ```
@@ -50,7 +51,7 @@ Every step updates `snapshot.diagnostics`, so a failure is visible at the exact 
 ## Connector discovery
 
 ```
-MvpScreen → useConnectorDiscovery(sessionState)
+SetupScreen → useConnectorDiscovery(sessionState)
   → foreground && (disconnected | error) ? discovery.start() : discovery.stop()
   → ConnectorDiscovery.browse('avionix')            (ServiceBrowser port)
       resolved(service) → discoveredConnectorFrom   (domain: IPv4 first, else hostname; TXT pairing)
@@ -146,6 +147,47 @@ id and reporting an unidentified aircraft with nothing left to prove otherwise.
 writes to makes the feature unavailable; an absent flag is treated as writable, and the view says
 write capability was not reported.
 
+## Panels
+
+`AppShell` is the root under the providers: the link status bar pinned at the top, the active
+panel or Setup below it, and a switcher (a bottom bar in portrait, a side rail in landscape).
+Routes are one persisted value (`avionix.panels`: hidden panel ids and the last route), not a
+navigation library, and rotation only moves the switcher, so a panel and a half-typed entry
+survive it.
+
+A panel is a `PanelDescriptor` (`src/domain/panels/panel.ts`: id, title, the profile features
+it reads, and which device classes and orientations it supports) paired with a component in
+`src/features/panels/registry.ts`. A tablet is a window whose shortest side is at least 600 dp.
+A panel is never shown on a combination it did not declare: it is left out, or it asks for a
+rotation.
+
+Every panel is built from four primitives that carry the framework's rules:
+
+- `PanelFrame` computes `panelLinkStatus` once and shows its single notice when values are not
+  live; paused counts as live, because pilots set up the aircraft while paused.
+- `Readout` shows a value from `telemetry` only, muted and marked "not live" when it is not
+  current, and says so when the aircraft lacks the DataRef.
+- `ControlButton` is disabled when the link is not live, when its feature is not usable
+  (`controlAvailability`, with the reason under it) or while its own operation is pending, is at
+  least 48 dp in both directions, supports a two-press confirmation, and shows only its own
+  outcome from `snapshot.operations`.
+- `ValueEntry` validates a number in the pilot's words before `ControlButton` sends it.
+
+Controls act through `SimulatorSession.write(featureId, name, value)` and
+`activate(featureId, name)`, which refuse any name that is not a binding of that feature in the
+active profile. Outcomes are keyed by binding name, reset by `connect()`, and never carry error
+text: a failure is a `{ code, step }` pair rendered by `FailureNotice`.
+
+The shell calls `setDemand` with the visible panel's features. The session keeps identification,
+connection health and those features' DataRefs subscribed, reconciling the socket as a delta
+(added before removed, one change at a time). A value it stops carrying is pruned, and comes back
+in the first update after it is subscribed again. Last known values survive a dropped link, so a
+panel still shows them, marked not live.
+
+While a panel is on screen and the link is connected or reconnecting, the screen is held awake
+through `expo-keep-awake` (a wake lock on the web, best effort). Night is a third palette: black
+background, nothing brighter than a relative luminance of 0.30.
+
 ## Error model
 
 Everything that crosses into the application layer is an `AvionixError` with a stable `code`
@@ -173,16 +215,17 @@ port as the connection settings. Device roles are still not implemented.
 ## Theming
 
 `src/theme` owns appearance. A `Theme` (`tokens.ts`) holds `mode`, `colors`, `spacing`, `radius`
-and `typography`; `lightTheme` and `darkTheme` share one shape, so adding a palette later means
-adding one more `Theme` object. `themeForMode` dispatches through a `Record<ThemeMode, Theme>`, so
-an unhandled mode is a compile error, and the preference literals live in one `as const` tuple that
-feeds both the type and the zod schema. `ThemeProvider` (`theme-context.tsx`) resolves the effective
-mode from the persisted preference (`system`, `light`, `dark`; key `avionix.theme`, validated with
-zod, default `system`) and the OS colour scheme, and exposes `useTheme()`, `useThemePreference()`
-and `useThemedStyles(factory)`. Components never hold colour literals; they use the primitives in
+and `typography`; `lightTheme`, `darkTheme` and `nightTheme` share one shape, so adding a palette
+later means adding one more `Theme` object. `themeForMode` dispatches through a
+`Record<ThemeMode, Theme>`, so an unhandled mode is a compile error, and the preference literals
+live in one `as const` tuple that feeds both the type and the zod schema. `ThemeProvider`
+(`theme-context.tsx`) resolves the effective mode from the persisted preference (`system`,
+`auto-night`, `light`, `dark`, `night`; key `avionix.theme`, validated with zod, default `system`)
+and the OS colour scheme, and exposes `useTheme()`, `useThemePreference()` and
+`useThemedStyles(factory)`. Components never hold colour literals; they use the primitives in
 `primitives.tsx` (`Section`, `SectionTitle`, `BodyText`, `ThemedTextInput`) or build styles from
-the theme. The toggle (`ThemeToggle.tsx`) sits under the Avionix heading. The theme preference is
-the second persisted setting after host and port; nothing else is stored.
+the theme. The toggle (`ThemeToggle.tsx`) sits in Setup's Display section. Host and port, the
+theme preference and the panel layout are the persisted settings.
 
 ## Web and the bridge
 

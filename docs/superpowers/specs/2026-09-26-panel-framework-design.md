@@ -282,8 +282,8 @@ presents an old number as fresh; X-Plane sends every subscribed value in the fir
 subscribe, so the value returns within one update cycle (R12). While disconnected, `setDemand`
 only records the demand, and the next connect subscribes from it.
 
-The F-03 re-check's `subscribedIds` bookkeeping moves into this routine; the re-check installs the
-new bindings and then reconciles.
+The F-03 re-check's `subscribedIds` bookkeeping moves into this routine; the re-check reconciles
+the socket toward the new bindings and then installs them.
 
 ### Keeping the screen awake (R5)
 
