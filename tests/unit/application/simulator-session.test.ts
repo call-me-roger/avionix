@@ -26,7 +26,7 @@ import type {
   SimulatorCapabilities,
 } from '@/domain/simulator/types';
 import { ConnectorClient } from '@/infrastructure/connector/connector-client';
-import { silentLogger } from '@/infrastructure/logging/logger';
+import { type Logger, silentLogger } from '@/infrastructure/logging/logger';
 import { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
 import type {
   SocketCloseEvent,
@@ -262,6 +262,7 @@ function setup(
     createClient?: SimulatorSessionDeps['createClient'];
     holdPaths?: string[];
     now?: () => number;
+    logger?: Logger;
   } = {},
 ) {
   const clients = options.clients ?? [new FakeClient()];
@@ -338,7 +339,7 @@ function setup(
     tokenStore,
     scheduler,
     random: () => 0.5,
-    logger: silentLogger,
+    logger: options.logger ?? silentLogger,
     now: options.now ?? (() => 1234),
   });
   return {
@@ -400,6 +401,25 @@ describe('SimulatorSession connect flow', () => {
     const { session, snapshot } = setup();
     await session.connect('192.168.1.100', '99999');
     expect(snapshot().error?.code).toBe('INVALID_PORT');
+  });
+
+  it('logs a session failure by its error code, never its message', async () => {
+    const entries: Array<{ message: string; data?: Record<string, unknown> }> = [];
+    const record = (message: string, data?: Record<string, unknown>) => {
+      entries.push(data === undefined ? { message } : { message, data });
+    };
+    const logger: Logger = { debug: record, info: record, warn: record, error: record };
+    const { session } = setup({
+      capsError: new AvionixError({
+        code: 'NETWORK_ERROR',
+        message: 'http://192.168.1.100:8086/?token=secret-token down',
+      }),
+      logger,
+    });
+    await session.connect('192.168.1.100', 8086);
+    const failure = entries.find((entry) => entry.message === 'session failure');
+    expect(failure?.data).toEqual({ code: 'NETWORK_ERROR', mode: 'initial' });
+    expect(JSON.stringify(entries)).not.toContain('secret-token');
   });
 
   it('marks http failed when capabilities cannot be fetched', async () => {
@@ -2144,6 +2164,63 @@ describe('aircraft changes', () => {
     expect(snapshot().compatibility.identity.tailNumber).toBe('N888XX');
     expect(snapshot().state).toBe('connected');
   });
+
+  it('installs a pass under the subscription lock, so a demand change mid-pass ends on the new ids', async () => {
+    const client = new FakeClient();
+    const { session, snapshot } = setup({ clients: [client] });
+    session.setDemand([FEATURE_HEADING_CONTROL]);
+    await session.connect('192.168.1.100', 8086);
+
+    // A rebuilt table under new ids, and the pass's subscribe of them held open.
+    client.dataRefs = renumber(renameTail(client.dataRefs, 'N999XX'), 10);
+    let release: () => void = () => undefined;
+    client.subscribeDataRefs.mockImplementationOnce(async (subs) => {
+      await new Promise<void>((resolve) => (release = resolve));
+      for (const sub of subs) {
+        client.subscribed.push(sub.id);
+        client.live.add(sub.id);
+      }
+    });
+    const pass = session.recheckCompatibility();
+    await flush();
+
+    // The pilot switches panels while the pass is on the wire. The demand's sync queues behind
+    // the pass and must reconcile against the new aircraft's bindings, not the old ones.
+    session.setDemand([FEATURE_FLIGHT_TELEMETRY]);
+    release();
+    await pass;
+    await flush();
+
+    expect(snapshot().compatibility.identity.tailNumber).toBe('N999XX');
+    expect(ascending([...client.live])).toEqual([11, 12, 14, 15, 16, 17]);
+    // Only the new heading bug (13), which the new demand does not read, may have been dropped:
+    // none of the ids the latest demand wants on the new aircraft ever left the socket.
+    expect(client.unsubscribed.filter((id) => id > 10)).toEqual([13]);
+  });
+
+  it('logs a failed pass by its error code only', async () => {
+    const entries: Array<{ message: string; data?: Record<string, unknown> }> = [];
+    const record = (message: string, data?: Record<string, unknown>) => {
+      entries.push(data === undefined ? { message } : { message, data });
+    };
+    const logger: Logger = { debug: record, info: record, warn: record, error: record };
+    const client = new FakeClient();
+    const { session } = setup({ clients: [client], logger });
+    await session.connect('192.168.1.100', 8086);
+    client.findDataRef.mockRejectedValueOnce(
+      new AvionixError({
+        code: 'NETWORK_ERROR',
+        message: 'ws://192.168.1.100:8086/api/v3?token=secret-token failed',
+      }),
+    );
+    await session.recheckCompatibility();
+
+    expect(entries).toContainEqual({
+      message: 'compatibility re-check failed',
+      data: { code: 'NETWORK_ERROR' },
+    });
+    expect(JSON.stringify(entries)).not.toContain('secret-token');
+  });
 });
 
 describe('identification never fails a connect', () => {
@@ -2322,6 +2399,32 @@ describe('SimulatorSession subscription demand', () => {
     session.setDemand([FEATURE_FLIGHT_TELEMETRY, FEATURE_HEADING_CONTROL]);
     await flush();
     expect(sortedIds(clients[0]?.live ?? [])).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it('retries a failed subscription change when the same demand is set again', async () => {
+    const { session, clients, snapshot } = setup();
+    session.setDemand([]);
+    await session.connect('192.168.1.100', 8086);
+    clients[0]?.subscribeDataRefs.mockRejectedValueOnce(
+      new AvionixError({ code: 'SUBSCRIPTION_FAILED', message: 'nope' }),
+    );
+    session.setDemand([FEATURE_FLIGHT_TELEMETRY]);
+    await flush();
+    expect(snapshot().state).toBe('connected');
+    expect(clients[0]?.live.has(2)).toBe(false);
+
+    // The same demand again: a failed sync must not be mistaken for one already done.
+    session.setDemand([FEATURE_FLIGHT_TELEMETRY]);
+    await flush();
+    expect(sortedIds(clients[0]?.live ?? [])).toEqual([1, 2, 4, 5, 6, 7]);
+
+    // Once it has succeeded, the same demand is a no-op again.
+    clients[0]?.subscribeDataRefs.mockClear();
+    clients[0]?.unsubscribeDataRefs.mockClear();
+    session.setDemand([FEATURE_FLIGHT_TELEMETRY]);
+    await flush();
+    expect(clients[0]?.subscribeDataRefs).not.toHaveBeenCalled();
+    expect(clients[0]?.unsubscribeDataRefs).not.toHaveBeenCalled();
   });
 
   it('a re-check reconciles against the current demand', async () => {

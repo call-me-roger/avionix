@@ -7,6 +7,7 @@ import {
   type IdentityField,
 } from '@/domain/aircraft/identity-datarefs';
 import type { BindingSpec } from '@/domain/aircraft/profile';
+import { toAvionixError } from '@/domain/errors/avionix-error';
 import { decodeDataRefString } from '@/domain/simulator/dataref-string';
 import type { SimulatorClient } from '@/domain/simulator/simulator-client';
 import type { CommandDescriptor, DataRefDescriptor, DataRefValue } from '@/domain/simulator/types';
@@ -51,9 +52,10 @@ async function readText(
   try {
     value = await client.getDataRefValue(dataRef.id);
   } catch (error) {
+    // The code only: a message can carry a URL.
     logger.debug('dataref resolved but its value could not be read', {
       name,
-      message: String(error),
+      code: toAvionixError(error, { code: 'UNKNOWN', message: '' }).code,
     });
     return { text: null, dataRef, result };
   }

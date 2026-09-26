@@ -178,6 +178,11 @@ interface ActiveConnection {
   unsubscribe: () => void;
 }
 
+/** What a log line may say about a failure: its code, never its message (which can carry a URL). */
+function errorCode(error: unknown): string {
+  return toAvionixError(error, { code: 'UNKNOWN', message: '' }).code;
+}
+
 export class SimulatorSession {
   readonly store: Store<SessionSnapshot>;
   private readonly scheduler: Scheduler;
@@ -191,6 +196,8 @@ export class SimulatorSession {
   private profile: AircraftProfile = BUNDLED_PROFILES.generic;
   /** The visible panel's feature ids; null until a panel says (stream everything). */
   private demand: readonly string[] | null = null;
+  /** The last demand sync failed, so the same demand set again is not a no-op. */
+  private demandSyncFailed = false;
   private cancelReconnect: (() => void) | null = null;
   private cancelReadiness: (() => void) | null = null;
   /**
@@ -436,17 +443,24 @@ export class SimulatorSession {
    */
   setDemand(featureIds: readonly string[]): void {
     const next = [...new Set(featureIds)].sort();
-    if (this.demand !== null && next.join('\n') === this.demand.join('\n')) {
+    if (
+      this.demand !== null &&
+      !this.demandSyncFailed &&
+      next.join('\n') === this.demand.join('\n')
+    ) {
       return;
     }
     this.demand = next;
+    this.demandSyncFailed = false;
     const active = this.active;
     if (active === null) {
       return;
     }
     void this.withSubscriptionLock(active, () => this.syncSubscriptions(active)).catch(
       (error: unknown) => {
-        // The link is still up; the next demand change or re-check tries again.
+        // The link is still up. The same demand asked for again must retry rather than be taken
+        // for one already on the socket; a demand change or a re-check also reconciles.
+        this.demandSyncFailed = true;
         this.logger.warn('subscription update failed', {
           code: toAvionixError(error, { code: 'SUBSCRIPTION_FAILED', message: '' }).code,
         });
@@ -504,7 +518,7 @@ export class SimulatorSession {
    */
   private queueTokenWrite(write: () => Promise<void>): Promise<void> {
     const next = this.tokenWrites.then(write, write).catch((error: unknown) => {
-      this.logger.debug('token store write failed', { message: String(error) });
+      this.logger.debug('token store write failed', { code: errorCode(error) });
     });
     this.tokenWrites = next;
     return next;
@@ -649,7 +663,8 @@ export class SimulatorSession {
     if (this.returnToPairingIfUnauthorized(error)) {
       return;
     }
-    this.logger.warn('session failure', { code: error.code, message: error.message, mode });
+    // The code only: a message can carry a URL, and the WebSocket URL carries the connector token.
+    this.logger.warn('session failure', { code: error.code, mode });
     const endedAt = this.now();
     this.store.setState((prev) => ({
       ...prev,
@@ -1066,7 +1081,7 @@ export class SimulatorSession {
         recount = await client.getDataRefCount();
       } catch (error) {
         // A failed re-check must not invent a readiness hold: keep the count we already had.
-        this.logger.debug('dataref count re-check failed', { message: String(error) });
+        this.logger.debug('dataref count re-check failed', { code: errorCode(error) });
       }
       if (!this.isCurrent(generation)) {
         return abandon();
@@ -1241,7 +1256,7 @@ export class SimulatorSession {
         .catch((thrown: unknown) => {
           // transition() throws AvionixError on an illegal edge; this timer has no other
           // caller to receive it, so a bug here must not become an unhandled rejection.
-          this.logger.warn('readiness retry failed unexpectedly', { message: String(thrown) });
+          this.logger.warn('readiness retry failed unexpectedly', { code: errorCode(thrown) });
         });
     }, READINESS_RETRY_MS);
   }
@@ -1450,26 +1465,29 @@ export class SimulatorSession {
         return;
       }
       // Toward the new bindings before they are installed: a delta that fails throws into the
-      // catch below, which keeps the last good result (F-03).
-      await this.withSubscriptionLock(active, () =>
-        this.syncSubscriptions(active, {
+      // catch below, which keeps the last good result (F-03). The installation happens inside the
+      // same lock, so a demand change queued behind this sync reconciles against the new
+      // bindings; outside it, that sync could run first and drop the new aircraft's ids.
+      await this.withSubscriptionLock(active, async () => {
+        await this.syncSubscriptions(active, {
           profile: bindings.profile,
           dataRefsById: bindings.dataRefsById,
-        }),
-      );
-      if (this.active !== active || !this.isCurrent(generation)) {
-        return;
-      }
-      active.profile = bindings.profile;
-      active.dataRefsById = bindings.dataRefsById;
-      active.dataRefsByName = bindings.dataRefsByName;
-      active.commandsByName = bindings.commandsByName;
-      this.profile = bindings.profile;
-      this.applyBindings(bindings);
+        });
+        if (this.active !== active || !this.isCurrent(generation)) {
+          return;
+        }
+        active.profile = bindings.profile;
+        active.dataRefsById = bindings.dataRefsById;
+        active.dataRefsByName = bindings.dataRefsByName;
+        active.commandsByName = bindings.commandsByName;
+        this.profile = bindings.profile;
+        this.applyBindings(bindings);
+      });
     } catch (error) {
       // The link is still up: keep the last good result rather than blanking the panel because
-      // one re-check could not finish.
-      this.logger.warn('compatibility re-check failed', { message: String(error) });
+      // one re-check could not finish. The code only: a message can carry a URL, and the
+      // WebSocket URL carries the connector token.
+      this.logger.warn('compatibility re-check failed', { code: errorCode(error) });
     } finally {
       active.recheckInFlight = false;
       if (active.recheckPending) {
