@@ -59,6 +59,7 @@ function makeServices(
     write: jest.fn(async () => undefined),
     activate: jest.fn(async () => undefined),
     recheckCompatibility: jest.fn(async () => undefined),
+    setDemand: jest.fn(),
   };
   const discovery = new ConnectorDiscovery({ browser, logger: silentLogger });
   const healthMonitor = { start: jest.fn(), stop: jest.fn(), refresh: jest.fn() };

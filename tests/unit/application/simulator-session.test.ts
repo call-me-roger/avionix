@@ -70,6 +70,7 @@ class FakeClient implements SimulatorClient {
   subscribeError: AvionixError | null = null;
   missingDataRef: string | null = null;
   socketOpen = false;
+  live = new Set<number>();
 
   dataRefs: Record<string, FakeDataRef> = { ...DEFAULT_FAKE_DATAREFS };
 
@@ -124,6 +125,7 @@ class FakeClient implements SimulatorClient {
       throw this.subscribeError;
     }
     this.subscribed.push(...subs.map((s) => s.id));
+    for (const sub of subs) this.live.add(sub.id);
   });
 
   unsubscribed: number[] = [];
@@ -131,6 +133,9 @@ class FakeClient implements SimulatorClient {
   unsubscribeDataRefs = jest.fn(async (subs: Array<{ id: number }> | 'all') => {
     if (subs !== 'all') {
       this.unsubscribed.push(...subs.map((sub) => sub.id));
+      for (const sub of subs) this.live.delete(sub.id);
+    } else {
+      this.live.clear();
     }
   });
 
@@ -483,14 +488,16 @@ describe('SimulatorSession connect flow', () => {
     });
   });
 
-  it('disconnect closes the socket, clears telemetry and returns to disconnected', async () => {
+  it('disconnect closes the socket, keeps the last known values and returns to disconnected', async () => {
     const { session, clients, snapshot } = setup();
     await session.connect('192.168.1.100', 8086);
     clients[0]?.emitUpdates([{ id: 1, value: 1, receivedAt: 1 }]);
     session.disconnect();
     expect(clients[0]?.disconnectWebSocket).toHaveBeenCalled();
     expect(snapshot().state).toBe('disconnected');
-    expect(snapshot().telemetry).toEqual({});
+    expect(snapshot().telemetry).toEqual({
+      [GENERIC_DATAREFS.heartbeat]: { value: 1, receivedAt: 1 },
+    });
     expect(snapshot().reconnectAttempt).toBe(0);
   });
 
@@ -2038,13 +2045,14 @@ describe('aircraft changes', () => {
     await flush();
 
     session.disconnect();
+    const telemetryBefore = snapshot().telemetry;
     release();
     await pass;
 
     expect(snapshot().state).toBe('disconnected');
     expect(snapshot().compatibility.identity).toEqual(identityBefore);
-    // disconnect() emptied the telemetry; the dead pass must not have written over it either.
-    expect(snapshot().telemetry).toEqual({});
+    // disconnect() kept the last known values; the dead pass must not have written over them.
+    expect(snapshot().telemetry).toBe(telemetryBefore);
     expect(client.subscribed).toEqual([]);
     expect(client.unsubscribed).toEqual([]);
   });
@@ -2160,5 +2168,201 @@ describe('identification never fails a connect', () => {
     }
     expect(client.subscribed.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7]);
     expect(snapshot().diagnostics.subscription).toBe('ok');
+  });
+});
+
+describe('SimulatorSession subscription demand', () => {
+  const sortedIds = (ids: Iterable<number>) => [...ids].sort((a, b) => a - b);
+
+  it('subscribes every resolved DataRef until a demand is set', async () => {
+    const { session, clients } = setup();
+    await session.connect('192.168.1.100', 8086);
+    expect(sortedIds(clients[0]?.live ?? [])).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it('a demand set before connecting decides the first subscription', async () => {
+    const { session, clients } = setup();
+    session.setDemand([FEATURE_FLIGHT_TELEMETRY]);
+    await session.connect('192.168.1.100', 8086);
+    expect(sortedIds(clients[0]?.live ?? [])).toEqual([1, 2, 4, 5, 6, 7]);
+  });
+
+  it('an empty demand keeps identification and connection health', async () => {
+    const { session, clients } = setup();
+    await session.connect('192.168.1.100', 8086);
+    session.setDemand([]);
+    await flush();
+    expect(sortedIds(clients[0]?.live ?? [])).toEqual([1, 4, 5, 6, 7]);
+    expect(sortedIds(clients[0]?.unsubscribed ?? [])).toEqual([2, 3]);
+  });
+
+  it('a switch leaves a value both panels read untouched', async () => {
+    const { session, clients } = setup();
+    session.setDemand([FEATURE_FLIGHT_TELEMETRY, FEATURE_HEADING_CONTROL]);
+    await session.connect('192.168.1.100', 8086);
+    const client = clients[0];
+    if (client === undefined) {
+      throw new Error('no client');
+    }
+    client.subscribed.length = 0;
+    client.unsubscribed.length = 0;
+    session.setDemand([FEATURE_HEADING_CONTROL]);
+    await flush();
+    expect(client.subscribed).toEqual([]);
+    expect(client.unsubscribed).toEqual([2]);
+    expect(client.live.has(3)).toBe(true);
+  });
+
+  it('subscribes the added ids before it unsubscribes the removed ones', async () => {
+    const { session, clients } = setup();
+    session.setDemand([FEATURE_FLIGHT_TELEMETRY]);
+    await session.connect('192.168.1.100', 8086);
+    const client = clients[0];
+    if (client === undefined) {
+      throw new Error('no client');
+    }
+    client.subscribeDataRefs.mockClear();
+    client.unsubscribeDataRefs.mockClear();
+    session.setDemand([FEATURE_HEADING_CONTROL]);
+    await flush();
+    const subscribedAt = client.subscribeDataRefs.mock.invocationCallOrder[0] ?? Infinity;
+    const unsubscribedAt = client.unsubscribeDataRefs.mock.invocationCallOrder[0] ?? -Infinity;
+    expect(subscribedAt).toBeLessThan(unsubscribedAt);
+    expect(client.subscribeDataRefs).toHaveBeenCalledWith([{ id: 3 }]);
+    expect(client.unsubscribeDataRefs).toHaveBeenCalledWith([{ id: 2 }]);
+  });
+
+  it('accepts the first update for an added id even before the subscribe call returns', async () => {
+    const { session, clients, snapshot } = setup();
+    session.setDemand([]);
+    await session.connect('192.168.1.100', 8086);
+    const client = clients[0];
+    if (client === undefined) {
+      throw new Error('no client');
+    }
+    let release: () => void = () => undefined;
+    client.subscribeDataRefs.mockImplementationOnce(async (subs) => {
+      // X-Plane may push the first full update before it answers the subscribe request.
+      client.emitUpdates([{ id: 3, value: 270, receivedAt: 5 }]);
+      await new Promise<void>((resolve) => (release = resolve));
+      for (const sub of subs) {
+        client.live.add(sub.id);
+      }
+    });
+    session.setDemand([FEATURE_HEADING_CONTROL]);
+    await flush();
+    release();
+    await flush();
+    expect(snapshot().telemetry[GENERIC_DATAREFS.headingBug]).toEqual({
+      value: 270,
+      receivedAt: 5,
+    });
+  });
+
+  it('prunes a value it stops subscribing and ignores a late update for it', async () => {
+    const { session, clients, snapshot } = setup();
+    session.setDemand([FEATURE_FLIGHT_TELEMETRY, FEATURE_HEADING_CONTROL]);
+    await session.connect('192.168.1.100', 8086);
+    clients[0]?.emitUpdates([
+      { id: 2, value: 120, receivedAt: 5 },
+      { id: 3, value: 270, receivedAt: 5 },
+    ]);
+    session.setDemand([FEATURE_HEADING_CONTROL]);
+    await flush();
+    expect(snapshot().telemetry[GENERIC_DATAREFS.airspeed]).toBeUndefined();
+    expect(snapshot().telemetry[GENERIC_DATAREFS.headingBug]?.value).toBe(270);
+    clients[0]?.emitUpdates([{ id: 2, value: 121, receivedAt: 6 }]);
+    expect(snapshot().telemetry[GENERIC_DATAREFS.airspeed]).toBeUndefined();
+  });
+
+  it('a burst of demand changes ends on the last one', async () => {
+    const { session, clients } = setup();
+    session.setDemand([]);
+    await session.connect('192.168.1.100', 8086);
+    session.setDemand([FEATURE_FLIGHT_TELEMETRY]);
+    session.setDemand([FEATURE_HEADING_CONTROL, FEATURE_FLIGHT_TELEMETRY]);
+    session.setDemand([FEATURE_HEADING_CONTROL]);
+    await flush();
+    expect(sortedIds(clients[0]?.live ?? [])).toEqual([1, 3, 4, 5, 6, 7]);
+  });
+
+  it('a demand change during the initial subscribe still ends on the last demand', async () => {
+    const client = new FakeClient();
+    let release: () => void = () => undefined;
+    client.subscribeDataRefs.mockImplementationOnce(async (subs) => {
+      await new Promise<void>((resolve) => (release = resolve));
+      for (const sub of subs) {
+        client.subscribed.push(sub.id);
+        client.live.add(sub.id);
+      }
+    });
+    const { session, snapshot } = setup({ clients: [client] });
+    session.setDemand([FEATURE_FLIGHT_TELEMETRY]);
+    const connecting = session.connect('192.168.1.100', 8086);
+    await flush();
+    session.setDemand([FEATURE_HEADING_CONTROL]);
+    release();
+    await connecting;
+    await flush();
+    expect(snapshot().state).toBe('connected');
+    expect(sortedIds(client.live)).toEqual([1, 3, 4, 5, 6, 7]);
+  });
+
+  it('a failed subscription change keeps the link up and the next change repairs it', async () => {
+    const { session, clients, snapshot } = setup();
+    session.setDemand([]);
+    await session.connect('192.168.1.100', 8086);
+    clients[0]?.subscribeDataRefs.mockRejectedValueOnce(
+      new AvionixError({ code: 'SUBSCRIPTION_FAILED', message: 'nope' }),
+    );
+    session.setDemand([FEATURE_FLIGHT_TELEMETRY]);
+    await flush();
+    expect(snapshot().state).toBe('connected');
+    expect(clients[0]?.live.has(2)).toBe(false);
+    session.setDemand([FEATURE_FLIGHT_TELEMETRY, FEATURE_HEADING_CONTROL]);
+    await flush();
+    expect(sortedIds(clients[0]?.live ?? [])).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it('a re-check reconciles against the current demand', async () => {
+    const client = new FakeClient();
+    const { session } = setup({ clients: [client] });
+    session.setDemand([FEATURE_HEADING_CONTROL]);
+    await session.connect('192.168.1.100', 8086);
+    // The next aircraft re-issues the heading bug under a new id.
+    client.dataRefs = {
+      ...client.dataRefs,
+      [GENERIC_DATAREFS.headingBug]: { id: 30, valueType: 'float', isWritable: true },
+    };
+    await session.recheckCompatibility();
+    expect(client.live.has(30)).toBe(true);
+    expect(client.live.has(3)).toBe(false);
+    expect(client.live.has(2)).toBe(false);
+  });
+
+  it('keeps the last known values across a reconnect attempt', async () => {
+    const first = new FakeClient();
+    const second = new FakeClient();
+    const { session, scheduler, snapshot } = setup({ clients: [first, second] });
+    await session.connect('192.168.1.100', 8086);
+    first.emitUpdates([{ id: 2, value: 120, receivedAt: 5 }]);
+    first.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });
+    second.connectError = new AvionixError({ code: 'WEBSOCKET_ERROR', message: 'down' });
+    await scheduler.runNext();
+    expect(snapshot().state).toBe('reconnecting');
+    expect(snapshot().telemetry[GENERIC_DATAREFS.airspeed]).toEqual({
+      value: 120,
+      receivedAt: 5,
+    });
+  });
+
+  it('clears the last known values on a fresh connect', async () => {
+    const { session, clients, snapshot } = setup();
+    await session.connect('192.168.1.100', 8086);
+    clients[0]?.emitUpdates([{ id: 2, value: 120, receivedAt: 5 }]);
+    session.disconnect();
+    const connecting = session.connect('192.168.1.100', 8086);
+    expect(snapshot().telemetry).toEqual({});
+    await connecting;
   });
 });

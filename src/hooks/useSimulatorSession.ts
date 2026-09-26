@@ -31,6 +31,10 @@ export function useSimulatorSession() {
     [session],
   );
   const recheckCompatibility = useCallback(() => session.recheckCompatibility(), [session]);
+  const setDemand = useCallback(
+    (featureIds: readonly string[]) => session.setDemand(featureIds),
+    [session],
+  );
   return {
     snapshot,
     connect,
@@ -39,5 +43,6 @@ export function useSimulatorSession() {
     write,
     activate,
     recheckCompatibility,
+    setDemand,
   };
 }

@@ -7,7 +7,14 @@ import type { SimulatorSession } from '@/application/simulator-session';
 
 export type SessionApi = Pick<
   SimulatorSession,
-  'store' | 'connect' | 'disconnect' | 'pair' | 'write' | 'activate' | 'recheckCompatibility'
+  | 'store'
+  | 'connect'
+  | 'disconnect'
+  | 'pair'
+  | 'write'
+  | 'activate'
+  | 'recheckCompatibility'
+  | 'setDemand'
 >;
 
 export type DiscoveryApi = Pick<ConnectorDiscovery, 'store' | 'start' | 'stop'>;

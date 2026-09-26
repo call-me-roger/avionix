@@ -26,6 +26,7 @@ function setup() {
       write: async () => undefined,
       activate: async () => undefined,
       recheckCompatibility: async () => undefined,
+      setDemand: () => undefined,
     },
     healthMonitor: { start: jest.fn(), stop: jest.fn(), refresh: jest.fn() },
   };

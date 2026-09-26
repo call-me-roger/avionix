@@ -23,6 +23,7 @@ import {
   initialSnapshot,
 } from '@/application/session-snapshot';
 import { Store } from '@/application/store';
+import { wantedDataRefIds } from '@/application/subscription-demand';
 import { isIdentified } from '@/domain/aircraft/aircraft-identity';
 import type { BindingResults } from '@/domain/aircraft/availability';
 import { deriveAvailability } from '@/domain/aircraft/availability';
@@ -157,6 +158,15 @@ interface ActiveConnection {
   commandsByName: Map<string, CommandDescriptor>;
   subscribedIds: Set<number>;
   /**
+   * Which ids' updates are accepted, and as which name. Separate from `dataRefsById` on purpose:
+   * an id enters here before its subscribe request is sent, because X-Plane's first update after
+   * a subscribe carries the value even if it never changes again and may arrive before the reply;
+   * an id leaves before its unsubscribe, so a late update cannot resurrect a pruned value.
+   */
+  streamById: Map<number, DataRefDescriptor>;
+  /** Subscription changes on this socket run one at a time, in order. */
+  subscriptionQueue: Promise<void>;
+  /**
    * A compatibility pass running against *this* connection. The pass runs over REST, so one
    * already in flight when the socket drops completes normally, long after a reconnect may have
    * installed a new connection; holding the marker here is what stops that dead pass from
@@ -179,6 +189,8 @@ export class SimulatorSession {
   private active: ActiveConnection | null = null;
   /** The profile the session is working from; the generic one until a probe says otherwise. */
   private profile: AircraftProfile = BUNDLED_PROFILES.generic;
+  /** The visible panel's feature ids; null until a panel says (stream everything). */
+  private demand: readonly string[] | null = null;
   private cancelReconnect: (() => void) | null = null;
   private cancelReadiness: (() => void) | null = null;
   /**
@@ -259,8 +271,8 @@ export class SimulatorSession {
 
   /**
    * Keeps the last known diagnostics, connector and health facts (F-02 R11): a disconnected
-   * session should still show the user what happened and why, not blank out. Telemetry is
-   * cleared because those values are genuinely gone the moment the link drops.
+   * session should still show the user what happened and why, not blank out. Telemetry is kept
+   * as well: panels show the last known values, marked not live (F-04).
    */
   disconnect(): void {
     this.teardown();
@@ -276,7 +288,6 @@ export class SimulatorSession {
     this.store.setState((prev) => ({
       ...prev,
       state: this.settled(prev.state),
-      telemetry: {},
       reconnectAttempt: 0,
       health: {
         ...prev.health,
@@ -415,6 +426,32 @@ export class SimulatorSession {
     }
     this.cancelRecheckDebounce();
     await this.runRecheck(active.generation);
+  }
+
+  /**
+   * Which profile features the visible panel reads (F-04 R12). The socket is reconciled to carry
+   * those DataRefs plus identification and connection health; values both the old and the new
+   * demand use are neither dropped nor re-subscribed (R3). While there is no live connection the
+   * demand is only recorded, and the next connect subscribes from it.
+   */
+  setDemand(featureIds: readonly string[]): void {
+    const next = [...new Set(featureIds)].sort();
+    if (this.demand !== null && next.join('\n') === this.demand.join('\n')) {
+      return;
+    }
+    this.demand = next;
+    const active = this.active;
+    if (active === null) {
+      return;
+    }
+    void this.withSubscriptionLock(active, () => this.syncSubscriptions(active)).catch(
+      (error: unknown) => {
+        // The link is still up; the next demand change or re-check tries again.
+        this.logger.warn('subscription update failed', {
+          code: toAvionixError(error, { code: 'SUBSCRIPTION_FAILED', message: '' }).code,
+        });
+      },
+    );
   }
 
   /** Presses (or, with `durationSec`, holds) a command binding of `featureId`. */
@@ -1062,6 +1099,8 @@ export class SimulatorSession {
       dataRefsByName: bindings.dataRefsByName,
       commandsByName: bindings.commandsByName,
       subscribedIds: new Set<number>(),
+      streamById: new Map<number, DataRefDescriptor>(),
+      subscriptionQueue: Promise.resolve(),
       recheckInFlight: false,
       recheckPending: false,
       unsubscribe: () => {
@@ -1074,13 +1113,11 @@ export class SimulatorSession {
     this.applyBindings(bindings);
 
     this.setStep((d) => ({ ...d, subscription: 'pending' }));
-    const ids = [...bindings.dataRefsById.keys()];
     try {
-      await this.timed(generation, () => client.subscribeDataRefs(ids.map((id) => ({ id }))));
+      await this.withSubscriptionLock(active, () => this.syncSubscriptions(active));
       if (!this.isCurrent(generation)) {
         return 'failed';
       }
-      active.subscribedIds = new Set(ids);
       this.setStep((d) => ({ ...d, subscription: 'ok' }));
       this.store.setState((prev) => ({
         ...prev,
@@ -1235,18 +1272,87 @@ export class SimulatorSession {
     );
   }
 
+  private withSubscriptionLock(active: ActiveConnection, run: () => Promise<void>): Promise<void> {
+    const result = active.subscriptionQueue.then(run, run);
+    active.subscriptionQueue = result.catch(() => undefined);
+    return result;
+  }
+
+  /**
+   * Reconciles the socket with the wanted set for `source` (the installed bindings by default, or
+   * a re-check's new ones before they are installed) and the demand current when this runs, so a
+   * queue of changes ends on the latest demand. Added ids are subscribed before removed ids are
+   * dropped: a brief superset costs nothing, while the reverse could leave the socket without the
+   * identification DataRefs if the subscribe then failed.
+   */
+  private async syncSubscriptions(
+    active: ActiveConnection,
+    source: Pick<ActiveConnection, 'profile' | 'dataRefsById'> = active,
+  ): Promise<void> {
+    if (this.active !== active) {
+      return;
+    }
+    const target = wantedDataRefIds(source.profile, source.dataRefsById, this.demand);
+    const added = [...target].filter((id) => !active.subscribedIds.has(id));
+    const removed = [...active.subscribedIds].filter((id) => !target.has(id));
+    if (added.length > 0) {
+      for (const id of added) {
+        const descriptor = source.dataRefsById.get(id);
+        if (descriptor !== undefined) {
+          active.streamById.set(id, descriptor);
+        }
+      }
+      try {
+        await this.timed(active.generation, () =>
+          active.client.subscribeDataRefs(added.map((id) => ({ id }))),
+        );
+      } catch (error) {
+        for (const id of added) {
+          active.streamById.delete(id);
+        }
+        throw error;
+      }
+      active.subscribedIds = new Set([...active.subscribedIds, ...added]);
+    }
+    if (this.active !== active) {
+      return;
+    }
+    const stream = new Map<number, DataRefDescriptor>();
+    for (const id of target) {
+      const descriptor = source.dataRefsById.get(id);
+      if (descriptor !== undefined) {
+        stream.set(id, descriptor);
+      }
+    }
+    active.streamById = stream;
+    const names = new Set([...stream.values()].map((descriptor) => descriptor.name));
+    this.store.setState((prev) => {
+      const kept = Object.entries(prev.telemetry).filter(([name]) => names.has(name));
+      if (kept.length === Object.keys(prev.telemetry).length) {
+        return prev;
+      }
+      // A value the socket no longer carries would otherwise be shown as current when its panel
+      // returns; a dash for one update cycle is honest (spec decision 7).
+      return { ...prev, telemetry: Object.fromEntries(kept) };
+    });
+    if (removed.length > 0) {
+      await active.client.unsubscribeDataRefs(removed.map((id) => ({ id })));
+      active.subscribedIds = new Set([...active.subscribedIds].filter((id) => target.has(id)));
+    }
+  }
+
   private applyUpdates(generation: number, updates: DataRefUpdate[]): void {
     const active = this.active;
     if (active === null || !this.isCurrent(generation) || active.generation !== generation) {
       return;
     }
-    const dataRefsById = active.dataRefsById;
+    const streamById = active.streamById;
     // The Web API publishes no "aircraft changed" event. The identification DataRefs are
     // subscribed like any other, so a new aircraft announces itself here (R8).
     const known = this.store.getSnapshot().compatibility.identity;
     let identityChanged = false;
     for (const update of updates) {
-      const descriptor = dataRefsById.get(update.id);
+      const descriptor = streamById.get(update.id);
       if (descriptor === undefined) {
         continue;
       }
@@ -1264,7 +1370,7 @@ export class SimulatorSession {
       let health = prev.health;
       let changed = false;
       for (const update of updates) {
-        const descriptor = dataRefsById.get(update.id);
+        const descriptor = streamById.get(update.id);
         if (descriptor === undefined) {
           continue;
         }
@@ -1343,29 +1449,14 @@ export class SimulatorSession {
         this.logger.debug('compatibility re-check resolved no dataref, keeping the last result');
         return;
       }
-      const nextIds = new Set(bindings.dataRefsById.keys());
-      const added = [...nextIds].filter((id) => !active.subscribedIds.has(id));
-      const removed = [...active.subscribedIds].filter((id) => !nextIds.has(id));
-      // A delta, not a re-subscribe: unsubscribing everything would blank the telemetry for a
-      // frame on an aircraft change that usually keeps most of its names. Added first: a brief
-      // superset costs nothing, while dropping the old ids first would leave the socket short of
-      // them — the three identification DataRefs included, and they are the only thing that can
-      // ever announce the next aircraft — if the subscribe then failed. `subscribedIds` is
-      // updated as each call returns, so a delta that only half-happened is still recorded as it
-      // actually is on the socket.
-      if (added.length > 0) {
-        await active.client.subscribeDataRefs(added.map((id) => ({ id })));
-        active.subscribedIds = new Set([...active.subscribedIds, ...added]);
-      }
-      // A teardown landing in this gap would leave the unsubscribe below running against a closed
-      // socket, reporting a re-check failure for a connection that is simply gone.
-      if (this.active !== active) {
-        return;
-      }
-      if (removed.length > 0) {
-        await active.client.unsubscribeDataRefs(removed.map((id) => ({ id })));
-        active.subscribedIds = nextIds;
-      }
+      // Toward the new bindings before they are installed: a delta that fails throws into the
+      // catch below, which keeps the last good result (F-03).
+      await this.withSubscriptionLock(active, () =>
+        this.syncSubscriptions(active, {
+          profile: bindings.profile,
+          dataRefsById: bindings.dataRefsById,
+        }),
+      );
       if (this.active !== active || !this.isCurrent(generation)) {
         return;
       }
@@ -1443,7 +1534,6 @@ export class SimulatorSession {
           ...initialDiagnostics(snapshotDataRefNames(this.profile)),
           connector: prev.connector === null ? 'direct' : 'paired',
         },
-        telemetry: {},
       }));
       void this.runReconnectAttempt(generation, config, attempt);
     }, delayMs);
