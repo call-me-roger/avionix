@@ -593,6 +593,7 @@ describe('SimulatorSession operations', () => {
     await session.write(FEATURE_HEADING_CONTROL, HEADING, 10);
     await session.activate(FEATURE_HEADING_CONTROL, HEADING_UP);
     expect(clients[0]?.setDataRefValue).not.toHaveBeenCalled();
+    expect(clients[0]?.activateCommand).not.toHaveBeenCalled();
     expect(snapshot().operations[HEADING]).toMatchObject({
       status: 'failed',
       failure: null,
@@ -1151,6 +1152,31 @@ describe('SimulatorSession when the token dies mid-session', () => {
       failure: { code: 'UNAUTHORIZED', step: 'operation' },
     });
     await expect(inner.get('192.168.1.100', 8080)).resolves.toBeNull();
+  });
+
+  it('drops an UNAUTHORIZED write result from before the last connect instead of returning to pairing', async () => {
+    const client = new FakeClient();
+    let fail: (error: unknown) => void = () => undefined;
+    const { session, snapshot, inner } = await connectedToConnector(client);
+    await session.connect('192.168.1.100', 8080);
+    expect(snapshot().state).toBe('connected');
+
+    client.setDataRefValue.mockImplementationOnce(
+      () => new Promise<void>((_resolve, reject) => (fail = reject)),
+    );
+    const writing = session.write(FEATURE_HEADING_CONTROL, GENERIC_DATAREFS.headingBug, 95);
+    await flush();
+    // A fresh connect while the write from the old session is still in flight: the pilot has
+    // moved on (possibly to another simulator), so the stale UNAUTHORIZED below must not be
+    // allowed to knock the new, live session back to pairing.
+    await session.connect('192.168.1.100', 8080);
+    fail(unauthorized());
+    await writing;
+
+    expect(snapshot().state).toBe('connected');
+    expect(snapshot().error).toBeNull();
+    expect(snapshot().operations[GENERIC_DATAREFS.headingBug]).toBeUndefined();
+    await expect(inner.get('192.168.1.100', 8080)).resolves.toBe('tok-live');
   });
 });
 
@@ -1717,6 +1743,44 @@ describe('aircraft compatibility', () => {
 
     expect(clients[0]?.writes).toEqual([{ id: 3, value: 95 }]);
     expect(snapshot().operations[GENERIC_DATAREFS.headingBug]).toMatchObject({ status: 'ok' });
+  });
+
+  it('refuses to write a binding that resolved read-only, even while the feature is partial', async () => {
+    const { session, clients, snapshot } = setup();
+    await session.connect('192.168.1.100', 8086);
+    // No bundled profile can currently produce this combination on its own (an optional write
+    // binding resolved read-only, with the feature otherwise usable) — pinned here the same way
+    // as the 'partial' test above, since `probeBindings` records a read-only descriptor in
+    // `dataRefsByName` regardless, and only `compatibility.bindings[name].status` says the
+    // resolution was a miss (profile.ts: a read-only `write: true` binding is a miss).
+    session.store.setState((prev) => ({
+      ...prev,
+      compatibility: {
+        ...prev.compatibility,
+        features: prev.compatibility.features.map((feature) =>
+          feature.id === FEATURE_HEADING_CONTROL
+            ? { ...feature, status: 'partial' as const }
+            : feature,
+        ),
+        bindings: {
+          ...prev.compatibility.bindings,
+          [GENERIC_DATAREFS.headingBug]: {
+            name: GENERIC_DATAREFS.headingBug,
+            kind: 'dataref',
+            status: 'readOnly',
+          },
+        },
+      },
+    }));
+
+    await session.write(FEATURE_HEADING_CONTROL, GENERIC_DATAREFS.headingBug, 95);
+
+    expect(clients[0]?.writes).toEqual([]);
+    expect(snapshot().operations[GENERIC_DATAREFS.headingBug]).toMatchObject({
+      status: 'failed',
+      failure: null,
+      refusal: 'unavailable',
+    });
   });
 
   it('probes nothing at all when X-Plane has no flight loaded', async () => {

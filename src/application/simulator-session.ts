@@ -378,7 +378,13 @@ export class SimulatorSession {
         candidate.kind === 'dataref' && candidate.name === name && candidate.write === true,
     );
     const descriptor = binding === undefined ? undefined : active.dataRefsByName.get(name);
-    if (descriptor === undefined || !this.featureUsable(featureId)) {
+    // A read-only resolution is a miss for a `write: true` binding (profile.ts), but
+    // `probeBindings` still records the descriptor and an optional binding can leave the
+    // feature `partial`: without this, `featureUsable` alone would let a write reach a locked
+    // DataRef. `compatibility.bindings` is the one place that distinguishes "resolved" from
+    // "resolved and writable".
+    const resolvedWritable = this.store.getSnapshot().compatibility.bindings[name]?.status === 'ok';
+    if (descriptor === undefined || !resolvedWritable || !this.featureUsable(featureId)) {
       this.refuse(epoch, name, 'unavailable');
       return;
     }
@@ -422,7 +428,8 @@ export class SimulatorSession {
       (candidate) => candidate.kind === 'command' && candidate.name === name,
     );
     const command = binding === undefined ? undefined : active.commandsByName.get(name);
-    if (command === undefined || !this.featureUsable(featureId)) {
+    const resolvedOk = this.store.getSnapshot().compatibility.bindings[name]?.status === 'ok';
+    if (command === undefined || !resolvedOk || !this.featureUsable(featureId)) {
       this.refuse(epoch, name, 'unavailable');
       return;
     }
