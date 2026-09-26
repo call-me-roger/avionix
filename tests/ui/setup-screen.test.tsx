@@ -6,15 +6,10 @@ import { type SessionSnapshot, initialSnapshot } from '@/application/session-sna
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
-import {
-  FEATURE_HEADING_CONTROL,
-  GENERIC_COMMANDS,
-  GENERIC_DATAREFS,
-  GENERIC_PROFILE,
-} from '@/domain/aircraft/profiles/generic';
+import { GENERIC_DATAREFS, GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import { LINK_LABEL } from '@/features/health/LinkStatusBar';
-import { MvpScreen } from '@/features/mvp/MvpScreen';
+import { AppShell } from '@/features/shell/AppShell';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { ThemeProvider } from '@/theme/theme-context';
 import { saveThemePreference } from '@/theme/theme-preference';
@@ -22,24 +17,13 @@ import { darkTheme, lightTheme } from '@/theme/tokens';
 
 import { type FakeServiceBrowser, createFakeServiceBrowser } from '../support/fake-service-browser';
 
-const base = initialSnapshot(GENERIC_PROFILE, 5);
+jest.mock('@/platform/keep-awake', () => ({
+  KEEP_AWAKE_TAG: 'avionix-panel',
+  holdScreenAwake: jest.fn(async () => undefined),
+  releaseScreenAwake: jest.fn(async () => undefined),
+}));
 
-/**
- * A fresh snapshot leaves every feature 'unknown' until the first probe completes. Tests that
- * exercise the heading controls on a `connected` fixture built by hand (never actually probed)
- * need to say the aircraft supports heading control, or the gate this task adds would leave the
- * button inert for a reason unrelated to what the test is checking.
- */
-function headingControlAvailable(): SessionSnapshot['compatibility'] {
-  return {
-    ...base.compatibility,
-    features: base.compatibility.features.map((feature) =>
-      feature.id === FEATURE_HEADING_CONTROL
-        ? { ...feature, status: 'available' as const }
-        : feature,
-    ),
-  };
-}
+const base = initialSnapshot(GENERIC_PROFILE, 5);
 
 function makeServices(
   snapshot: Partial<SessionSnapshot> = {},
@@ -73,16 +57,18 @@ function makeServices(
 }
 
 async function renderScreen(services: AppServices, systemScheme: 'light' | 'dark' = 'light') {
-  return render(
+  const result = await render(
     <ServicesProvider services={services}>
       <ThemeProvider storage={services.settingsStorage} systemSchemeOverride={systemScheme}>
-        <MvpScreen />
+        <AppShell />
       </ThemeProvider>
     </ServicesProvider>,
   );
+  await screen.findByTestId('setup-screen');
+  return result;
 }
 
-describe('MvpScreen', () => {
+describe('SetupScreen', () => {
   it('shows the disconnected state with the default port and connects with the entered host', async () => {
     const { services, session } = makeServices();
     await renderScreen(services);
@@ -93,7 +79,7 @@ describe('MvpScreen', () => {
     await waitFor(() => expect(session.connect).toHaveBeenCalledWith('192.168.1.100', '8080'));
   });
 
-  it('renders connected status, versions, diagnostics and telemetry from the snapshot', async () => {
+  it('renders connected status, versions and diagnostics from the snapshot', async () => {
     const { services } = makeServices({
       state: 'connected',
       apiVersion: 'v3',
@@ -116,15 +102,9 @@ describe('MvpScreen', () => {
           [GENERIC_DATAREFS.headingBug]: 'ok',
         },
       },
-      telemetry: {
-        [GENERIC_DATAREFS.airspeed]: { value: 124.3, receivedAt: Date.now() },
-        [GENERIC_DATAREFS.headingBug]: { value: 270, receivedAt: Date.now() },
-      },
     });
     await renderScreen(services);
     await waitFor(() => expect(screen.getByText(LINK_LABEL.connected)).toBeTruthy());
-    expect(screen.getByText('124.3')).toBeTruthy();
-    expect(screen.getByText('270')).toBeTruthy();
     expect(screen.getByText('Disconnect')).toBeTruthy();
     await fireEvent.press(screen.getByTestId('link-status-bar'));
     expect(screen.getByText('X-Plane: 12.4.0')).toBeTruthy();
@@ -161,161 +141,11 @@ describe('MvpScreen', () => {
     expect(screen.getByText('Capabilities: failed')).toBeTruthy();
   });
 
-  it('writes the heading and activates the command, showing each outcome', async () => {
-    const { services, session, store } = makeServices({
-      state: 'connected',
-      compatibility: headingControlAvailable(),
-    });
-    await renderScreen(services);
-    await fireEvent.changeText(screen.getByLabelText('Heading to write'), '95');
-    await fireEvent.press(screen.getByText('Write heading'));
-    await waitFor(() =>
-      expect(session.write).toHaveBeenCalledWith(
-        FEATURE_HEADING_CONTROL,
-        GENERIC_DATAREFS.headingBug,
-        95,
-      ),
-    );
-    await fireEvent.press(screen.getByText('Heading up'));
-    await waitFor(() =>
-      expect(session.activate).toHaveBeenCalledWith(
-        FEATURE_HEADING_CONTROL,
-        GENERIC_COMMANDS.headingUp,
-      ),
-    );
-    await act(async () => {
-      store.setState((prev) => ({
-        ...prev,
-        operations: {
-          [GENERIC_COMMANDS.headingUp]: { status: 'ok', failure: null, refusal: null, at: 1 },
-        },
-      }));
-    });
-    await waitFor(() => expect(screen.getByText('Heading up: OK')).toBeTruthy());
-  });
-
-  it('disables the heading controls and says why when the aircraft cannot support them', async () => {
-    const { services, session } = makeServices({
-      state: 'connected',
-      compatibility: {
-        ...base.compatibility,
-        checkedAt: 9_000,
-        features: [
-          {
-            id: 'heading-control',
-            label: 'Heading control',
-            status: 'unavailable',
-            missing: [
-              {
-                name: GENERIC_DATAREFS.headingBug,
-                kind: 'dataref',
-                purpose: 'Heading bug, written when you set a heading',
-                status: 'missing',
-              },
-            ],
-          },
-        ],
-      },
-    });
-    await renderScreen(services);
-    expect(
-      screen.getByText(
-        'Heading control is not available on this aircraft: Heading bug, written when you set a heading',
-      ),
-    ).toBeTruthy();
-    await fireEvent.press(screen.getByText('Heading up'));
-    expect(session.activate).not.toHaveBeenCalled();
-  });
-
-  it('says a telemetry value is not on this aircraft rather than showing a dash', async () => {
-    const { services } = makeServices({
-      state: 'connected',
-      compatibility: {
-        ...base.compatibility,
-        checkedAt: 9_000,
-        bindings: {
-          [GENERIC_DATAREFS.airspeed]: {
-            name: GENERIC_DATAREFS.airspeed,
-            kind: 'dataref',
-            status: 'missing',
-          },
-        },
-      },
-    });
-    await renderScreen(services);
-    expect(screen.getByText('not available on this aircraft')).toBeTruthy();
-  });
-
-  it('still shows a telemetry value when its binding is read-only', async () => {
-    const { services } = makeServices({
-      state: 'connected',
-      compatibility: {
-        ...base.compatibility,
-        checkedAt: 9_000,
-        bindings: {
-          [GENERIC_DATAREFS.airspeed]: {
-            name: GENERIC_DATAREFS.airspeed,
-            kind: 'dataref',
-            status: 'readOnly',
-          },
-        },
-      },
-      telemetry: {
-        [GENERIC_DATAREFS.airspeed]: { value: 124.3, receivedAt: Date.now() },
-      },
-    });
-    await renderScreen(services);
-    expect(screen.getByText('124.3')).toBeTruthy();
-    expect(screen.queryByText('not available on this aircraft')).toBeNull();
-  });
-
-  it('says heading control has not been checked yet, never a claim it cannot back up', async () => {
-    const { services } = makeServices({ state: 'disconnected' });
-    await renderScreen(services);
-    expect(screen.getByText('Heading control has not been checked yet.')).toBeTruthy();
-    expect(screen.queryByText(/:\s*$/)).toBeNull();
-  });
-
   it('opens the compatibility view from the aircraft summary', async () => {
     const { services } = makeServices({ state: 'connected' });
     await renderScreen(services);
     await fireEvent.press(screen.getByText('Compatibility details'));
     expect(screen.getByText('Aircraft compatibility')).toBeTruthy();
-  });
-
-  it('refuses a heading outside 0 to 360 before anything is sent', async () => {
-    const { services, session } = makeServices({
-      state: 'connected',
-      compatibility: headingControlAvailable(),
-    });
-    await renderScreen(services);
-    await fireEvent.changeText(screen.getByLabelText('Heading to write'), '400');
-    expect(screen.getByText('Heading must be between 0 and 360')).toBeTruthy();
-    await fireEvent.press(screen.getByText('Write heading'));
-    expect(session.write).not.toHaveBeenCalled();
-  });
-
-  it('renders a failed operation as a cause and an action, never the raw protocol message', async () => {
-    const { services, store } = makeServices({ state: 'connected' });
-    await renderScreen(services);
-    await act(async () => {
-      store.setState((prev) => ({
-        ...prev,
-        operations: {
-          [GENERIC_DATAREFS.headingBug]: {
-            status: 'failed',
-            failure: { code: 'HTTP_ERROR', step: 'operation' },
-            refusal: null,
-            at: 1,
-          },
-        },
-      }));
-    });
-    await waitFor(() => expect(screen.getByText('Heading write: FAILED')).toBeTruthy());
-    expect(screen.getByText('X-Plane refused the request.')).toBeTruthy();
-    expect(screen.queryByText(/HTTP 403/)).toBeNull();
-    expect(screen.queryByText(/\/api\/v2\/datarefs/)).toBeNull();
-    expect(screen.queryByText(/PATCH/)).toBeNull();
   });
 
   it('calls disconnect', async () => {
@@ -330,13 +160,13 @@ describe('MvpScreen', () => {
     await saveThemePreference(services.settingsStorage, 'light');
     const light = await renderScreen(services, 'light');
     await waitFor(() => expect(screen.getByLabelText('Theme Light')).toBeChecked());
-    expect(screen.getByTestId('mvp-screen')).toHaveStyle({
+    expect(screen.getByTestId('setup-screen')).toHaveStyle({
       backgroundColor: lightTheme.colors.background,
     });
     await light.unmount();
     await renderScreen(makeServices().services, 'dark');
     await waitFor(() =>
-      expect(screen.getByTestId('mvp-screen')).toHaveStyle({
+      expect(screen.getByTestId('setup-screen')).toHaveStyle({
         backgroundColor: darkTheme.colors.background,
       }),
     );
@@ -347,13 +177,13 @@ describe('MvpScreen', () => {
     await saveThemePreference(services.settingsStorage, 'dark');
     await renderScreen(services, 'light');
     await waitFor(() =>
-      expect(screen.getByTestId('mvp-screen')).toHaveStyle({
+      expect(screen.getByTestId('setup-screen')).toHaveStyle({
         backgroundColor: darkTheme.colors.background,
       }),
     );
     await fireEvent.press(screen.getByLabelText('Theme Light'));
     await waitFor(() =>
-      expect(screen.getByTestId('mvp-screen')).toHaveStyle({
+      expect(screen.getByTestId('setup-screen')).toHaveStyle({
         backgroundColor: lightTheme.colors.background,
       }),
     );
@@ -443,7 +273,7 @@ describe('MvpScreen', () => {
   });
 });
 
-describe('MvpScreen pairing mode', () => {
+describe('SetupScreen pairing mode', () => {
   const connector = {
     name: 'Sim PC',
     version: '0.1.0',

@@ -3,7 +3,7 @@ import React, { useEffect, useMemo } from 'react';
 
 import { createAppServices } from '@/app/composition-root';
 import { ServicesProvider } from '@/app/services-context';
-import { MvpScreen } from '@/features/mvp/MvpScreen';
+import { AppShell } from '@/features/shell/AppShell';
 import { ThemeProvider, useTheme } from '@/theme/theme-context';
 
 function ThemedStatusBar() {
@@ -25,7 +25,7 @@ export function AvionixApp() {
     <ServicesProvider services={services}>
       <ThemeProvider storage={services.settingsStorage}>
         <ThemedStatusBar />
-        <MvpScreen />
+        <AppShell />
       </ThemeProvider>
     </ServicesProvider>
   );

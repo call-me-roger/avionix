@@ -8,11 +8,7 @@ import {
   initialSnapshot,
 } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
-import {
-  GENERIC_COMMANDS,
-  GENERIC_DATAREFS,
-  GENERIC_PROFILE,
-} from '@/domain/aircraft/profiles/generic';
+import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import { createConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError, type AvionixErrorCode } from '@/domain/errors/avionix-error';
 import { AircraftSummary } from '@/features/aircraft/AircraftSummary';
@@ -20,7 +16,6 @@ import { CompatibilityScreen } from '@/features/aircraft/CompatibilityScreen';
 import { DiscoveredConnectors } from '@/features/connection/DiscoveredConnectors';
 import { DiagnosticsScreen } from '@/features/health/DiagnosticsScreen';
 import { LinkStatusBar } from '@/features/health/LinkStatusBar';
-import { ControlPanel } from '@/features/mvp/ControlPanel';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { PANELS } from '@/features/panels/registry';
 import { ThemeProvider } from '@/theme/theme-context';
@@ -108,16 +103,6 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
           onDisconnect={jest.fn()}
         />
         <DiscoveredConnectors snapshot={discoverySnapshotFor(code)} enabled onSelect={jest.fn()} />
-        <ControlPanel
-          enabled
-          feature={null}
-          operations={{
-            [GENERIC_DATAREFS.headingBug]: failedOutcome(code),
-            [GENERIC_COMMANDS.headingUp]: failedOutcome(code),
-          }}
-          onWriteHeading={jest.fn()}
-          onHeadingUp={jest.fn()}
-        />
         <AircraftSummary
           snapshot={snapshotFor(code)}
           now={10_000}

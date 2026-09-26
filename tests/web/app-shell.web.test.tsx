@@ -8,7 +8,7 @@ import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
 import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import { LINK_LABEL } from '@/features/health/LinkStatusBar';
-import { MvpScreen } from '@/features/mvp/MvpScreen';
+import { AppShell } from '@/features/shell/AppShell';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { ThemeProvider } from '@/theme/theme-context';
 
@@ -19,6 +19,12 @@ declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean | undefined;
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+jest.mock('@/platform/keep-awake', () => ({
+  KEEP_AWAKE_TAG: 'avionix-panel',
+  holdScreenAwake: jest.fn(async () => undefined),
+  releaseScreenAwake: jest.fn(async () => undefined),
+}));
 
 function services(): AppServices {
   return {
@@ -41,7 +47,7 @@ function services(): AppServices {
   };
 }
 
-describe('MvpScreen on react-native-web', () => {
+describe('AppShell on react-native-web', () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -64,7 +70,7 @@ describe('MvpScreen on react-native-web', () => {
       root.render(
         <ServicesProvider services={s}>
           <ThemeProvider storage={s.settingsStorage} systemSchemeOverride="light">
-            <MvpScreen />
+            <AppShell />
           </ThemeProvider>
         </ServicesProvider>,
       );
@@ -77,7 +83,7 @@ describe('MvpScreen on react-native-web', () => {
     expect(text).toContain('Avionix');
     expect(text).toContain(LINK_LABEL.disconnected);
     expect(container.querySelector('[aria-label="Theme Dark"]')).not.toBeNull();
-    expect(container.querySelector('[data-testid="mvp-screen"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="setup-screen"]')).not.toBeNull();
   });
 
   it('renders the pairing mode as DOM', async () => {
@@ -96,7 +102,7 @@ describe('MvpScreen on react-native-web', () => {
       root.render(
         <ServicesProvider services={s}>
           <ThemeProvider storage={s.settingsStorage} systemSchemeOverride="light">
-            <MvpScreen />
+            <AppShell />
           </ThemeProvider>
         </ServicesProvider>,
       );
@@ -116,7 +122,7 @@ describe('MvpScreen on react-native-web', () => {
       root.render(
         <ServicesProvider services={s}>
           <ThemeProvider storage={s.settingsStorage} systemSchemeOverride="light">
-            <MvpScreen />
+            <AppShell />
           </ThemeProvider>
         </ServicesProvider>,
       );
@@ -125,5 +131,28 @@ describe('MvpScreen on react-native-web', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(container.textContent ?? '').not.toContain('Connectors on this network');
+  });
+
+  it('switches to a panel as DOM', async () => {
+    const s = services();
+    await act(async () => {
+      root.render(
+        <ServicesProvider services={s}>
+          <ThemeProvider storage={s.settingsStorage} systemSchemeOverride="light">
+            <AppShell />
+          </ThemeProvider>
+        </ServicesProvider>,
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const tab = container.querySelector('[data-testid="switch-heading"]');
+    expect(tab).not.toBeNull();
+    await act(async () => {
+      (tab as HTMLElement).click();
+    });
+    expect(container.querySelector('[data-testid="panel-heading"]')).not.toBeNull();
+    expect(container.textContent ?? '').toContain('Heading up');
   });
 });
