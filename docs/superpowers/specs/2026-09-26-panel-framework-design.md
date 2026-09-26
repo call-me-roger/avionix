@@ -141,7 +141,8 @@ returns `{ valuesCurrent, controlsEnabled, notice }`:
 | connected, running | yes | enabled | none |
 | connected, paused | yes | enabled | none (the status bar already says paused) |
 | connected, noFlight | no | disabled | "No flight loaded in X-Plane." |
-| connected, stalled / pausedOrStalled / unknown | no | disabled | "X-Plane stopped sending data. Last update {age}." |
+| connected, stalled / pausedOrStalled | no | disabled | "X-Plane stopped sending data. Last update {age}." |
+| connected, unknown | no | disabled | "Waiting for the first values from X-Plane." |
 | reconnecting | no | disabled | "Reconnecting. Showing values from {age}." |
 | disconnected / error / connecting / pairing | no | disabled | "Not connected. Showing the last known values." |
 
@@ -192,10 +193,12 @@ of the two guidelines, and a tablet does not shrink controls because it has room
 A control that writes or commands is at least as large as a readout row, which `ControlButton`
 guarantees because readout rows are shorter than 48.
 
-`ControlButton`, `ValueEntry`'s field, the switcher items and the Setup switches all apply these
-values. A guard test renders every registered panel and the shell on a phone and a tablet in both
-orientations and fails if any node with `accessibilityRole` `button`, `switch` or `radio` has a
-flattened minimum height or width under 48. A panel that cannot meet the rules on a phone declares
+`ControlButton`, `ValueEntry`'s field, the switcher items, the link status bar and the Setup
+switches all apply these values. A guard test renders the shell with every registered panel as the
+route, on a phone and a tablet in both orientations, and fails if any node with `accessibilityRole`
+`button`, `switch`, `radio` or `tab` has a flattened minimum height or width under 48. Setup's
+existing form buttons (Connect, Pair, Retry, Share) are platform `Button`s and outside the guard:
+they are not panel controls, and restyling them is not F-04's work. A panel that cannot meet the rules on a phone declares
 itself tablet-only instead of shrinking.
 
 The Setup chips in `ThemeToggle` rise to the same size.
@@ -203,7 +206,7 @@ The Setup chips in `ThemeToggle` rise to the same size.
 ### Confirmation for disruptive controls
 
 `ControlButton` with `confirm` needs two presses within 3 s: the first arms it, relabelled
-"Tap again to {label}", and the second acts. It disarms after 3 s or when it becomes disabled.
+"Tap again: {label}", and the second acts. It disarms after 3 s or when it becomes disabled.
 Two presses rather than a modal because a modal steals focus from a pilot flying with the other
 hand and has no sensible web equivalent. No F-04 control is disruptive; the rule exists now so the
 autopilot disconnect (F-20) and emergency squawks (F-22) do not each invent one.
@@ -247,7 +250,9 @@ its own; the readout changing is the confirmation.
 ### Subscriptions follow the visible panel (R3, R12)
 
 The session gains `setDemand(featureIds: readonly string[])`. The shell calls it with the active
-panel's features whenever the route or the fitting panel changes, and with `[]` on Setup.
+panel's features whenever the route or the fitting panel changes, and with `[]` on Setup. Until
+the first call the demand is `null`, meaning every resolved DataRef, which is today's behaviour and
+what a consumer without panels (the tests, a headless client) still gets.
 
 The DataRef names the session keeps subscribed are:
 
@@ -258,10 +263,17 @@ The DataRef names the session keeps subscribed are:
 
 The subscribed ids are the resolved ids of those names. On every change of demand or of bindings
 (connect, reconnect, aircraft re-check), the session reconciles the socket against that set with
-the delta routine F-03's re-check already uses: subscribe the added ids first, then unsubscribe the
-removed ones, recording each step as it lands. One reconciliation runs at a time per connection; a
-demand change during one marks it pending and it runs again with the latest demand when it
-finishes, so a burst of switches ends in exactly the last panel's set.
+the delta order F-03's re-check already uses: subscribe the added ids first, then unsubscribe the
+removed ones, recording each step as it lands. Reconciliations run one at a time per connection,
+queued; each reads the demand current when it starts, so a burst of switches ends in exactly the
+last panel's set and the earlier queued runs find nothing left to change.
+
+Which updates the session accepts is a separate map, `streamById`, not the installed bindings:
+an added id enters it *before* its subscribe request is sent, because X-Plane's first update after
+a subscribe carries the value even if it never changes again, and the order of that update and the
+subscribe reply is not documented. Dropping it would leave a static value blank until it moved. A
+removed id leaves the map before its unsubscribe is sent, so a late update cannot resurrect a
+pruned value. A failed subscribe takes its ids back out.
 
 Values a switch keeps are not touched, so they neither blank nor re-subscribe (R3). The switch
 itself renders synchronously from the store and waits for nothing on the network. A value
@@ -303,8 +315,8 @@ The palette's contract, enforced by a unit test rather than by taste:
 Warm, dim text on black is what cockpit night lighting and EFB night modes converge on; it keeps
 a darkened room dark and does not ruin the pilot's view of a dim monitor.
 
-The preference gains two values: `system | auto-night | light | dark | night`, labelled Device,
-Device (night), Light, Dark, Night. `system` follows the device between light and dark as today;
+The preference gains two values: `system | auto-night | light | dark | night`, labelled System,
+System (night), Light, Dark, Night (System keeps its existing label and accessibility name). `system` follows the device between light and dark as today;
 `auto-night` follows the device between light and **night**, which is the "can follow the device"
 half of R6. Stored under the existing `avionix.theme` key; the schema accepts every old value, so
 no migration. `ThemedStatusBar` uses light content for dark and night; `ThemedTextInput` maps
