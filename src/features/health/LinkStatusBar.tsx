@@ -26,8 +26,9 @@ const makeStyles = (theme: Theme) => ({
     borderRadius: theme.radius.md,
     padding: theme.spacing.md,
     marginBottom: theme.spacing.lg,
-    // Comfortably above the 44 pt minimum touch target; every panel in F-04 inherits this rule.
-    minHeight: 48,
+    // F-04 R4: every pressable target is at least 48 dp in both directions.
+    minHeight: theme.touch.minTarget,
+    minWidth: theme.touch.minTarget,
     gap: theme.spacing.xs,
   },
   row: {
@@ -38,10 +39,7 @@ const makeStyles = (theme: Theme) => ({
   },
 });
 
-/**
- * Always on screen, behind whatever panel is in front. This is the component F-04 hoists into
- * the panel chrome; until then MvpScreen mounts it at the top.
- */
+/** Always on screen, pinned above whatever panel or Setup is in front (AppShell). */
 export function LinkStatusBar({
   snapshot,
   now,

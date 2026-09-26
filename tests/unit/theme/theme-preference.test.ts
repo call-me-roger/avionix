@@ -10,7 +10,7 @@ import {
 
 describe('THEME_PREFERENCES', () => {
   it('lists the supported preferences in a stable order', () => {
-    expect(THEME_PREFERENCES).toEqual(['system', 'light', 'dark']);
+    expect(THEME_PREFERENCES).toEqual(['system', 'auto-night', 'light', 'dark', 'night']);
   });
 });
 
@@ -28,6 +28,16 @@ describe('resolveThemeMode', () => {
   it('uses the explicit preference regardless of the OS scheme', () => {
     expect(resolveThemeMode('light', 'dark')).toBe('light');
     expect(resolveThemeMode('dark', 'light')).toBe('dark');
+  });
+
+  it('follows the OS scheme between light and night for auto-night', () => {
+    expect(resolveThemeMode('auto-night', 'dark')).toBe('night');
+    expect(resolveThemeMode('auto-night', 'light')).toBe('light');
+    expect(resolveThemeMode('auto-night', null)).toBe('light');
+  });
+
+  it('uses night regardless of the OS scheme when night is chosen', () => {
+    expect(resolveThemeMode('night', 'light')).toBe('night');
   });
 });
 
@@ -64,5 +74,17 @@ describe('theme preference persistence', () => {
     };
     await expect(loadThemePreference(failing)).resolves.toBe('system');
     await expect(saveThemePreference(failing, 'light')).resolves.toBeUndefined();
+  });
+
+  it.each(['auto-night', 'night'] as const)('round-trips %s', async (preference) => {
+    const storage = createMemorySettingsStorage();
+    await saveThemePreference(storage, preference);
+    await expect(loadThemePreference(storage)).resolves.toBe(preference);
+  });
+
+  it('still reads a preference stored before night existed', async () => {
+    const storage = createMemorySettingsStorage();
+    await storage.setItem(THEME_STORAGE_KEY, JSON.stringify({ preference: 'dark' }));
+    await expect(loadThemePreference(storage)).resolves.toBe('dark');
   });
 });

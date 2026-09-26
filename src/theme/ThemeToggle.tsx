@@ -5,16 +5,29 @@ import { useThemePreference, useThemedStyles } from '@/theme/theme-context';
 import { THEME_PREFERENCES, type ThemePreference } from '@/theme/theme-preference';
 import type { Theme } from '@/theme/tokens';
 
-const LABELS: Record<ThemePreference, string> = { system: 'System', light: 'Light', dark: 'Dark' };
+const LABELS: Record<ThemePreference, string> = {
+  system: 'System',
+  'auto-night': 'System (night)',
+  light: 'Light',
+  dark: 'Dark',
+  night: 'Night',
+};
 
 const makeStyles = (theme: Theme) => ({
-  row: { flexDirection: 'row' as const, gap: theme.spacing.sm, marginBottom: theme.spacing.lg },
+  row: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: theme.touch.spacing,
+    marginBottom: theme.spacing.lg,
+  },
   chip: {
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.radius.md,
-    paddingVertical: theme.spacing.xs,
     paddingHorizontal: theme.spacing.md,
+    minHeight: theme.touch.minTarget,
+    minWidth: theme.touch.minTarget,
+    justifyContent: 'center' as const,
     backgroundColor: theme.colors.surface,
   },
   chipSelected: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
@@ -35,7 +48,6 @@ export function ThemeToggle() {
             accessibilityRole="radio"
             accessibilityLabel={`Theme ${LABELS[option]}`}
             accessibilityState={{ checked: selected, selected }}
-            hitSlop={8}
             onPress={() => setPreference(option)}
             style={[styles.chip, selected ? styles.chipSelected : null]}
           >

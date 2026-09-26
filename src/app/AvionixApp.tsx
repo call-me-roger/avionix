@@ -1,14 +1,15 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo } from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { createAppServices } from '@/app/composition-root';
 import { ServicesProvider } from '@/app/services-context';
-import { MvpScreen } from '@/features/mvp/MvpScreen';
+import { AppShell } from '@/features/shell/AppShell';
 import { ThemeProvider, useTheme } from '@/theme/theme-context';
 
 function ThemedStatusBar() {
   const theme = useTheme();
-  return <StatusBar style={theme.mode === 'dark' ? 'light' : 'dark'} />;
+  return <StatusBar style={theme.mode === 'light' ? 'dark' : 'light'} />;
 }
 
 export function AvionixApp() {
@@ -22,11 +23,13 @@ export function AvionixApp() {
   }, [services]);
 
   return (
-    <ServicesProvider services={services}>
-      <ThemeProvider storage={services.settingsStorage}>
-        <ThemedStatusBar />
-        <MvpScreen />
-      </ThemeProvider>
-    </ServicesProvider>
+    <SafeAreaProvider>
+      <ServicesProvider services={services}>
+        <ThemeProvider storage={services.settingsStorage}>
+          <ThemedStatusBar />
+          <AppShell />
+        </ThemeProvider>
+      </ServicesProvider>
+    </SafeAreaProvider>
   );
 }

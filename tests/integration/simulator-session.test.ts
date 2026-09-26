@@ -1,7 +1,11 @@
 import { createPairingTokenStore } from '@/application/pairing-token-store';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { SimulatorSession } from '@/application/simulator-session';
-import { GENERIC_DATAREFS } from '@/domain/aircraft/profiles/generic';
+import {
+  FEATURE_HEADING_CONTROL,
+  GENERIC_COMMANDS,
+  GENERIC_DATAREFS,
+} from '@/domain/aircraft/profiles/generic';
 import { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
@@ -73,12 +77,12 @@ describe('SimulatorSession against the mock X-Plane', () => {
     server.setDataRefValue('sim/time/total_running_time_sec', 20);
     await until(() => snap().telemetry[GENERIC_DATAREFS.heartbeat]?.value === 20);
 
-    await session.writeHeading(123);
-    expect(snap().lastOperation).toMatchObject({ kind: 'write', ok: true });
+    await session.write(FEATURE_HEADING_CONTROL, GENERIC_DATAREFS.headingBug, 123);
+    expect(snap().operations[GENERIC_DATAREFS.headingBug]).toMatchObject({ status: 'ok' });
     await until(() => snap().telemetry[GENERIC_DATAREFS.headingBug]?.value === 123);
 
-    await session.activateHeadingUp();
-    expect(snap().lastOperation).toMatchObject({ kind: 'command', ok: true });
+    await session.activate(FEATURE_HEADING_CONTROL, GENERIC_COMMANDS.headingUp);
+    expect(snap().operations[GENERIC_COMMANDS.headingUp]).toMatchObject({ status: 'ok' });
     await until(() => snap().telemetry[GENERIC_DATAREFS.headingBug]?.value === 124);
 
     session.disconnect();
@@ -137,7 +141,7 @@ describe('SimulatorSession against the mock X-Plane', () => {
     expect(server.connectionCount).toBe(2);
     await until(() => a.store.getSnapshot().telemetry[GENERIC_DATAREFS.headingBug] !== undefined);
     await until(() => b.store.getSnapshot().telemetry[GENERIC_DATAREFS.headingBug] !== undefined);
-    await a.writeHeading(45);
+    await a.write(FEATURE_HEADING_CONTROL, GENERIC_DATAREFS.headingBug, 45);
     await until(() => b.store.getSnapshot().telemetry[GENERIC_DATAREFS.headingBug]?.value === 45);
     expect(b.store.getSnapshot().state).toBe('connected');
     a.disconnect();

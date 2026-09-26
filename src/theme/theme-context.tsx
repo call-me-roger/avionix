@@ -17,7 +17,7 @@ import {
   resolveThemeMode,
   saveThemePreference,
 } from '@/theme/theme-preference';
-import { type Theme, type ThemeMode, themeForMode } from '@/theme/tokens';
+import { type Theme, themeForMode } from '@/theme/tokens';
 
 interface ThemeContextValue {
   theme: Theme;
@@ -31,7 +31,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 export interface ThemeProviderProps {
   storage: SettingsStorage;
   /** Overrides the OS colour scheme (tests, forced schemes). `undefined` means "use the OS". */
-  systemSchemeOverride?: ThemeMode | null;
+  systemSchemeOverride?: 'light' | 'dark' | null;
   children: React.ReactNode;
 }
 

@@ -1,4 +1,4 @@
-export type ThemeMode = 'light' | 'dark';
+export type ThemeMode = 'light' | 'dark' | 'night';
 
 export interface ThemeColors {
   background: string;
@@ -20,11 +20,14 @@ export interface Theme {
   spacing: { xs: number; sm: number; md: number; lg: number; xl: number };
   radius: { sm: number; md: number };
   typography: { headingSize: number; titleSize: number; bodySize: number };
+  /** F-04 R4: the same on phone and tablet; a tablet shows more controls, never smaller ones. */
+  touch: { minTarget: number; spacing: number };
 }
 
 const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
 const radius = { sm: 4, md: 8 } as const;
 const typography = { headingSize: 24, titleSize: 16, bodySize: 14 } as const;
+const touch = { minTarget: 48, spacing: 8 } as const;
 
 export const lightTheme: Theme = {
   mode: 'light',
@@ -44,6 +47,7 @@ export const lightTheme: Theme = {
   spacing,
   radius,
   typography,
+  touch,
 };
 
 export const darkTheme: Theme = {
@@ -64,10 +68,42 @@ export const darkTheme: Theme = {
   spacing,
   radius,
   typography,
+  touch,
 };
 
-const THEMES: Record<ThemeMode, Theme> = { light: lightTheme, dark: darkTheme };
+/**
+ * For a darkened room (F-04 R6): a black background so an OLED screen is simply off, warm dim text,
+ * and nothing whose relative luminance exceeds 0.30, so the panel never lights up the room or
+ * spoils the pilot's view of a dim monitor. The AA contrast pairs still hold.
+ */
+export const nightTheme: Theme = {
+  mode: 'night',
+  colors: {
+    background: '#000000',
+    surface: '#0a0806',
+    text: '#a88a60',
+    textMuted: '#917752',
+    border: '#3a2e20',
+    primary: '#33200a',
+    onPrimary: '#a88a60',
+    danger: '#d0584a',
+    success: '#6f9a4a',
+    inputBackground: '#000000',
+    placeholder: '#917752',
+  },
+  spacing,
+  radius,
+  typography,
+  touch,
+};
+
+const THEMES: Record<ThemeMode, Theme> = { light: lightTheme, dark: darkTheme, night: nightTheme };
 
 export function themeForMode(mode: ThemeMode): Theme {
   return THEMES[mode];
+}
+
+/** React Native's keyboard has two appearances; night wants the dark one. */
+export function keyboardAppearanceFor(mode: ThemeMode): 'light' | 'dark' {
+  return mode === 'light' ? 'light' : 'dark';
 }

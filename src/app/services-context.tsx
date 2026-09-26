@@ -11,9 +11,10 @@ export type SessionApi = Pick<
   | 'connect'
   | 'disconnect'
   | 'pair'
-  | 'writeHeading'
-  | 'activateHeadingUp'
+  | 'write'
+  | 'activate'
   | 'recheckCompatibility'
+  | 'setDemand'
 >;
 
 export type DiscoveryApi = Pick<ConnectorDiscovery, 'store' | 'start' | 'stop'>;
