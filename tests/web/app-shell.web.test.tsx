@@ -20,6 +20,11 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+// AppShell reads the safe-area insets; this mock supplies zero insets without a provider.
+jest.mock(
+  'react-native-safe-area-context',
+  () => require('react-native-safe-area-context/jest/mock').default,
+);
 jest.mock('@/platform/keep-awake', () => ({
   KEEP_AWAKE_TAG: 'avionix-panel',
   holdScreenAwake: jest.fn(async () => undefined),

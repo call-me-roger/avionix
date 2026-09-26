@@ -20,6 +20,8 @@ const makeStyles = (theme: Theme) => ({
   },
 });
 
+const PLAIN_DECIMAL = /^-?\d+(\.\d+)?$/;
+
 interface Props {
   label: string;
   featureId: string;
@@ -38,9 +40,13 @@ interface Props {
 export function ValueEntry(props: Props) {
   const styles = useThemedStyles(makeStyles);
   const [draft, setDraft] = useState('');
-  const parsed = Number(draft);
-  const filled = draft.trim() !== '';
-  const valid = filled && Number.isFinite(parsed) && parsed >= props.min && parsed <= props.max;
+  const text = draft.trim();
+  const filled = text !== '';
+  // A plain decimal only: Number() would also take '0x10', '1e2' or '.5', none of which a pilot
+  // means as a heading. A minus sign only where the range has negative values.
+  const plain = PLAIN_DECIMAL.test(text) && (props.min < 0 || !text.startsWith('-'));
+  const parsed = Number(text);
+  const valid = filled && plain && parsed >= props.min && parsed <= props.max;
   return (
     <View>
       <BodyText>

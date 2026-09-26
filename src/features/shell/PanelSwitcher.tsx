@@ -31,17 +31,28 @@ export function PanelSwitcher({
   items,
   route,
   orientation,
+  safeArea,
   onSelect,
 }: {
   items: readonly { id: string; title: string }[];
   route: string;
   orientation: Orientation;
+  /** The system-area inset on the edge the bar sits against, kept as padding on its surface. */
+  safeArea?: { bottom?: number; left?: number };
   onSelect: (id: string) => void;
 }) {
   const styles = useThemedStyles(makeStyles);
   const portrait = orientation === 'portrait';
   return (
-    <View accessibilityRole="tablist" style={[styles.bar, portrait ? styles.bottom : styles.rail]}>
+    <View
+      testID="panel-switcher"
+      accessibilityRole="tablist"
+      style={[
+        styles.bar,
+        portrait ? styles.bottom : styles.rail,
+        { paddingBottom: safeArea?.bottom ?? 0, paddingLeft: safeArea?.left ?? 0 },
+      ]}
+    >
       <ScrollView
         horizontal={portrait}
         contentContainerStyle={styles.items}

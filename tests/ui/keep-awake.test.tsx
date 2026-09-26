@@ -40,6 +40,33 @@ describe('keep-awake wrapper', () => {
     await expect(releaseScreenAwake()).resolves.toBeUndefined();
   });
 
+  it('releases only after a hold still in flight has settled, as a slow browser wake lock does', async () => {
+    const events: string[] = [];
+    let grant: () => void = () => undefined;
+    activate.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          grant = () => {
+            events.push('held');
+            resolve();
+          };
+        }),
+    );
+    deactivate.mockImplementationOnce(async () => {
+      events.push('released');
+    });
+    const holding = holdScreenAwake();
+    const releasing = releaseScreenAwake();
+    for (let i = 0; i < 10; i += 1) {
+      await Promise.resolve();
+    }
+    // The release waits for the request it would otherwise race.
+    expect(deactivate).not.toHaveBeenCalled();
+    grant();
+    await Promise.all([holding, releasing]);
+    expect(events).toEqual(['held', 'released']);
+  });
+
   it('never rejects when the platform throws synchronously', async () => {
     activate.mockImplementationOnce(() => {
       throw new Error('no native module');

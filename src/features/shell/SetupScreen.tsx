@@ -78,6 +78,15 @@ export function SetupScreen(props: {
       keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.heading}>Avionix</Text>
+      {/* Opened from the status bar: first, so a phone shows it without scrolling past the form. */}
+      {props.showDiagnostics ? (
+        <DiagnosticsScreen
+          snapshot={snapshot}
+          now={now}
+          onRetry={onConnect}
+          onDisconnect={disconnect}
+        />
+      ) : null}
       <ConnectionForm
         host={settings.host}
         port={settings.port}
@@ -94,14 +103,6 @@ export function SetupScreen(props: {
         enabled={isDiscoveryState(snapshot.state)}
         onSelect={onSelectConnector}
       />
-      {props.showDiagnostics ? (
-        <DiagnosticsScreen
-          snapshot={snapshot}
-          now={now}
-          onRetry={onConnect}
-          onDisconnect={disconnect}
-        />
-      ) : null}
       <AircraftSummary snapshot={snapshot} now={now} onOpenCompatibility={onToggleCompatibility} />
       {showCompatibility ? (
         <CompatibilityScreen snapshot={snapshot} now={now} onRecheck={onRecheck} />

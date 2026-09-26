@@ -27,8 +27,8 @@ const makeStyles = (theme: Theme) => ({
     padding: theme.spacing.md,
     marginBottom: theme.spacing.lg,
     // F-04 R4: every pressable target is at least 48 dp in both directions.
-    minHeight: 48,
-    minWidth: 48,
+    minHeight: theme.touch.minTarget,
+    minWidth: theme.touch.minTarget,
     gap: theme.spacing.xs,
   },
   row: {

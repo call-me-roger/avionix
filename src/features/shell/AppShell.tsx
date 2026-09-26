@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useServices } from '@/app/services-context';
 import { SETUP_ROUTE, resolveRoute } from '@/application/panel-layout';
@@ -16,12 +17,11 @@ import { usePanelLayout } from '@/hooks/usePanelLayout';
 import { useScreenKeepAwake } from '@/hooks/useScreenKeepAwake';
 import { useSimulatorSession } from '@/hooks/useSimulatorSession';
 import { BodyText } from '@/theme/primitives';
-import { useThemedStyles } from '@/theme/theme-context';
+import { useTheme, useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
 const makeStyles = (theme: Theme) => ({
   root: { flex: 1, backgroundColor: theme.colors.background },
-  statusBarWrap: { paddingHorizontal: theme.spacing.lg, paddingTop: 56 },
   body: { flex: 1 },
   row: { flexDirection: 'row' as const },
   column: { flexDirection: 'column' as const },
@@ -44,6 +44,10 @@ export function AppShell({ panels = PANELS }: { panels?: readonly RegisteredPane
   const { layout, ready, setLast, setHidden } = usePanelLayout(settingsStorage, panelIds);
   const foreground = useAppForeground();
   const styles = useThemedStyles(makeStyles);
+  const theme = useTheme();
+  // Android draws edge to edge (mandatory from SDK 57), and iPhones have a notch or Dynamic
+  // Island and a home indicator: every edge the shell touches keeps clear of its system area.
+  const insets = useSafeAreaInsets();
   const [now, setNow] = useState(() => Date.now());
   const [showDiagnostics, setShowDiagnostics] = useState(false);
 
@@ -99,19 +103,40 @@ export function AppShell({ panels = PANELS }: { panels?: readonly RegisteredPane
       ]}
       route={route}
       orientation={deviceLayout.orientation}
+      // Portrait: the bar sits on the bottom edge (home indicator, navigation bar). Landscape: the
+      // rail sits on the left edge (notch, Dynamic Island, a side navigation bar).
+      safeArea={landscape ? { left: insets.left } : { bottom: insets.bottom }}
       onSelect={setLast}
     />
   );
 
   return (
     <View testID="app-shell" style={styles.root}>
-      <View style={styles.statusBarWrap}>
+      <View
+        testID="status-bar-wrap"
+        style={{
+          paddingTop: insets.top + theme.spacing.sm,
+          paddingLeft: insets.left + theme.spacing.lg,
+          paddingRight: insets.right + theme.spacing.lg,
+        }}
+      >
         <LinkStatusBar snapshot={snapshot} now={now} onOpenDiagnostics={onStatusBarPress} />
       </View>
       {ready ? (
-        <View style={[styles.body, landscape ? styles.row : styles.column]}>
+        <View
+          style={[
+            styles.body,
+            landscape ? styles.row : styles.column,
+            // Landscape has no bottom bar to absorb the home indicator, so the body does.
+            landscape ? { paddingBottom: insets.bottom } : null,
+          ]}
+        >
           {landscape ? switcher : null}
-          <View key="content" style={styles.content}>
+          <View
+            key="content"
+            testID="shell-content"
+            style={[styles.content, landscape ? { paddingRight: insets.right } : null]}
+          >
             {active === null ? (
               <SetupScreen
                 snapshot={snapshot}
@@ -126,7 +151,13 @@ export function AppShell({ panels = PANELS }: { panels?: readonly RegisteredPane
             ) : (
               <>
                 {fit === 'rotate' ? (
-                  <View style={styles.notice}>
+                  <View
+                    testID="rotate-notice"
+                    // The panel below is blank; a screen reader must hear why.
+                    accessibilityRole="text"
+                    accessibilityLiveRegion="polite"
+                    style={styles.notice}
+                  >
                     <BodyText>
                       {`Rotate the device to ${landscape ? 'portrait' : 'landscape'} to use this panel.`}
                     </BodyText>

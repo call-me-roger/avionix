@@ -20,6 +20,7 @@ import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { Readout } from '@/features/panels/primitives/Readout';
 import { ValueEntry } from '@/features/panels/primitives/ValueEntry';
 import { ThemeProvider } from '@/theme/theme-context';
+import { lightTheme } from '@/theme/tokens';
 
 const NOW = 100_000;
 const HEADING = GENERIC_DATAREFS.headingBug;
@@ -67,6 +68,11 @@ describe('PanelFrame', () => {
     await renderInFrame(live(), null);
     expect(screen.getByText('Test panel')).toBeTruthy();
     expect(screen.queryByTestId('panel-notice')).toBeNull();
+  });
+
+  it('scrolls a focused entry clear of the keyboard on iOS', async () => {
+    await renderInFrame(live(), null);
+    expect(screen.getByTestId('panel-frame').props.automaticallyAdjustKeyboardInsets).toBe(true);
   });
 
   it('shows exactly one notice for the whole panel when not connected', async () => {
@@ -168,6 +174,40 @@ describe('ControlButton', () => {
     const style = StyleSheet.flatten(screen.getByRole('button', { name: 'Up' }).props.style);
     expect(style.minHeight).toBeGreaterThanOrEqual(48);
     expect(style.minWidth).toBeGreaterThanOrEqual(48);
+  });
+
+  it('looks unmistakably different when disabled: an outline, not a fill', async () => {
+    const button = (
+      <ControlButton
+        label="Up"
+        featureId={FEATURE_HEADING_CONTROL}
+        target="t"
+        onPress={jest.fn()}
+      />
+    );
+    const { rerender } = await renderInFrame(live(), button);
+    const enabled = StyleSheet.flatten(screen.getByRole('button', { name: 'Up' }).props.style);
+    expect(enabled.backgroundColor).toBe(lightTheme.colors.primary);
+    expect(enabled.borderColor).toBe(lightTheme.colors.primary);
+
+    await rerender(
+      <ThemeProvider storage={createMemorySettingsStorage()} systemSchemeOverride="light">
+        <PanelFrame
+          title="Test panel"
+          snapshot={{ ...base, state: 'disconnected' }}
+          now={NOW}
+          actions={actions}
+        >
+          {button}
+        </PanelFrame>
+      </ThemeProvider>,
+    );
+    const disabled = StyleSheet.flatten(screen.getByRole('button', { name: 'Up' }).props.style);
+    expect(disabled.backgroundColor).toBe('transparent');
+    expect(disabled.borderColor).toBe(lightTheme.colors.border);
+    expect(StyleSheet.flatten(screen.getByText('Up').props.style).color).toBe(
+      lightTheme.colors.textMuted,
+    );
   });
 
   it('does nothing when the link is not live', async () => {
@@ -404,6 +444,45 @@ describe('ValueEntry', () => {
     expect(screen.getByText('Enter a number from 0 to 360.')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Set New heading' }));
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it.each(['0x10', '1e2', '12.', '.5', '+5', '-5', '5 5'])(
+    'refuses %s, which is not a plain decimal number here',
+    async (text) => {
+      const onSubmit = jest.fn();
+      await renderInFrame(live(), entry(onSubmit));
+      await fireEvent.changeText(screen.getByLabelText('New heading'), text);
+      expect(screen.getByText('Enter a number from 0 to 360.')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Set New heading' })).toBeDisabled();
+      await fireEvent.press(screen.getByRole('button', { name: 'Set New heading' }));
+      expect(onSubmit).not.toHaveBeenCalled();
+    },
+  );
+
+  it('accepts a decimal with surrounding spaces', async () => {
+    const onSubmit = jest.fn();
+    await renderInFrame(live(), entry(onSubmit));
+    await fireEvent.changeText(screen.getByLabelText('New heading'), ' 95.5 ');
+    await fireEvent.press(screen.getByRole('button', { name: 'Set New heading' }));
+    expect(onSubmit).toHaveBeenCalledWith(95.5);
+  });
+
+  it('accepts a negative number only where the range allows one', async () => {
+    const onSubmit = jest.fn();
+    await renderInFrame(
+      live(),
+      <ValueEntry
+        label="Trim"
+        featureId={FEATURE_HEADING_CONTROL}
+        target={HEADING}
+        min={-10}
+        max={10}
+        onSubmit={onSubmit}
+      />,
+    );
+    await fireEvent.changeText(screen.getByLabelText('Trim'), '-2.5');
+    await fireEvent.press(screen.getByRole('button', { name: 'Set Trim' }));
+    expect(onSubmit).toHaveBeenCalledWith(-2.5);
   });
 
   it('keeps the draft after a failed write so the pilot can retry', async () => {

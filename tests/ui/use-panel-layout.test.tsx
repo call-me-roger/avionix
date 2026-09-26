@@ -16,6 +16,9 @@ function Probe({ storage }: { storage: SettingsStorage }) {
       <Pressable accessibilityRole="button" onPress={() => setLast('heading')}>
         <Text>go heading</Text>
       </Pressable>
+      <Pressable accessibilityRole="button" onPress={() => setLast('setup')}>
+        <Text>go setup</Text>
+      </Pressable>
       <Pressable accessibilityRole="button" onPress={() => setHidden('basic-data', true)}>
         <Text>hide basic</Text>
       </Pressable>
@@ -60,5 +63,21 @@ describe('usePanelLayout', () => {
     await fireEvent.press(screen.getByText('go heading'));
     release(JSON.stringify({ hidden: [], last: 'basic-data' }));
     await waitFor(() => expect(screen.getByTestId('state')).toHaveTextContent('ready heading'));
+  });
+
+  it('a change that changes nothing before the stored layout loads does not discard it', async () => {
+    let release: (value: string | null) => void = () => undefined;
+    const storage: SettingsStorage = {
+      getItem: () => new Promise<string | null>((resolve) => (release = resolve)),
+      setItem: jest.fn(async () => undefined),
+    };
+    await render(<Probe storage={storage} />);
+    // The status bar is pressable before the layout loads; on Setup already, that is a no-op.
+    await fireEvent.press(screen.getByText('go setup'));
+    release(JSON.stringify({ hidden: ['heading'], last: 'basic-data' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('state')).toHaveTextContent('ready basic-data heading'),
+    );
+    expect(storage.setItem).not.toHaveBeenCalled();
   });
 });

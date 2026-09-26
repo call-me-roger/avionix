@@ -1,5 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo } from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { createAppServices } from '@/app/composition-root';
 import { ServicesProvider } from '@/app/services-context';
@@ -22,11 +23,13 @@ export function AvionixApp() {
   }, [services]);
 
   return (
-    <ServicesProvider services={services}>
-      <ThemeProvider storage={services.settingsStorage}>
-        <ThemedStatusBar />
-        <AppShell />
-      </ThemeProvider>
-    </ServicesProvider>
+    <SafeAreaProvider>
+      <ServicesProvider services={services}>
+        <ThemeProvider storage={services.settingsStorage}>
+          <ThemedStatusBar />
+          <AppShell />
+        </ThemeProvider>
+      </ServicesProvider>
+    </SafeAreaProvider>
   );
 }

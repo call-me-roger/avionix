@@ -71,6 +71,8 @@ export function PanelFrame({
         style={styles.scroll}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        // iOS: scroll a focused ValueEntry clear of the keyboard instead of leaving it under it.
+        automaticallyAdjustKeyboardInsets
       >
         <Text accessibilityRole="header" style={styles.title}>
           {title}

@@ -74,6 +74,8 @@ describe('theme tokens', () => {
         [colors.text, colors.background],
         [colors.text, colors.surface],
         [colors.textMuted, colors.surface],
+        // A disabled ControlButton is an outline: its muted label sits on the page background.
+        [colors.textMuted, colors.background],
         [colors.onPrimary, colors.primary],
         ['#ffffff', colors.primary],
         [colors.placeholder, colors.inputBackground],

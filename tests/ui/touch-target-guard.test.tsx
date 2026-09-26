@@ -19,6 +19,11 @@ import { ThemeProvider } from '@/theme/theme-context';
 import { createFakeServiceBrowser } from '../support/fake-service-browser';
 
 let mockLayout: DeviceLayout = { deviceClass: 'phone', orientation: 'portrait' };
+// AppShell reads the safe-area insets; this mock supplies zero insets without a provider.
+jest.mock(
+  'react-native-safe-area-context',
+  () => require('react-native-safe-area-context/jest/mock').default,
+);
 jest.mock('@/hooks/useDeviceLayout', () => ({ useDeviceLayout: () => mockLayout }));
 jest.mock('@/platform/keep-awake', () => ({
   KEEP_AWAKE_TAG: 'avionix-panel',

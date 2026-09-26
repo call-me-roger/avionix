@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import React from 'react';
 import { StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ConnectorDiscovery } from '@/application/connector-discovery';
 import { PANEL_LAYOUT_STORAGE_KEY } from '@/application/panel-layout';
@@ -20,8 +21,14 @@ import { AppShell } from '@/features/shell/AppShell';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { holdScreenAwake, releaseScreenAwake } from '@/platform/keep-awake';
 import { ThemeProvider } from '@/theme/theme-context';
+import { lightTheme } from '@/theme/tokens';
 
 import { createFakeServiceBrowser } from '../support/fake-service-browser';
+
+jest.mock(
+  'react-native-safe-area-context',
+  () => require('react-native-safe-area-context/jest/mock').default,
+);
 
 let mockLayout: DeviceLayout = { deviceClass: 'phone', orientation: 'portrait' };
 jest.mock('@/hooks/useDeviceLayout', () => ({ useDeviceLayout: () => mockLayout }));
@@ -147,6 +154,10 @@ describe('AppShell', () => {
     await fireEvent.press(screen.getByTestId('link-status-bar'));
     expect(screen.getByTestId('setup-screen')).toBeTruthy();
     expect(screen.getByText('Diagnostics')).toBeTruthy();
+    // Above the connection form, where a phone shows them without scrolling.
+    const rendered = JSON.stringify(screen.toJSON());
+    expect(rendered.indexOf('"Diagnostics"')).toBeGreaterThan(-1);
+    expect(rendered.indexOf('"Diagnostics"')).toBeLessThan(rendered.indexOf('X-Plane host'));
   });
 
   it('removes a hidden panel from the switcher, and keeps at least one', async () => {
@@ -224,6 +235,62 @@ describe('AppShell', () => {
       store.setState((prev) => ({ ...prev, state: 'disconnected' }));
     });
     expect(releaseScreenAwake).toHaveBeenCalled();
+  });
+
+  describe('on a device with a notch, a home indicator or a navigation bar', () => {
+    const insets = { top: 47, bottom: 34, left: 44, right: 40 };
+
+    async function renderInset(services: AppServices) {
+      await render(
+        <SafeAreaProvider
+          initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets }}
+        >
+          {tree(services)}
+        </SafeAreaProvider>,
+      );
+    }
+
+    it('keeps the status bar and the portrait switcher clear of the system areas', async () => {
+      const { services } = makeServices();
+      await renderInset(services);
+      await screen.findByTestId('setup-screen');
+      const statusBarWrap = StyleSheet.flatten(screen.getByTestId('status-bar-wrap').props.style);
+      expect(statusBarWrap.paddingTop).toBe(insets.top + lightTheme.spacing.sm);
+      expect(statusBarWrap.paddingLeft).toBe(insets.left + lightTheme.spacing.lg);
+      expect(statusBarWrap.paddingRight).toBe(insets.right + lightTheme.spacing.lg);
+      const switcher = StyleSheet.flatten(screen.getByTestId('panel-switcher').props.style);
+      expect(switcher.paddingBottom).toBe(insets.bottom);
+      expect(switcher.paddingLeft ?? 0).toBe(0);
+    });
+
+    it('keeps the landscape rail and the panel clear of the notch and the navigation bar', async () => {
+      mockLayout = { deviceClass: 'phone', orientation: 'landscape' };
+      const { services } = makeServices(liveSnapshot(), await seeded('heading'));
+      await renderInset(services);
+      await screen.findByTestId('panel-heading');
+      const rail = StyleSheet.flatten(screen.getByTestId('panel-switcher').props.style);
+      expect(rail.paddingLeft).toBe(insets.left);
+      expect(rail.paddingBottom ?? 0).toBe(0);
+      const content = StyleSheet.flatten(screen.getByTestId('shell-content').props.style);
+      expect(content.paddingRight).toBe(insets.right);
+    });
+  });
+
+  it('announces why the panel is blank when it needs a rotation', async () => {
+    const landscapeOnly: RegisteredPanel = {
+      descriptor: {
+        id: 'wide',
+        title: 'Wide',
+        features: [],
+        supports: { phone: ['landscape'], tablet: EVERYWHERE.tablet },
+      },
+      Component: () => null,
+    };
+    const { services } = makeServices({}, await seeded('wide'));
+    await render(tree(services, [...PANELS, landscapeOnly]));
+    const notice = await screen.findByTestId('rotate-notice');
+    expect(notice.props.accessibilityLiveRegion).toBe('polite');
+    expect(notice.props.accessibilityRole).toBe('text');
   });
 
   it('gives every switcher item and the status bar a full-size touch target', async () => {

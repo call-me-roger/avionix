@@ -31,7 +31,9 @@ const makeStyles = (theme: Theme) => ({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
-  disabled: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+  // Enabled is a filled button, disabled an outline with a muted label: the two must not be
+  // told apart by a shade alone, which the night palette's dim colours cannot carry.
+  disabled: { backgroundColor: 'transparent', borderColor: theme.colors.border },
   armed: { borderColor: theme.colors.danger },
   label: {
     color: theme.colors.onPrimary,
