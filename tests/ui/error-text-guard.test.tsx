@@ -21,6 +21,8 @@ import { DiscoveredConnectors } from '@/features/connection/DiscoveredConnectors
 import { DiagnosticsScreen } from '@/features/health/DiagnosticsScreen';
 import { LinkStatusBar } from '@/features/health/LinkStatusBar';
 import { ControlPanel } from '@/features/mvp/ControlPanel';
+import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
+import { PANELS } from '@/features/panels/registry';
 import { ThemeProvider } from '@/theme/theme-context';
 
 const mockShareText = jest.fn(async (_text: string, _title: string) => undefined);
@@ -83,6 +85,17 @@ function failedOutcome(code: AvionixErrorCode): OperationOutcome {
   return { status: 'failed', failure: { code, step: 'operation' }, refusal: null, at: 10_000 };
 }
 
+/** Every binding name a panel's features declare, each with a failed outcome for `code`. */
+function failedOperationsFor(code: AvionixErrorCode): SessionSnapshot['operations'] {
+  const operations: Record<string, OperationOutcome> = {};
+  for (const feature of GENERIC_PROFILE.features) {
+    for (const binding of feature.bindings) {
+      operations[binding.name] = failedOutcome(code);
+    }
+  }
+  return operations;
+}
+
 describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
   it('is rendered as a cause and an action, not as its message', async () => {
     await render(
@@ -111,6 +124,20 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
           onOpenCompatibility={jest.fn()}
         />
         <CompatibilityScreen snapshot={snapshotFor(code)} now={10_000} onRecheck={jest.fn()} />
+        {PANELS.map(({ descriptor, Component }) => (
+          <PanelFrame
+            key={descriptor.id}
+            title={descriptor.title}
+            snapshot={{ ...snapshotFor(code), operations: failedOperationsFor(code) }}
+            now={10_000}
+            actions={{
+              write: jest.fn(async () => undefined),
+              activate: jest.fn(async () => undefined),
+            }}
+          >
+            <Component />
+          </PanelFrame>
+        ))}
       </ThemeProvider>,
     );
     expect(screen.queryByText(new RegExp('http://'))).toBeNull();
