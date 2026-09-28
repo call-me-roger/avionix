@@ -64,6 +64,11 @@ describe('formatting', () => {
     expect(formatDistance(9.96, 'nm')).toBe('10 nm');
   });
 
+  it('does not round twice at 10 and above', () => {
+    expect(formatDistance(10.46, 'nm')).toBe('10 nm');
+    expect(formatDistance(126.46, 'nm')).toBe('126 nm');
+  });
+
   it('shows time to go as h:mm, capped', () => {
     expect(formatTimeToGo(65.2)).toBe('1:05');
     expect(formatTimeToGo(0)).toBe('0:00');

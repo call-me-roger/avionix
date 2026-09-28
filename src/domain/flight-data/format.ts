@@ -66,10 +66,13 @@ export function formatClock(secondsSinceMidnight: number): string {
 
 export function formatDistance(nm: number, unit: DistanceUnit): string {
   const value = convertDistance(nm, unit);
-  // Decide one-decimal vs whole on the value already rounded to one decimal, so 9.96 (which
-  // rounds to 10.0) reads "10", never "10.0".
-  const rounded = Math.round(value * 10) / 10;
-  const text = Math.abs(rounded) < 10 ? rounded.toFixed(1) : String(whole(rounded));
+  // The one-decimal rounding only decides which branch to use (so 9.96, which rounds to 10.0,
+  // takes the whole-number branch and reads "10", never "10.0"). The whole-number branch itself
+  // rounds the original value, not the already-once-rounded one, so it never rounds twice
+  // (10.46 must read "10", not "11").
+  const roundedToOneDecimal = Math.round(value * 10) / 10;
+  const text =
+    Math.abs(roundedToOneDecimal) < 10 ? roundedToOneDecimal.toFixed(1) : String(whole(value));
   return `${text} ${UNIT_LABEL.distance[unit]}`;
 }
 

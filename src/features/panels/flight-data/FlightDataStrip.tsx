@@ -4,11 +4,12 @@ import { Pressable, Text, View } from 'react-native';
 import type { SessionSnapshot } from '@/application/session-snapshot';
 import { GENERIC_DATAREFS as D } from '@/domain/aircraft/profiles/generic';
 import { formatClock, formatFuel, formatSpeed, formatWind } from '@/domain/flight-data/format';
+import { simulatorBadge } from '@/domain/flight-data/sim-state';
 import { makeRowStyles } from '@/features/panels/flight-data/rowStyles';
 import { SimBadge } from '@/features/panels/flight-data/SimBadge';
 import type { FlightValueState } from '@/features/panels/flight-data/useFlightValue';
 import { one, useFlightValue } from '@/features/panels/flight-data/useFlightValue';
-import type { PanelActions } from '@/features/panels/primitives/PanelContext';
+import { type PanelActions, usePanel } from '@/features/panels/primitives/PanelContext';
 import { PanelScope } from '@/features/panels/primitives/PanelFrame';
 import { useUnits } from '@/features/units/UnitsProvider';
 import { BodyText } from '@/theme/primitives';
@@ -33,6 +34,10 @@ const makeStyles = (theme: Theme) => ({
     justifyContent: 'center' as const,
   },
   cell: { flex: 1 },
+  // SimBadge sets alignSelf: 'flex-start' on its own View for the panel's column layout; wrapping
+  // it isolates that alignSelf to this wrapper's (column) cross axis, so the wrapper itself still
+  // takes the row's alignItems: 'center' and the badge sits centred in the strip.
+  badgeWrap: {},
 });
 
 /** A missing DataRef costs this one field, never the strip (F-11 R7). */
@@ -74,6 +79,7 @@ function StripCell({ label, text, current }: { label: string; text: string; curr
  */
 function StripBody({ onOpen }: { onOpen: (() => void) | null }) {
   const { units } = useUnits();
+  const { snapshot } = usePanel();
   const styles = useThemedStyles(makeStyles);
   const groundSpeed = useFlightValue([D.groundSpeed], one(formatSpeed));
   const wind = useFlightValue([D.windDirection, D.windSpeed], ([direction = 0, speed = 0]) =>
@@ -91,9 +97,20 @@ function StripBody({ onOpen }: { onOpen: (() => void) | null }) {
   const fuelText = cellText(fuel);
   const zuluText = zuluCellText(zulu);
 
+  // The strip's single accessible element replaces its children's individual accessibility on a
+  // device, so the nested SimBadge's own "X-Plane is paused"/"X-Plane is in replay" label would
+  // otherwise be unreachable. Say it once, here, in the strip's own name instead.
+  const badge = simulatorBadge(
+    snapshot.state,
+    snapshot.health.activity,
+    snapshot.telemetry[D.inReplay]?.value,
+  );
+  const badgePhrase =
+    badge === null ? '' : badge === 'paused' ? ', X-Plane is paused' : ', X-Plane is in replay';
+
   const base =
     `Flight data: ground speed ${groundSpeedText}, wind ${windText}, ` +
-    `fuel ${fuelText}, sim zulu ${zuluText}${current ? '' : ', not live'}.`;
+    `fuel ${fuelText}, sim zulu ${zuluText}${badgePhrase}${current ? '' : ', not live'}.`;
   const label = onOpen === null ? base : `${base} Open flight data.`;
 
   const cells = (
@@ -109,7 +126,9 @@ function StripBody({ onOpen }: { onOpen: (() => void) | null }) {
   // pausing/unpausing (or a link drop) never changes the strip's height (F-11 final-fixes #3).
   const trailer = (
     <>
-      <SimBadge />
+      <View style={styles.badgeWrap}>
+        <SimBadge />
+      </View>
       {current ? null : <BodyText muted>not live</BodyText>}
     </>
   );

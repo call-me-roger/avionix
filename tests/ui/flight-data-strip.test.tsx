@@ -143,4 +143,22 @@ describe('FlightDataStrip', () => {
     expect(style.color).toBe(lightTheme.colors.text);
     expect(screen.queryByText('not live')).toBeNull();
   });
+
+  it("says the badge in the strip's own accessible name, not only on the nested badge", async () => {
+    await renderStrip(live({ health: { ...live().health, activity: 'paused', live: false } }));
+    const strip = screen.getByTestId('flight-data-strip');
+    expect(strip.props.accessibilityLabel).toContain('X-Plane is paused');
+  });
+
+  it("says replay in the strip's own accessible name", async () => {
+    await renderStrip(live({ telemetry: telemetry({ ...VALUES, [D.inReplay]: 1 }) }));
+    const strip = screen.getByTestId('flight-data-strip');
+    expect(strip.props.accessibilityLabel).toContain('X-Plane is in replay');
+  });
+
+  it("says nothing about the badge in the strip's own accessible name while running", async () => {
+    await renderStrip(live());
+    const strip = screen.getByTestId('flight-data-strip');
+    expect(strip.props.accessibilityLabel).not.toContain('X-Plane is');
+  });
 });
