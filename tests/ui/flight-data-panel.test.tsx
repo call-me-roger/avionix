@@ -133,6 +133,9 @@ describe('Flight data panel', () => {
     await renderPanel(live({ health: { ...live().health, activity: 'noFlight', live: false } }));
     expect(screen.getByText('No flight loaded in X-Plane.')).toBeTruthy();
     expect(screen.getByLabelText('Ground speed: —, not live')).toBeTruthy();
+    expect(screen.getByLabelText('GPS destination: —, not live')).toBeTruthy();
+    expect(screen.queryByText(/KSEA/)).toBeNull();
+    expect(screen.queryByText(/ nm/)).toBeNull();
   });
 
   it('marks only the field whose DataRef is missing', async () => {

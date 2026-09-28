@@ -8,6 +8,7 @@ import { GENERIC_DATAREFS as D, GENERIC_PROFILE } from '@/domain/aircraft/profil
 import { FlightDataStrip } from '@/features/panels/flight-data/FlightDataStrip';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
 import { ThemeProvider } from '@/theme/theme-context';
+import { lightTheme } from '@/theme/tokens';
 
 const NOW = 1_000_000;
 const base = initialSnapshot(GENERIC_PROFILE, 5);
@@ -123,5 +124,23 @@ describe('FlightDataStrip', () => {
     const style = StyleSheet.flatten(screen.getByTestId('flight-data-strip').props.style);
     expect(style.minHeight).toBeGreaterThanOrEqual(48);
     expect(style.minWidth).toBeGreaterThanOrEqual(48);
+  });
+
+  it('mutes the values and shows a visible not-live marker while disconnected', async () => {
+    await renderStrip({
+      ...live(),
+      state: 'disconnected',
+      health: { ...base.health, activity: 'unknown', lastHeartbeatAt: NOW - 5000 },
+    });
+    const style = StyleSheet.flatten(screen.getByText('142 kt').props.style);
+    expect(style.color).toBe(lightTheme.colors.textMuted);
+    expect(screen.getByText('not live')).toBeTruthy();
+  });
+
+  it('keeps the values in the normal colour and shows no not-live marker while paused', async () => {
+    await renderStrip(live({ health: { ...live().health, activity: 'paused', live: false } }));
+    const style = StyleSheet.flatten(screen.getByText('142 kt').props.style);
+    expect(style.color).toBe(lightTheme.colors.text);
+    expect(screen.queryByText('not live')).toBeNull();
   });
 });

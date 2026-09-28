@@ -16,6 +16,7 @@ import { CompatibilityScreen } from '@/features/aircraft/CompatibilityScreen';
 import { DiscoveredConnectors } from '@/features/connection/DiscoveredConnectors';
 import { DiagnosticsScreen } from '@/features/health/DiagnosticsScreen';
 import { LinkStatusBar } from '@/features/health/LinkStatusBar';
+import { FlightDataStrip } from '@/features/panels/flight-data/FlightDataStrip';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { PANELS } from '@/features/panels/registry';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
@@ -116,6 +117,11 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
             onOpenCompatibility={jest.fn()}
           />
           <CompatibilityScreen snapshot={snapshotFor(code)} now={10_000} onRecheck={jest.fn()} />
+          <FlightDataStrip
+            snapshot={{ ...snapshotFor(code), operations: failedOperationsFor(code) }}
+            now={10_000}
+            onOpen={jest.fn()}
+          />
           {PANELS.map(({ descriptor, Component }) => (
             <PanelFrame
               key={descriptor.id}

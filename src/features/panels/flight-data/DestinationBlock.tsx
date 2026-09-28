@@ -20,6 +20,7 @@ export function DestinationBlock() {
   const { snapshot, link } = usePanel();
   const { units } = useUnits();
   const styles = useThemedStyles(makeRowStyles);
+  const noFlight = snapshot.state === 'connected' && snapshot.health.activity === 'noFlight';
   const view = destinationView({
     idStatus: snapshot.compatibility.bindings[D.gpsDestinationId]?.status,
     distanceStatus: snapshot.compatibility.bindings[D.gpsDistance]?.status,
@@ -36,7 +37,7 @@ export function DestinationBlock() {
   }
 
   const text =
-    view.kind === 'waiting'
+    noFlight || view.kind === 'waiting'
       ? '—'
       : `${view.id}, ${formatDistance(view.distanceNm, units.distance)}${
           view.timeMin === null ? '' : `, ${formatTimeToGo(view.timeMin)}`

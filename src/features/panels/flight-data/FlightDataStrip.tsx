@@ -48,13 +48,22 @@ function zuluCellText(state: FlightValueState): string {
   return state.text === '—' ? state.text : `${state.text}Z`;
 }
 
-function StripCell({ label, text }: { label: string; text: string }) {
+function StripCell({ label, text, current }: { label: string; text: string; current: boolean }) {
   const layout = useThemedStyles(makeStyles);
   const row = useThemedStyles(makeRowStyles);
   return (
     <View style={layout.cell}>
-      <BodyText muted>{label}</BodyText>
-      <Text style={row.value}>{text}</Text>
+      <BodyText muted numberOfLines={1}>
+        {label}
+      </BodyText>
+      <Text
+        style={[row.value, current ? null : row.stale]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+      >
+        {text}
+      </Text>
     </View>
   );
 }
@@ -89,37 +98,43 @@ function StripBody({ onOpen }: { onOpen: (() => void) | null }) {
 
   const cells = (
     <>
-      <StripCell label="Ground speed" text={groundSpeedText} />
-      <StripCell label="Wind" text={windText} />
-      <StripCell label="Fuel" text={fuelText} />
-      <StripCell label="Sim zulu" text={zuluText} />
+      <StripCell label="GS" text={groundSpeedText} current={current} />
+      <StripCell label="Wind" text={windText} current={current} />
+      <StripCell label="Fuel" text={fuelText} current={current} />
+      <StripCell label="Zulu" text={zuluText} current={current} />
     </>
   );
 
-  return (
+  // The badge and the "not live" marker sit inline at the end of the row, not above it, so
+  // pausing/unpausing (or a link drop) never changes the strip's height (F-11 final-fixes #3).
+  const trailer = (
     <>
       <SimBadge />
-      {onOpen === null ? (
-        <View
-          testID="flight-data-strip"
-          accessible
-          accessibilityLabel={label}
-          style={[styles.row, styles.target]}
-        >
-          {cells}
-        </View>
-      ) : (
-        <Pressable
-          testID="flight-data-strip"
-          accessibilityRole="button"
-          accessibilityLabel={label}
-          onPress={onOpen}
-          style={[styles.row, styles.target]}
-        >
-          {cells}
-        </Pressable>
-      )}
+      {current ? null : <BodyText muted>not live</BodyText>}
     </>
+  );
+
+  return onOpen === null ? (
+    <View
+      testID="flight-data-strip"
+      accessible
+      accessibilityLabel={label}
+      style={[styles.row, styles.target]}
+    >
+      {cells}
+      {trailer}
+    </View>
+  ) : (
+    <Pressable
+      testID="flight-data-strip"
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onOpen}
+      style={[styles.row, styles.target]}
+    >
+      {cells}
+      {trailer}
+    </Pressable>
   );
 }
 
