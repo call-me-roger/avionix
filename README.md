@@ -14,11 +14,15 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
   development build; Expo Go and the web keep the typed host and port.
 - Detect the X-Plane version and the supported Web API versions; use the highest of v2/v3.
 - Resolve DataRefs and commands by name (ids are session-specific and never stored).
-- Two interim panels, reachable from a switcher (a bottom bar in portrait, a side rail in
-  landscape) alongside Setup: Basic data (indicated airspeed, heading bug, sim running time) and
-  Heading (write the autopilot heading bug, activate `sim/autopilot/heading_up`). The WebSocket
-  subscribes only the visible panel's DataRefs, plus identification and connection health, and
-  follows a panel switch within one update cycle.
+- Panels reachable from a switcher (a bottom bar in portrait, a side rail in landscape) alongside
+  Setup: Flight data (ground speed, true airspeed, track, wind, OAT/TAT, fuel remaining, sim zulu
+  and local time, paused/replay, the GPS destination) and Heading (write the autopilot heading bug,
+  activate `sim/autopilot/heading_up`). A compact strip with ground speed, wind, fuel and sim zulu
+  docks under the status bar on every other panel and opens Flight data when tapped; a Setup toggle
+  turns it off. The WebSocket subscribes only the visible panel's DataRefs (plus the strip's, while
+  shown), identification and connection health, and follows a panel switch within one update cycle.
+- A **Units** section in Setup lets the pilot choose fuel (kg/lb), temperature (°C/°F) and distance
+  (nm/km); the choice is shared by every panel and persisted. Speeds stay in knots.
 - Identify the loaded aircraft and name it, its profile and its add-on version in an Aircraft
   panel in Setup; a new aircraft is picked up without reconnecting.
 - A compatibility view behind that panel: every feature with its status, and every binding the

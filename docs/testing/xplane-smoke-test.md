@@ -28,20 +28,20 @@ Record results at the bottom.
 | # | Step | Expected | Pass? |
 |---|---|---|---|
 | 1 | Open Avionix on device A, enter the IP and port 8080, press Connect, enter a wrong six-digit code, press Pair | Status stays `pairing`; "Wrong code, check the connector window."; the field is cleared | |
-| 2 | Enter the code printed by the connector and press Pair | Status `connected`, and the app stays on Setup. Tap the status bar: Diagnostics opens at the top of Setup with "Connector check: paired". Open Basic data from the switcher: its values update | |
+| 2 | Enter the code printed by the connector and press Pair | Status `connected`, and the app stays on Setup. Tap the status bar: Diagnostics opens at the top of Setup with "Connector check: paired". Open Flight data from the switcher: its values update | |
 | 3 | Stop the connector, delete `~/.avionix/connector-tokens.json`, start it again, wait for the app to retry | The app returns to `pairing` with "The connector no longer accepts this device, pair again."; the new code connects. If the connector is down long enough for the reconnect schedule (about 30 s) to run out first, the app lands in `error` instead — press Connect and it reaches `pairing` from there | |
-| 4 | On Basic data, watch "Sim running time" | Increases about once per second (10 Hz updates) | |
-| 5 | On Basic data, pause the sim (P key) | Running time stops and the values stay live (a paused sim is current); unpause → it continues | |
+| 4 | On Flight data, watch "Sim zulu" | Advances one second at a time (10 Hz updates underneath) | |
+| 5 | On Flight data, pause the sim (P key) | Sim zulu stops advancing and a PAUSED badge appears; the values stay bright (a paused sim is current); unpause → it continues and the badge clears | |
 | 6 | Open Heading, enter 123 in "New heading" and press Set | Nothing appears under Set; "Heading bug" shows 123; the HSI/heading bug in X-Plane moves to 123. (A failed write would show a cause and an action under the control, e.g. "The change did not reach the aircraft." / "Check the link is live, then try again.") | |
 | 7 | On Heading, press "Heading up" | Nothing appears under the button; "Heading bug" shows 124 | |
 | 8 | On Heading, enter 400 in "New heading" | "Enter a number from 0 to 360." appears and Set is disabled, so nothing is sent; the link stays `connected`. The same for `0x10` or `1e2` | |
-| 9 | Open Basic data, then take off or use the map to place the aircraft in flight | "Indicated airspeed" changes live | |
-| 10 | Device B: connect the same way (enter the same connector host and port 8080, enter the code) | Both devices show `connected`, and live values on Basic data; on both, tapping the status bar shows "Connector check: paired" in Diagnostics | |
+| 9 | Open Flight data, then take off or use the map to place the aircraft in flight | "Ground speed" changes live | |
+| 10 | Device B: connect the same way (enter the same connector host and port 8080, enter the code) | Both devices show `connected`, and live values on Flight data; on both, tapping the status bar shows "Connector check: paired" in Diagnostics | |
 | 11 | Device B: open Heading. Device A: open Heading and press "Heading up" | Device B's "Heading bug" value increments; device B stays `connected` | |
 | 12 | On the X-Plane computer, select "Disable Incoming Traffic" | Both devices go to `reconnecting`, attempts count up, then `error` with `INCOMING_TRAFFIC_DISABLED` after 5 attempts | |
 | 13 | Re-enable incoming traffic, press Connect on both | Both reconnect and stream again | |
 | 14 | Turn the phone's Wi-Fi off for 10 s, then on | Device goes to `reconnecting`, then `connected` again on its own | |
-| 15 | With Basic data open, press Disconnect in Setup, then open Basic data again | Status `disconnected`, no reconnect attempts. Basic data keeps the last values, muted and marked "not live", with one notice at the top: "Not connected. Showing the last known values." | |
+| 15 | With Flight data open, press Disconnect in Setup, then open Flight data again | Status `disconnected`, no reconnect attempts. Flight data keeps the last values, muted and marked "not live", with one notice at the top: "Not connected. Showing the last known values." | |
 | 16 | Restart X-Plane, press Connect (re-enter the code if prompted) | Connects; DataRef ids were re-resolved (no stale-id errors) | |
 | 17 | Kill and relaunch Avionix, press Connect | Host and port fields are prefilled; if the token is still valid, status goes straight to `connected` without asking for a code | |
 | 18 | Direct X-Plane: enter port 8086 (no connector) and press Connect | Status `connected` without a code prompt; tapping the status bar shows "Connector check: not needed, talking to X-Plane directly" in Diagnostics | |
@@ -69,7 +69,7 @@ Record results at the bottom.
 | 40 | Share the diagnostics summary with an aircraft loaded | The Aircraft block names the aircraft, the profile and every feature's status, with no URL, token or raw error | |
 | 41 | If X-Plane is older than 12.4.3, or an add-on aircraft lacks the Laminar heading-bug DataRef | Older sim: the compatibility view notes write capability is not reported and the control stays usable. Missing name: on Heading, Set and "Heading up" are disabled, the reason under them names what is missing, and "Heading bug" reads "not available on this aircraft" | |
 | 42 | Turn on VoiceOver (iOS) or TalkBack (Android), then on Setup swipe to the Aircraft section | The whole row is announced as one button, ending with "Open compatibility details", and activating it opens the compatibility view | |
-| 43 | First launch on a phone | Opens on Setup; the switcher at the bottom shows Basic data, Heading and Setup | |
+| 43 | First launch on a phone | Opens on Setup; the switcher at the bottom shows Flight data, Heading and Setup | |
 | 44 | Set the device's Auto-Lock (iOS) or Screen timeout (Android) to its shortest value. Connect, open Heading, and leave the device untouched for longer than that timeout (2 minutes is plenty) | The screen never dimmed or locked while Heading was open and connected. Restore the setting afterwards | |
 | 45 | On Heading, background the app for 1 minute, return | Screen slept normally while backgrounded; Heading is still the panel shown | |
 | 46 | Type `12` in New heading, rotate the phone to landscape | The switcher moves to the left side; `12` is still in the field | |
@@ -78,9 +78,17 @@ Record results at the bottom.
 | 49 | In Setup → Display, choose Night in a dark room | Black background, dim warm text, nothing bright white; Connect button still readable. On Heading while disconnected, Set and "Heading up" are outlines, plainly different from the filled buttons of a live link | |
 | 50 | Set the device to dark mode, choose System (night) | Night colours; switch the device to light mode → light colours | |
 | 51 | On a tablet, both orientations, every panel | Controls are comfortably pressable; the switcher is a side rail in landscape | |
-| 52 | Hide Basic data in Setup → Panels | It leaves the switcher; Heading's switch cannot be turned off | |
+| 52 | Hide Flight data in Setup → Panels | It leaves the switcher; Heading's switch cannot be turned off | |
 | 53 | Android phone with 3-button navigation, and an iPhone with a notch or Dynamic Island: portrait, then landscape | Portrait: the switcher sits above the navigation bar or home indicator and every tab is tappable; the status bar sits below the system status bar or Dynamic Island. Landscape: the rail clears the notch and a side navigation bar, and the panel's right edge clears the other side | |
 | 54 | iOS: on Heading, tap "New heading" (portrait and landscape) | The panel scrolls so the field and Set stay above the keyboard | |
+| 55 | Cessna 172 in flight, open Flight data | Ground speed, TAS, track and wind match X-Plane's own readouts (Data Output or the map) | |
+| 56 | Compare Fuel remaining with X-Plane's Weight & Balance page, in kg, then switch Units → Fuel to lb | Same total; the lb figure is the kg figure × 2.2046 | |
+| 57 | Set a wind from 270 at 15 kt in X-Plane's weather | Wind (from) reads `270° / 15 kt`, not `090°` | |
+| 58 | Load the default Cessna with a GPS Direct-To (e.g. KSEA) | GPS destination shows the identifier, a distance and a time; clear the Direct-To → "No destination set in the GPS." | |
+| 59 | Load an add-on with its own FMS (e.g. Zibo 737) | "No destination available on this aircraft."; the other fields keep working | |
+| 60 | Pause X-Plane, then start a replay | PAUSED badge with values bright, then REPLAY | |
+| 61 | On Heading, on a phone in portrait and landscape | The strip shows four values on one row under the status bar; tapping it opens Flight data | |
+| 62 | Setup → Panels, turn the strip off | It disappears from every panel and stays off after a restart | |
 
 Rows 44 and 45 verify the keep-awake hold, and row 53 the safe areas: behaviour no automated test
 can observe.

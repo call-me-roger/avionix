@@ -95,3 +95,35 @@ the compatibility view. A `data` value is base64, padded with NUL to the DataRef
 
 The `/api/v3/aircraft` REST resource is listed in Laminar's API index but its payload shape was
 never confirmed, so Avionix does not use it.
+
+## Flight data (F-11)
+
+Two profile features, `flight-data` and `gps-destination` (`GENERIC_PROFILE` 1.1.0). Every binding
+is optional, so a name that does not resolve costs only its own field, never the rest of the strip
+or panel.
+
+| Name | Type | Units | Source |
+|---|---|---|---|
+| `sim/cockpit2/gauges/indicators/ground_speed_kt` | float | knots | Verified against `DataRefs.txt` |
+| `sim/cockpit2/gauges/indicators/true_airspeed_kts_pilot` | float | knots | Verified against `DataRefs.txt` |
+| `sim/cockpit2/gauges/indicators/ground_track_mag_pilot` | float | degrees magnetic | Verified against `DataRefs.txt` |
+| `sim/cockpit2/gauges/indicators/wind_speed_kts` | float | knots | Verified against `DataRefs.txt` |
+| `sim/cockpit2/gauges/indicators/wind_heading_deg_mag` | float | degrees magnetic, direction wind is **from** | Verified against `DataRefs.txt`; the "from" convention is community-sourced and unverified, pending the device check |
+| `sim/cockpit2/temperature/outside_air_temp_degc` | float | °C | Verified against `DataRefs.txt` |
+| `sim/cockpit2/gauges/indicators/TAT_pilot` | float | °C | Verified against `DataRefs.txt`; present from X-Plane 12.3 onward, so it is missing on older installs |
+| `sim/flightmodel/weight/m_fuel_total` | float | kg, always (mass unit only; the Web API gives no fuel density to convert to volume) | Verified against `DataRefs.txt` |
+| `sim/time/zulu_time_sec` | float | seconds since midnight zulu | Verified against `DataRefs.txt` |
+| `sim/time/local_time_sec` | float | seconds since midnight local | Verified against `DataRefs.txt` |
+| `sim/time/is_in_replay` | int | 0 or 1 | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/gps_dme_distance_nm` | float | nautical miles | Community-sourced and unverified |
+| `sim/cockpit2/radios/indicators/gps_dme_time_min` | float | minutes | Community-sourced and unverified |
+| `sim/cockpit2/radios/indicators/gps_nav_id` | data (base64, NUL-padded) | identifier text | Community-sourced and unverified; decoded with `decodeDataRefString(value, 'data')`, the same decoder identification uses |
+
+Wind is shown as "Wind (from)", the meteorological convention X-Plane's own instruments use; the
+device check (smoke test row 57) confirms a wind set to 270°/15 kt reads `270° / 15 kt`, not the
+reciprocal.
+
+The pause flag, `sim/time/paused` (float, 0 or 1), is community-sourced and unverified like the
+three GPS names above, which is why `connection-health`'s binding to it is optional; the PAUSED
+badge falls back to the link's own paused signal (`activity === 'paused'`) either way, so the two
+can never disagree.

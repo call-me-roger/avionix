@@ -197,6 +197,58 @@ through `expo-keep-awake` (a wake lock on the web, best effort; holds and releas
 another, so a release never races a wake-lock request still in flight). Night is a third palette: black
 background, nothing brighter than a relative luminance of 0.30.
 
+## Flight data
+
+`flight-data` and `gps-destination` (`src/domain/aircraft/profiles/generic.ts`, profile version
+1.1.0) are two more profile features, read by the Flight data panel and the docked strip that
+replace the interim Basic data panel. Every binding in both is `required: false`: several names
+(the three GPS ones, and the pause flag `connection-health` already binds) are community-sourced
+rather than confirmed against Laminar's `DataRefs.txt`, so a wrong or absent name degrades only its
+own field instead of the whole feature (see `docs/xplane.md`).
+
+**Freshness is the link's, not the value's.** X-Plane's WebSocket streams only values that changed
+(delta-only after the first update), so a steady fuel reading or a constant OAT arrives once and
+never again — its `receivedAt` says when it last changed, not whether it is still true. Marking each
+value stale by its own timestamp would call a perfectly current reading "stale" after a couple of
+quiet seconds. Instead every value's freshness is F-02's heartbeat freshness, the same
+`panelLinkStatus` every other panel already uses: current while the link is live, muted and marked
+"not live" together the moment the heartbeat falls behind.
+
+**The badge.** `simulatorBadge(state, activity, inReplay)` (`src/domain/flight-data/sim-state.ts`)
+returns `'paused' | 'replay' | null`: replay wins over paused (a replay is usually paused too, and
+"replay" is the word that explains the numbers), and only a connected link can show either — a
+remembered replay flag surviving a dropped link would be stale news, not a badge. Pause status comes
+from `connection-health`'s own `activity === 'paused'`, never a second read of the pause flag, so the
+strip's badge and the status bar can never disagree.
+
+**Units.** `src/domain/units/units.ts` is the one conversion and formatting module for fuel (kg/lb),
+temperature (°C/°F) and distance (nm/km); speeds and directions stay in knots and degrees, which is
+what every pilot-facing instrument uses. `src/application/unit-preferences.ts` persists the choice
+under `avionix.units` (zod-validated, defaults kg/°C/nm, a corrupt or unknown field falls back on its
+own, the same best-effort contract as the theme preference). `UnitsProvider` mounts inside `AppShell`
+and exposes `useUnits()`; Setup's **Units** section, after Display, offers each unit as a row of
+radio chips. The Flight data panel, the strip, and later the moving map (F-13) and flight recorder
+(F-14) all read the same preference through the same functions, so no two screens can disagree about
+a number.
+
+**The docked strip.** `FlightDataStrip` renders one row of four values — ground speed, wind, fuel,
+sim zulu — plus the badge, mounted by `AppShell` between the status bar and the body on every panel
+route except Setup (no demand there) and Flight data itself (it would repeat the panel). The whole
+row is one pressable at least 48 dp tall that opens Flight data, or a plain (non-pressable) view when
+Flight data is hidden from the switcher. Its visibility is a setting, `strip: boolean` in
+`avionix.panels` (default `true`), toggled from Setup → Panels ("Show the flight data strip on every
+panel"). The shell's `setDemand` call is the union of the active panel's own features and, only while
+the strip is visible, `flight-data`: the strip costs its DataRefs solely when it is actually shown,
+the same demand discipline every other panel follows.
+
+**Retiring Basic data.** The interim Basic data panel is gone; Flight data takes its place, first in
+the registry. `normaliseLayout` (`src/application/panel-layout.ts`) carries a small
+`RETIRED_PANEL_IDS` map (`{ 'basic-data': 'flight-data' }`): a stored `last` or `hidden` entry for a
+retired id is rewritten to its successor before unknown ids are dropped, so a pilot who last had
+Basic data open reopens on Flight data instead of being thrown back to Setup. The mapping only
+applies when the id is not itself still a known one, so a panel is never redirected out from under
+itself while it is still registered.
+
 ## Error model
 
 Everything that crosses into the application layer is an `AvionixError` with a stable `code`
