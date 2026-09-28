@@ -5,6 +5,7 @@ import {
   FEATURE_FLIGHT_DATA,
   FEATURE_GPS_DESTINATION,
   GENERIC_DATAREFS as D,
+  GENERIC_PROFILE,
 } from '@/domain/aircraft/profiles/generic';
 import { destinationView } from '@/domain/flight-data/destination';
 import { ConnectorClient } from '@/infrastructure/connector/connector-client';
@@ -69,7 +70,14 @@ describe('flight data against the mock X-Plane', () => {
     });
   };
 
+  const flightDataNames = (
+    GENERIC_PROFILE.features.find((feature) => feature.id === FEATURE_FLIGHT_DATA)?.bindings ?? []
+  ).map((binding) => binding.name);
+
   it('tracks every field and decodes the GPS identifier', async () => {
+    // The feature declares 11 flight-data DataRefs; every one of them should have a value once
+    // connected, not just the two this test happens to poll on (final-fixes #9).
+    expect(flightDataNames).toHaveLength(11);
     const session = createSession();
     session.setDemand([FEATURE_FLIGHT_DATA, FEATURE_GPS_DESTINATION]);
     await session.connect(server.host, server.port);
@@ -78,6 +86,9 @@ describe('flight data against the mock X-Plane', () => {
     server.setDataRefValue(D.groundSpeed, 150);
     server.setDataRefValue(D.fuelTotal, 1200);
     await until(() => value(D.groundSpeed) === 150 && value(D.fuelTotal) === 1200);
+    for (const name of flightDataNames) {
+      expect(value(name)).not.toBeUndefined();
+    }
     expect(destinationOf(session)).toEqual({
       kind: 'shown',
       id: 'KSEA',

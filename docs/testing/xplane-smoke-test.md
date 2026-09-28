@@ -83,7 +83,7 @@ Record results at the bottom.
 | 54 | iOS: on Heading, tap "New heading" (portrait and landscape) | The panel scrolls so the field and Set stay above the keyboard | |
 | 55 | Cessna 172 in flight, open Flight data | Ground speed, TAS, track and wind match X-Plane's own readouts (Data Output or the map) | |
 | 56 | Compare Fuel remaining with X-Plane's Weight & Balance page, in kg, then switch Units → Fuel to lb | Same total; the lb figure is the kg figure × 2.2046 | |
-| 57 | Set a wind from 270 at 15 kt in X-Plane's weather | Wind (from) reads `270° / 15 kt`, not `090°` | |
+| 57 | Set a wind from 270° true at 15 kt in X-Plane's weather | Wind (from) is magnetic (`wind_heading_deg_mag`), not the true direction set in the weather UI: it reads the set direction minus the local magnetic variation (about 255° at KSEA), at 15 kt; it must not read the reciprocal (~075° magnetic or ~090° true) | |
 | 58 | Load the default Cessna with a GPS Direct-To (e.g. KSEA) | GPS destination shows the identifier, a distance and a time; clear the Direct-To → "No destination set in the GPS." | |
 | 59 | Load an add-on with its own FMS (e.g. Zibo 737) | "No destination available on this aircraft."; the other fields keep working | |
 | 60 | Pause X-Plane, then start a replay | PAUSED badge with values bright, then REPLAY | |

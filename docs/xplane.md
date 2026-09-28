@@ -119,11 +119,12 @@ or panel.
 | `sim/cockpit2/radios/indicators/gps_dme_time_min` | float | minutes | Community-sourced and unverified |
 | `sim/cockpit2/radios/indicators/gps_nav_id` | data (base64, NUL-padded) | identifier text | Community-sourced and unverified; decoded with `decodeDataRefString(value, 'data')`, the same decoder identification uses |
 
-Wind is shown as "Wind (from)", the meteorological convention X-Plane's own instruments use; the
-device check (smoke test row 57) confirms a wind set to 270°/15 kt reads `270° / 15 kt`, not the
-reciprocal.
+Wind is shown as "Wind (from)", the meteorological convention X-Plane's own instruments use. The
+DataRef itself is magnetic (`wind_heading_deg_mag`) while X-Plane's weather UI sets a true
+direction, so the device check (smoke test row 57) confirms a wind set to 270° true reads the
+magnetic equivalent (about 255° at KSEA), not the reciprocal.
 
 The pause flag, `sim/time/paused` (float, 0 or 1), is community-sourced and unverified like the
-three GPS names above, which is why `connection-health`'s binding to it is optional; the PAUSED
-badge falls back to the link's own paused signal (`activity === 'paused'`) either way, so the two
-can never disagree.
+three GPS names above, which is why `connection-health`'s binding to it is optional. If it does not
+resolve, activity becomes `pausedOrStalled` and no PAUSED badge shows: the badge only ever comes
+from `activity === 'paused'`, never from a guess.
