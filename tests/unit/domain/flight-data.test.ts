@@ -60,11 +60,16 @@ describe('formatting', () => {
     expect(formatDistance(10, 'km')).toBe('19 km');
   });
 
+  it('decides one-decimal vs whole on the rounded value, not the raw one', () => {
+    expect(formatDistance(9.96, 'nm')).toBe('10 nm');
+  });
+
   it('shows time to go as h:mm, capped', () => {
     expect(formatTimeToGo(65.2)).toBe('1:05');
     expect(formatTimeToGo(0)).toBe('0:00');
     expect(formatTimeToGo(99 * 60 + 59)).toBe('99:59');
     expect(formatTimeToGo(6000)).toBe('more than 99 h');
+    expect(formatTimeToGo(5999.6)).toBe('more than 99 h');
   });
 });
 
@@ -81,6 +86,11 @@ describe('simulatorBadge', () => {
 
   it('says nothing while running', () => {
     expect(simulatorBadge('connected', 'running', 0)).toBeNull();
+  });
+
+  it('says nothing when no flight is loaded, even with a remembered replay flag', () => {
+    expect(simulatorBadge('connected', 'noFlight', 1)).toBeNull();
+    expect(simulatorBadge('connected', 'noFlight', 0)).toBeNull();
   });
 
   it.each(['disconnected', 'reconnecting', 'error', 'connecting', 'pairing'] as const)(

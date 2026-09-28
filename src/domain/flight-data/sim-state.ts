@@ -15,7 +15,8 @@ export function simulatorBadge(
   activity: SimulatorActivity,
   inReplay: DataRefValue | undefined,
 ): SimBadge | null {
-  if (state !== 'connected') {
+  // No flight is loaded at the main menu: any remembered replay flag from before is not news.
+  if (state !== 'connected' || activity === 'noFlight') {
     return null;
   }
   if (typeof inReplay === 'number' && inReplay >= 0.5) {

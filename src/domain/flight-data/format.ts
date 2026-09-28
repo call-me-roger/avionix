@@ -66,16 +66,21 @@ export function formatClock(secondsSinceMidnight: number): string {
 
 export function formatDistance(nm: number, unit: DistanceUnit): string {
   const value = convertDistance(nm, unit);
-  const text = Math.abs(value) < 10 ? value.toFixed(1) : String(whole(value));
+  // Decide one-decimal vs whole on the value already rounded to one decimal, so 9.96 (which
+  // rounds to 10.0) reads "10", never "10.0".
+  const rounded = Math.round(value * 10) / 10;
+  const text = Math.abs(rounded) < 10 ? rounded.toFixed(1) : String(whole(rounded));
   return `${text} ${UNIT_LABEL.distance[unit]}`;
 }
 
 export const MAX_TIME_TO_GO_MIN = 99 * 60 + 59;
 
 export function formatTimeToGo(minutes: number): string {
-  if (minutes > MAX_TIME_TO_GO_MIN) {
+  // Round first, then compare with the cap, so a value that rounds down to exactly the cap (e.g.
+  // 5999.001) still reads "99:59" rather than being wrongly reported as over it.
+  const total = Math.max(0, whole(minutes));
+  if (total > MAX_TIME_TO_GO_MIN) {
     return 'more than 99 h';
   }
-  const total = Math.max(0, whole(minutes));
   return `${Math.floor(total / 60)}:${pad2(total % 60)}`;
 }
