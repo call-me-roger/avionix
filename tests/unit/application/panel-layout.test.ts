@@ -1,6 +1,7 @@
 import {
   DEFAULT_PANEL_LAYOUT,
   PANEL_LAYOUT_STORAGE_KEY,
+  RETIRED_PANEL_IDS,
   SETUP_ROUTE,
   canHidePanel,
   loadPanelLayout,
@@ -8,49 +9,53 @@ import {
   resolveRoute,
   savePanelLayout,
   setPanelHidden,
+  setStripShown,
   visiblePanelIds,
 } from '@/application/panel-layout';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 
-const KNOWN = ['basic-data', 'heading'];
+const KNOWN = ['flight-data', 'heading'];
 
 describe('panel layout rules', () => {
   it('opens on Setup the first time, where the pilot connects', () => {
-    expect(DEFAULT_PANEL_LAYOUT).toEqual({ hidden: [], last: SETUP_ROUTE });
+    expect(DEFAULT_PANEL_LAYOUT).toEqual({ hidden: [], last: SETUP_ROUTE, strip: true });
   });
 
   it('drops ids this release does not know, and duplicates', () => {
     expect(
-      normaliseLayout({ hidden: ['gone', 'heading', 'heading'], last: 'gone' }, KNOWN),
-    ).toEqual({ hidden: ['heading'], last: SETUP_ROUTE });
+      normaliseLayout({ hidden: ['gone', 'heading', 'heading'], last: 'gone', strip: true }, KNOWN),
+    ).toEqual({ hidden: ['heading'], last: SETUP_ROUTE, strip: true });
   });
 
   it('never leaves every panel hidden', () => {
-    expect(normaliseLayout({ hidden: ['basic-data', 'heading'], last: 'setup' }, KNOWN)).toEqual({
+    expect(
+      normaliseLayout({ hidden: ['flight-data', 'heading'], last: 'setup', strip: true }, KNOWN),
+    ).toEqual({
       hidden: [],
       last: SETUP_ROUTE,
+      strip: true,
     });
   });
 
   it('lists visible panels in registry order', () => {
-    expect(visiblePanelIds({ hidden: ['basic-data'], last: SETUP_ROUTE }, KNOWN)).toEqual([
-      'heading',
-    ]);
+    expect(
+      visiblePanelIds({ hidden: ['flight-data'], last: SETUP_ROUTE, strip: true }, KNOWN),
+    ).toEqual(['heading']);
   });
 
   it('restores Setup or an available panel, else falls back', () => {
     expect(resolveRoute(SETUP_ROUTE, KNOWN)).toBe(SETUP_ROUTE);
     expect(resolveRoute('heading', KNOWN)).toBe('heading');
-    expect(resolveRoute('heading', ['basic-data'])).toBe('basic-data');
+    expect(resolveRoute('heading', ['flight-data'])).toBe('flight-data');
     expect(resolveRoute('heading', [])).toBe(SETUP_ROUTE);
   });
 
   it('hides and shows a panel, but never the last visible one', () => {
-    const shown = { hidden: [], last: SETUP_ROUTE };
+    const shown = { hidden: [], last: SETUP_ROUTE, strip: true };
     const oneHidden = setPanelHidden(shown, KNOWN, 'heading', true);
     expect(oneHidden.hidden).toEqual(['heading']);
-    expect(canHidePanel(oneHidden, KNOWN, 'basic-data')).toBe(false);
-    expect(setPanelHidden(oneHidden, KNOWN, 'basic-data', true)).toBe(oneHidden);
+    expect(canHidePanel(oneHidden, KNOWN, 'flight-data')).toBe(false);
+    expect(setPanelHidden(oneHidden, KNOWN, 'flight-data', true)).toBe(oneHidden);
     expect(setPanelHidden(oneHidden, KNOWN, 'heading', false).hidden).toEqual([]);
     expect(setPanelHidden(shown, KNOWN, 'unknown', true)).toBe(shown);
   });
@@ -59,14 +64,16 @@ describe('panel layout rules', () => {
 describe('panel layout persistence', () => {
   it('round-trips under the documented key', async () => {
     const storage = createMemorySettingsStorage();
-    await savePanelLayout(storage, { hidden: ['heading'], last: 'basic-data' });
+    await savePanelLayout(storage, { hidden: ['heading'], last: 'flight-data', strip: true });
     expect(JSON.parse((await storage.getItem(PANEL_LAYOUT_STORAGE_KEY)) ?? 'null')).toEqual({
       hidden: ['heading'],
-      last: 'basic-data',
+      last: 'flight-data',
+      strip: true,
     });
     await expect(loadPanelLayout(storage, KNOWN)).resolves.toEqual({
       hidden: ['heading'],
-      last: 'basic-data',
+      last: 'flight-data',
+      strip: true,
     });
   });
 
@@ -102,5 +109,64 @@ describe('panel layout persistence', () => {
     };
     await expect(loadPanelLayout(broken, KNOWN)).resolves.toEqual(DEFAULT_PANEL_LAYOUT);
     await expect(savePanelLayout(broken, DEFAULT_PANEL_LAYOUT)).resolves.toBeUndefined();
+  });
+});
+
+describe('the strip setting and retired ids', () => {
+  it('shows the strip by default, including for a layout saved before the setting existed', async () => {
+    expect(DEFAULT_PANEL_LAYOUT.strip).toBe(true);
+    const storage = createMemorySettingsStorage();
+    await storage.setItem(
+      PANEL_LAYOUT_STORAGE_KEY,
+      JSON.stringify({ hidden: [], last: 'heading' }),
+    );
+    await expect(loadPanelLayout(storage, KNOWN)).resolves.toEqual({
+      hidden: [],
+      last: 'heading',
+      strip: true,
+    });
+  });
+
+  it('reopens a pilot who last had Basic data on Flight data', async () => {
+    const storage = createMemorySettingsStorage();
+    await storage.setItem(
+      PANEL_LAYOUT_STORAGE_KEY,
+      JSON.stringify({ hidden: ['basic-data'], last: 'basic-data' }),
+    );
+    await expect(loadPanelLayout(storage, KNOWN)).resolves.toEqual({
+      hidden: ['flight-data'],
+      last: 'flight-data',
+      strip: true,
+    });
+    expect(RETIRED_PANEL_IDS).toEqual({ 'basic-data': 'flight-data' });
+  });
+
+  it('keeps a retired id as-is while it is still registered as a known panel', async () => {
+    const storage = createMemorySettingsStorage();
+    await storage.setItem(
+      PANEL_LAYOUT_STORAGE_KEY,
+      JSON.stringify({ hidden: [], last: 'basic-data' }),
+    );
+    await expect(loadPanelLayout(storage, ['basic-data', 'heading'])).resolves.toEqual({
+      hidden: [],
+      last: 'basic-data',
+      strip: true,
+    });
+  });
+
+  it('round-trips the strip setting', async () => {
+    const storage = createMemorySettingsStorage();
+    await savePanelLayout(storage, { hidden: [], last: 'heading', strip: false });
+    await expect(loadPanelLayout(storage, KNOWN)).resolves.toEqual({
+      hidden: [],
+      last: 'heading',
+      strip: false,
+    });
+  });
+
+  it('turns the strip on and off, returning the same layout when nothing changes', () => {
+    const layout = { hidden: [], last: SETUP_ROUTE, strip: true };
+    expect(setStripShown(layout, true)).toBe(layout);
+    expect(setStripShown(layout, false)).toEqual({ ...layout, strip: false });
   });
 });

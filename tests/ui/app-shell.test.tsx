@@ -123,6 +123,7 @@ describe('AppShell', () => {
       expect(JSON.parse((await storage.getItem(PANEL_LAYOUT_STORAGE_KEY)) ?? 'null')).toEqual({
         hidden: [],
         last: 'heading',
+        strip: true,
       }),
     );
   });

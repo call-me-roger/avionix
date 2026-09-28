@@ -6,6 +6,7 @@ import {
   loadPanelLayout,
   savePanelLayout,
   setPanelHidden,
+  setStripShown,
 } from '@/application/panel-layout';
 import type { SettingsStorage } from '@/application/settings-store';
 
@@ -61,6 +62,10 @@ export function usePanelLayout(storage: SettingsStorage, knownIds: readonly stri
     (id: string, hidden: boolean) => update((prev) => setPanelHidden(prev, knownIds, id, hidden)),
     [update, knownIds],
   );
+  const setStrip = useCallback(
+    (shown: boolean) => update((prev) => setStripShown(prev, shown)),
+    [update],
+  );
 
-  return { layout, ready, setLast, setHidden };
+  return { layout, ready, setLast, setHidden, setStrip };
 }
