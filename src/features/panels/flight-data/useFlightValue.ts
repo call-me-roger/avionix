@@ -1,5 +1,11 @@
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 
+/** Adapts a single-value formatter to `useFlightValue`'s `values: readonly number[]` signature. */
+export const one =
+  (format: (value: number) => string) =>
+  (values: readonly number[]): string =>
+    format(values[0] ?? 0);
+
 export interface FlightValueState {
   text: string;
   /** A DataRef this value needs did not resolve on this aircraft (F-11 R7). */

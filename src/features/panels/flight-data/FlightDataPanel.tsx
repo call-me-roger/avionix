@@ -17,6 +17,7 @@ import { EVERYWHERE, type PanelDescriptor } from '@/domain/panels/panel';
 import { DestinationBlock } from '@/features/panels/flight-data/DestinationBlock';
 import { FlightValue } from '@/features/panels/flight-data/FlightValue';
 import { SimBadge } from '@/features/panels/flight-data/SimBadge';
+import { one } from '@/features/panels/flight-data/useFlightValue';
 import { useUnits } from '@/features/units/UnitsProvider';
 
 export const FLIGHT_DATA_PANEL: PanelDescriptor = {
@@ -25,9 +26,6 @@ export const FLIGHT_DATA_PANEL: PanelDescriptor = {
   features: [FEATURE_FLIGHT_DATA, FEATURE_GPS_DESTINATION],
   supports: EVERYWHERE,
 };
-
-const one = (format: (value: number) => string) => (values: readonly number[]) =>
-  format(values[0] ?? 0);
 
 /** F-11: the numbers no instrument shows. Read-only (R11): nothing here writes or activates. */
 export function FlightDataPanel() {

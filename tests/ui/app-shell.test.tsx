@@ -331,6 +331,15 @@ describe('AppShell', () => {
     expect(session.setDemand).toHaveBeenLastCalledWith([FEATURE_HEADING_CONTROL]);
   });
 
+  it('is not pressable when Flight data is hidden from the switcher', async () => {
+    const { services } = makeServices(liveSnapshot(), await seeded('heading', ['flight-data']));
+    await render(tree(services));
+    await screen.findByTestId('panel-heading');
+    const strip = screen.getByTestId('flight-data-strip');
+    expect(strip.props.accessibilityRole).not.toBe('button');
+    expect(strip.props.accessibilityLabel).not.toContain('Open flight data.');
+  });
+
   it('gives every switcher item and the status bar a full-size touch target', async () => {
     const { services } = makeServices();
     await render(tree(services));

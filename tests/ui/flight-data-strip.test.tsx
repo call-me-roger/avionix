@@ -76,7 +76,9 @@ describe('FlightDataStrip', () => {
   it('is a plain, non-pressable view when onOpen is null', async () => {
     await renderStrip(live(), null);
     expect(screen.queryByRole('button')).toBeNull();
-    expect(screen.getByTestId('flight-data-strip')).toBeTruthy();
+    const strip = screen.getByTestId('flight-data-strip');
+    expect(strip).toBeTruthy();
+    expect(strip.props.accessibilityLabel).not.toContain('Open flight data.');
   });
 
   it('says not live when disconnected', async () => {
@@ -100,6 +102,20 @@ describe('FlightDataStrip', () => {
         'Flight data: ground speed 142 kt, wind 270° / 12 kt, fuel n/a, sim zulu 14:05:09Z. Open flight data.',
       ),
     ).toBeTruthy();
+  });
+
+  it('reads n/a for a missing sim zulu DataRef, with no trailing Z', async () => {
+    await renderStrip(withMissing(live(), D.zuluTime));
+    const strip = screen.getByTestId('flight-data-strip');
+    expect(strip.props.accessibilityLabel).toContain('sim zulu n/a.');
+    expect(strip.props.accessibilityLabel).not.toContain('n/aZ');
+  });
+
+  it('reads — for sim zulu when no flight is loaded, with no trailing Z', async () => {
+    await renderStrip(live({ health: { ...live().health, activity: 'noFlight', live: false } }));
+    const strip = screen.getByTestId('flight-data-strip');
+    expect(strip.props.accessibilityLabel).toContain('sim zulu —,');
+    expect(strip.props.accessibilityLabel).not.toContain('—Z');
   });
 
   it('is at least 48 dp in both directions', async () => {
