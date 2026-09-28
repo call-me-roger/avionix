@@ -8,7 +8,9 @@ import {
 import { BUNDLED_PROFILES } from '@/domain/aircraft/profiles/catalog';
 import {
   FEATURE_CONNECTION_HEALTH,
+  FEATURE_FLIGHT_DATA,
   FEATURE_FLIGHT_TELEMETRY,
+  FEATURE_GPS_DESTINATION,
   FEATURE_HEADING_CONTROL,
   GENERIC_COMMANDS,
   GENERIC_DATAREFS,
@@ -53,6 +55,20 @@ describe('profileBindings', () => {
       GENERIC_DATAREFS.airspeed,
       GENERIC_DATAREFS.headingBug,
       GENERIC_COMMANDS.headingUp,
+      GENERIC_DATAREFS.groundSpeed,
+      GENERIC_DATAREFS.trueAirspeed,
+      GENERIC_DATAREFS.groundTrack,
+      GENERIC_DATAREFS.windSpeed,
+      GENERIC_DATAREFS.windDirection,
+      GENERIC_DATAREFS.outsideAirTemp,
+      GENERIC_DATAREFS.totalAirTemp,
+      GENERIC_DATAREFS.fuelTotal,
+      GENERIC_DATAREFS.zuluTime,
+      GENERIC_DATAREFS.localTime,
+      GENERIC_DATAREFS.inReplay,
+      GENERIC_DATAREFS.gpsDistance,
+      GENERIC_DATAREFS.gpsTimeToGo,
+      GENERIC_DATAREFS.gpsDestinationId,
     ]);
   });
 });
@@ -81,11 +97,13 @@ describe('the generic profile', () => {
     expect(GENERIC_PROFILE.version).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('declares the three Stage 1 features', () => {
+  it('declares the Stage 1 features', () => {
     expect(GENERIC_PROFILE.features.map((feature) => feature.id)).toEqual([
       FEATURE_CONNECTION_HEALTH,
       FEATURE_FLIGHT_TELEMETRY,
       FEATURE_HEADING_CONTROL,
+      FEATURE_FLIGHT_DATA,
+      FEATURE_GPS_DESTINATION,
     ]);
   });
 
@@ -105,5 +123,31 @@ describe('the generic profile', () => {
 
   it('ships no named profiles yet; Stage 4 adds the first one', () => {
     expect(BUNDLED_PROFILES.named).toEqual([]);
+  });
+
+  it('makes every flight data and destination binding optional and read-only', () => {
+    for (const featureId of [FEATURE_FLIGHT_DATA, FEATURE_GPS_DESTINATION]) {
+      const feature = findFeature(GENERIC_PROFILE, featureId);
+      expect(feature).not.toBeNull();
+      for (const binding of feature?.bindings ?? []) {
+        expect({ name: binding.name, required: binding.required, write: binding.write }).toEqual({
+          name: binding.name,
+          required: false,
+          write: undefined,
+        });
+        expect(binding.kind).toBe('dataref');
+      }
+    }
+  });
+
+  it('names every DataRef once across the whole profile', () => {
+    const names = GENERIC_PROFILE.features.flatMap((feature) =>
+      feature.bindings.map((binding) => binding.name),
+    );
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('bumps the profile version for the new bindings', () => {
+    expect(GENERIC_PROFILE.version).toBe('1.1.0');
   });
 });

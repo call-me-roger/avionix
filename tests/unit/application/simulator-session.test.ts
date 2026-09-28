@@ -60,6 +60,28 @@ const DEFAULT_FAKE_DATAREFS: Record<string, FakeDataRef> = {
   [IDENTITY_DATAREFS.tailNumber]: { id: 7, valueType: 'data', value: base64('N172SP') },
 };
 
+/**
+ * F-11's flight data and GPS destination bindings, absent from `DEFAULT_FAKE_DATAREFS` so every
+ * other test in this file keeps its existing subscription-demand id lists; a test whose intent is
+ * "every feature available" merges these in instead.
+ */
+const FLIGHT_DATA_FAKE_DATAREFS: Record<string, FakeDataRef> = {
+  [GENERIC_DATAREFS.groundSpeed]: { id: 20, valueType: 'float' },
+  [GENERIC_DATAREFS.trueAirspeed]: { id: 21, valueType: 'float' },
+  [GENERIC_DATAREFS.groundTrack]: { id: 22, valueType: 'float' },
+  [GENERIC_DATAREFS.windSpeed]: { id: 23, valueType: 'float' },
+  [GENERIC_DATAREFS.windDirection]: { id: 24, valueType: 'float' },
+  [GENERIC_DATAREFS.outsideAirTemp]: { id: 25, valueType: 'float' },
+  [GENERIC_DATAREFS.totalAirTemp]: { id: 26, valueType: 'float' },
+  [GENERIC_DATAREFS.fuelTotal]: { id: 27, valueType: 'float' },
+  [GENERIC_DATAREFS.zuluTime]: { id: 28, valueType: 'float' },
+  [GENERIC_DATAREFS.localTime]: { id: 29, valueType: 'float' },
+  [GENERIC_DATAREFS.inReplay]: { id: 30, valueType: 'int' },
+  [GENERIC_DATAREFS.gpsDistance]: { id: 31, valueType: 'float' },
+  [GENERIC_DATAREFS.gpsTimeToGo]: { id: 32, valueType: 'float' },
+  [GENERIC_DATAREFS.gpsDestinationId]: { id: 33, valueType: 'data', value: base64('KSEA') },
+};
+
 class FakeClient implements SimulatorClient {
   updateListeners = new Set<(updates: DataRefUpdate[]) => void>();
   closeListeners = new Set<(info: SocketCloseInfo) => void>();
@@ -1652,7 +1674,9 @@ describe('no flight loaded', () => {
 
 describe('aircraft compatibility', () => {
   it('identifies the aircraft and selects the generic profile', async () => {
-    const { session, snapshot } = setup();
+    const client = new FakeClient();
+    client.dataRefs = { ...client.dataRefs, ...FLIGHT_DATA_FAKE_DATAREFS };
+    const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
     const { compatibility } = snapshot();
     expect(compatibility.identity).toEqual({
