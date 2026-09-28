@@ -179,9 +179,12 @@ when the strip is visible, `flight-data`. The strip therefore costs its DataRefs
 ### Retiring `basic-data`
 
 The Basic data panel and its test go. `normaliseLayout` learns a small map of retired panel ids,
-`{ 'basic-data': 'flight-data' }`: a stored `last` or `hidden` entry for a retired id is rewritten to
-its successor before unknown ids are dropped, so a pilot who last had Basic data open reopens on
-Flight data rather than being thrown back to Setup.
+`{ 'basic-data': 'flight-data' }`: a stored `last` entry for a retired id is rewritten to its
+successor before unknown ids are dropped, so a pilot who last had Basic data open reopens on Flight
+data rather than being thrown back to Setup. A retired id in `hidden` is not rewritten — it is
+simply dropped, like any other unknown id, so a hidden Basic data does not carry over as a hidden
+Flight data; the new panel appears by default, per F-04's rule that a panel added in a later release
+is shown rather than silently staying off.
 
 ## Session and snapshot
 

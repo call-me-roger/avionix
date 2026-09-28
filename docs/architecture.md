@@ -243,11 +243,13 @@ the same demand discipline every other panel follows.
 
 **Retiring Basic data.** The interim Basic data panel is gone; Flight data takes its place, first in
 the registry. `normaliseLayout` (`src/application/panel-layout.ts`) carries a small
-`RETIRED_PANEL_IDS` map (`{ 'basic-data': 'flight-data' }`): a stored `last` or `hidden` entry for a
-retired id is rewritten to its successor before unknown ids are dropped, so a pilot who last had
-Basic data open reopens on Flight data instead of being thrown back to Setup. The mapping only
-applies when the id is not itself still a known one, so a panel is never redirected out from under
-itself while it is still registered.
+`RETIRED_PANEL_IDS` map (`{ 'basic-data': 'flight-data' }`): a stored `last` entry for a retired id
+is rewritten to its successor before unknown ids are dropped, so a pilot who last had Basic data
+open reopens on Flight data instead of being thrown back to Setup. The mapping only applies to
+`last`, and only when the id is not itself still a known one, so a panel is never redirected out
+from under itself while it is still registered. A retired id in `hidden` is not rewritten — it is
+simply dropped, like any other unknown id, so a hidden Basic data never carries over as a hidden
+Flight data; the new panel appears by default.
 
 ## Error model
 

@@ -133,8 +133,11 @@ describe('the strip setting and retired ids', () => {
       PANEL_LAYOUT_STORAGE_KEY,
       JSON.stringify({ hidden: ['basic-data'], last: 'basic-data' }),
     );
+    // `last` is migrated to its successor, but a retired id in `hidden` is simply dropped (like
+    // any other unknown id) rather than carried over as its successor, so Flight data is not
+    // hidden by a stored `basic-data` and appears by default (controller ruling, final-fixes #7).
     await expect(loadPanelLayout(storage, KNOWN)).resolves.toEqual({
-      hidden: ['flight-data'],
+      hidden: [],
       last: 'flight-data',
       strip: true,
     });

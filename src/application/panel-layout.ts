@@ -43,11 +43,11 @@ function successor(id: string, knownIds: readonly string[]): string {
 }
 
 export function normaliseLayout(layout: PanelLayout, knownIds: readonly string[]): PanelLayout {
-  const hidden = [
-    ...new Set(
-      layout.hidden.map((id) => successor(id, knownIds)).filter((id) => knownIds.includes(id)),
-    ),
-  ];
+  // A retired id in `hidden` is not rewritten to its successor: it is simply dropped, like any
+  // other unknown id, so a panel that replaces a retired one is not carried over hidden and
+  // appears by default (F-04's rule that a new panel is shown; controller ruling on final-fixes
+  // #7, overriding the spec's earlier migration of `hidden`).
+  const hidden = [...new Set(layout.hidden.filter((id) => knownIds.includes(id)))];
   const mappedLast = successor(layout.last, knownIds);
   const last =
     mappedLast === SETUP_ROUTE || knownIds.includes(mappedLast) ? mappedLast : SETUP_ROUTE;
