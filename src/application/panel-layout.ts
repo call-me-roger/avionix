@@ -21,9 +21,10 @@ export interface PanelLayout {
 export const DEFAULT_PANEL_LAYOUT: PanelLayout = { hidden: [], last: SETUP_ROUTE, strip: true };
 
 /**
- * Panels that were replaced, and what replaced them. A stored `last` or `hidden` entry for a
- * retired id is rewritten before unknown ids are dropped, so a pilot is not thrown back to Setup
- * because a placeholder panel was retired.
+ * Panels that were replaced, and what replaced them. A stored `last` entry for a retired id is
+ * rewritten before unknown ids are dropped, so a pilot is not thrown back to Setup because a
+ * placeholder panel was retired. A retired id in `hidden` is not rewritten; `normaliseLayout`
+ * drops it like any other unknown id instead, so the successor is not carried over hidden.
  */
 export const RETIRED_PANEL_IDS: Readonly<Record<string, string>> = { 'basic-data': 'flight-data' };
 
@@ -34,9 +35,11 @@ const storedSchema = z.object({
 });
 
 /**
- * A retired id is mapped only when it is not itself still a known id: while `basic-data` is
- * still registered as a panel (until it is replaced), a stored `last` or `hidden` entry for it
- * is left alone, so a pilot mid-launch is not moved off a panel that is still there.
+ * Used for `last` only (`hidden` is handled separately in `normaliseLayout`, which drops a
+ * retired id rather than mapping it). A retired id is mapped only when it is not itself still a
+ * known id: while `basic-data` is still registered as a panel (until it is replaced), a stored
+ * `last` entry for it is left alone, so a pilot mid-launch is not moved off a panel that is
+ * still there.
  */
 function successor(id: string, knownIds: readonly string[]): string {
   return knownIds.includes(id) ? id : (RETIRED_PANEL_IDS[id] ?? id);

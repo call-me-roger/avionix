@@ -87,7 +87,7 @@ Record results at the bottom.
 | 58 | Load the default Cessna with a GPS Direct-To (e.g. KSEA) | GPS destination shows the identifier, a distance and a time; clear the Direct-To → "No destination set in the GPS." | |
 | 59 | Load an add-on with its own FMS (e.g. Zibo 737) | "No destination available on this aircraft."; the other fields keep working | |
 | 60 | Pause X-Plane, then start a replay | PAUSED badge with values bright, then REPLAY | |
-| 61 | On Heading, on a phone in portrait and landscape | The strip shows four values on one row under the status bar; tapping it opens Flight data | |
+| 61 | On Heading, on the smallest phone available, in portrait and landscape | The strip shows four values on one row under the status bar and stays on one row; tapping it opens Flight data. Pause X-Plane: the strip still fits on one row, with the PAUSED badge inline. Disconnect: the strip still fits on one row, muted, with "not live" shown | |
 | 62 | Setup → Panels, turn the strip off | It disappears from every panel and stays off after a restart | |
 
 Rows 44 and 45 verify the keep-awake hold, and row 53 the safe areas: behaviour no automated test
