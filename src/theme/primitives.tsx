@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 
 import { useTheme, useThemedStyles } from '@/theme/theme-context';
-import type { Theme } from '@/theme/tokens';
+import { keyboardAppearanceFor, type Theme } from '@/theme/tokens';
 
 const makeStyles = (theme: Theme) => ({
   section: {
@@ -79,7 +79,7 @@ export function ThemedTextInput({ style, ...rest }: TextInputProps) {
   return (
     <TextInput
       placeholderTextColor={theme.colors.placeholder}
-      keyboardAppearance={theme.mode}
+      keyboardAppearance={keyboardAppearanceFor(theme.mode)}
       style={[styles.input, style]}
       {...rest}
     />

@@ -3,7 +3,7 @@ import React from 'react';
 
 import type { DiscoverySnapshot } from '@/application/connector-discovery';
 import {
-  type LastOperation,
+  type OperationOutcome,
   type SessionSnapshot,
   initialSnapshot,
 } from '@/application/session-snapshot';
@@ -16,7 +16,8 @@ import { CompatibilityScreen } from '@/features/aircraft/CompatibilityScreen';
 import { DiscoveredConnectors } from '@/features/connection/DiscoveredConnectors';
 import { DiagnosticsScreen } from '@/features/health/DiagnosticsScreen';
 import { LinkStatusBar } from '@/features/health/LinkStatusBar';
-import { ControlPanel } from '@/features/mvp/ControlPanel';
+import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
+import { PANELS } from '@/features/panels/registry';
 import { ThemeProvider } from '@/theme/theme-context';
 
 const mockShareText = jest.fn(async (_text: string, _title: string) => undefined);
@@ -75,19 +76,19 @@ function discoverySnapshotFor(code: AvionixErrorCode): DiscoverySnapshot {
   };
 }
 
-/**
- * The raw text is planted in `message` too, on purpose: `ControlPanel` must ignore it and
- * render `failure` through `FailureNotice` instead, exactly as `simulator-session.ts` never
- * does for a real `WRITE_FAILED`/`COMMAND_FAILED`.
- */
-function lastOperationFor(code: AvionixErrorCode): LastOperation {
-  return {
-    kind: 'write',
-    ok: false,
-    message: RAW,
-    failure: { code, step: 'operation' },
-    at: 10_000,
-  };
+function failedOutcome(code: AvionixErrorCode): OperationOutcome {
+  return { status: 'failed', failure: { code, step: 'operation' }, refusal: null, at: 10_000 };
+}
+
+/** Every binding name a panel's features declare, each with a failed outcome for `code`. */
+function failedOperationsFor(code: AvionixErrorCode): SessionSnapshot['operations'] {
+  const operations: Record<string, OperationOutcome> = {};
+  for (const feature of GENERIC_PROFILE.features) {
+    for (const binding of feature.bindings) {
+      operations[binding.name] = failedOutcome(code);
+    }
+  }
+  return operations;
 }
 
 describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
@@ -102,19 +103,26 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
           onDisconnect={jest.fn()}
         />
         <DiscoveredConnectors snapshot={discoverySnapshotFor(code)} enabled onSelect={jest.fn()} />
-        <ControlPanel
-          enabled
-          feature={null}
-          lastOperation={lastOperationFor(code)}
-          onWriteHeading={jest.fn()}
-          onHeadingUp={jest.fn()}
-        />
         <AircraftSummary
           snapshot={snapshotFor(code)}
           now={10_000}
           onOpenCompatibility={jest.fn()}
         />
         <CompatibilityScreen snapshot={snapshotFor(code)} now={10_000} onRecheck={jest.fn()} />
+        {PANELS.map(({ descriptor, Component }) => (
+          <PanelFrame
+            key={descriptor.id}
+            title={descriptor.title}
+            snapshot={{ ...snapshotFor(code), operations: failedOperationsFor(code) }}
+            now={10_000}
+            actions={{
+              write: jest.fn(async () => undefined),
+              activate: jest.fn(async () => undefined),
+            }}
+          >
+            <Component />
+          </PanelFrame>
+        ))}
       </ThemeProvider>,
     );
     expect(screen.queryByText(new RegExp('http://'))).toBeNull();

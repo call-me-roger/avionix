@@ -14,16 +14,20 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
   development build; Expo Go and the web keep the typed host and port.
 - Detect the X-Plane version and the supported Web API versions; use the highest of v2/v3.
 - Resolve DataRefs and commands by name (ids are session-specific and never stored).
-- Subscribe to the loaded profile's DataRefs over WebSocket (up to seven today: four telemetry
-  names and the three identification ones) and display live values.
-- Write the autopilot heading bug and activate `sim/autopilot/heading_up`.
+- Two interim panels, reachable from a switcher (a bottom bar in portrait, a side rail in
+  landscape) alongside Setup: Basic data (indicated airspeed, heading bug, sim running time) and
+  Heading (write the autopilot heading bug, activate `sim/autopilot/heading_up`). The WebSocket
+  subscribes only the visible panel's DataRefs, plus identification and connection health, and
+  follows a panel switch within one update cycle.
 - Identify the loaded aircraft and name it, its profile and its add-on version in an Aircraft
-  panel on the main screen; a new aircraft is picked up without reconnecting.
+  panel in Setup; a new aircraft is picked up without reconnecting.
 - A compatibility view behind that panel: every feature with its status, and every binding the
   aircraft does not have named with the DataRef or command it needed, plus a "Check again" button.
 - Bounded automatic reconnect after an unexpected socket loss.
 - A diagnostics panel that shows exactly which step failed.
-- Light / dark theme with a system / light / dark toggle; the choice is persisted.
+- Light, dark and night themes, with a system / auto-night / light / dark / night toggle in
+  Setup's Display section; the choice is persisted. While a panel is open and the link is
+  connected or reconnecting, the screen is held awake.
 
 Not in scope: any real avionics UI, device roles, accounts, cloud. See
 `docs/superpowers/specs/2026-09-14-avionix-mvp-design.md` for the full design. The staged product
@@ -68,10 +72,11 @@ code on start. See `docs/connector.md`.
 
 1. Start X-Plane 12.1.4+ on a computer on the same Wi-Fi network as the phone.
 2. Find the computer's LAN IP address (for example `192.168.1.100`).
-3. In Avionix enter that IP and port 8080, press Connect, then type the six-digit pairing code the
-   connector printed. Connecting straight to X-Plane still works: use port 8086 and no code.
-4. The diagnostics section shows each step: HTTP, capabilities, WebSocket, DataRef resolution,
-   command resolution, subscription.
+3. Avionix opens on Setup; enter that IP and port 8080, press Connect, then type the six-digit
+   pairing code the connector printed. Connecting straight to X-Plane still works: use port 8086
+   and no code.
+4. Tap the status bar to reveal Setup's diagnostics section, which shows each step: HTTP,
+   capabilities, WebSocket, DataRef resolution, command resolution, subscription.
 
 `localhost` or `127.0.0.1` never works from a physical phone. See `docs/development.md` for
 emulator specifics and `docs/testing/xplane-smoke-test.md` for the manual verification procedure.

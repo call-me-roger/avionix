@@ -118,6 +118,8 @@ export class MockXPlaneServer {
   incomingTrafficDisabled = false;
   /** When true, WebSocket requests are recorded but never answered (for cancellation tests). */
   pauseReplies = false;
+  /** When set, every DataRef write is refused with this X-Plane error code (HTTP 400). */
+  rejectWritesWith: string | null = null;
   /** Tokens handed out by `/avionix/pair`, in issue order. */
   readonly issuedTokens: string[] = [];
 
@@ -182,6 +184,20 @@ export class MockXPlaneServer {
 
   getDataRefByName(name: string): MockDataRef | undefined {
     return [...this.dataRefs.values()].find((d) => d.name === name);
+  }
+
+  /** Every DataRef name some socket is subscribed to right now, sorted. */
+  subscribedDataRefNames(): string[] {
+    const names = new Set<string>();
+    for (const subs of this.subscriptions.values()) {
+      for (const id of subs.keys()) {
+        const dataRef = this.dataRefs.get(id);
+        if (dataRef !== undefined) {
+          names.add(dataRef.name);
+        }
+      }
+    }
+    return [...names].sort();
   }
 
   setDataRefValue(name: string, value: DataRefValue): void {
@@ -411,6 +427,9 @@ export class MockXPlaneServer {
         }
         if (!isRecord(parsed) || !isDataRefValue(parsed.data)) {
           this.fail(400, 'invalid_body', 'The request body is not valid JSON');
+        }
+        if (this.rejectWritesWith !== null) {
+          this.fail(400, this.rejectWritesWith, 'The dataref cannot be written');
         }
         this.writeValue(dataRef, parsed.data, index);
         this.writes.push(

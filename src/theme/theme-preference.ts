@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { SettingsStorage } from '@/application/settings-store';
 import type { ThemeMode } from '@/theme/tokens';
 
-export const THEME_PREFERENCES = ['system', 'light', 'dark'] as const;
+export const THEME_PREFERENCES = ['system', 'auto-night', 'light', 'dark', 'night'] as const;
 
 export type ThemePreference = (typeof THEME_PREFERENCES)[number];
 
@@ -13,14 +13,22 @@ export const THEME_STORAGE_KEY = 'avionix.theme';
 
 const storedSchema = z.object({ preference: z.enum([...THEME_PREFERENCES]) });
 
+/**
+ * `system` follows the device between light and dark; `auto-night` follows it between light and
+ * night, which is how F-04 R6's night presentation "can follow the device".
+ */
 export function resolveThemeMode(
   preference: ThemePreference,
   systemScheme: 'light' | 'dark' | null | undefined,
 ): ThemeMode {
-  if (preference === 'system') {
-    return systemScheme === 'dark' ? 'dark' : 'light';
+  switch (preference) {
+    case 'system':
+      return systemScheme === 'dark' ? 'dark' : 'light';
+    case 'auto-night':
+      return systemScheme === 'dark' ? 'night' : 'light';
+    default:
+      return preference;
   }
-  return preference;
 }
 
 export async function loadThemePreference(storage: SettingsStorage): Promise<ThemePreference> {

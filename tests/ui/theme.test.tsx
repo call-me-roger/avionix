@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import '@testing-library/react-native/matchers';
 import React from 'react';
-import { Text } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { ThemeProvider, useTheme, useThemePreference } from '@/theme/theme-context';
@@ -82,6 +82,33 @@ describe('ThemeToggle', () => {
 
     await fireEvent.press(screen.getByLabelText('Theme System'));
     await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('light'));
+  });
+
+  it('offers night and applies it', async () => {
+    const storage = createMemorySettingsStorage();
+    await render(
+      <ThemeProvider storage={storage} systemSchemeOverride="light">
+        <ThemeToggle />
+        <Probe />
+      </ThemeProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('ready'));
+    await fireEvent.press(screen.getByLabelText('Theme Night'));
+    await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('night'));
+    expect(screen.getByLabelText('Theme System (night)')).not.toBeChecked();
+  });
+
+  it('meets the touch rules on every chip', async () => {
+    await render(
+      <ThemeProvider storage={createMemorySettingsStorage()} systemSchemeOverride="light">
+        <ThemeToggle />
+      </ThemeProvider>,
+    );
+    for (const chip of screen.getAllByRole('radio')) {
+      const style = StyleSheet.flatten(chip.props.style);
+      expect(style.minHeight).toBeGreaterThanOrEqual(48);
+      expect(style.minWidth).toBeGreaterThanOrEqual(48);
+    }
   });
 
   it('a choice made before the stored preference loads is not overwritten', async () => {

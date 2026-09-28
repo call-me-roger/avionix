@@ -14,7 +14,8 @@ import {
 import type { PairingTokenStore } from '@/application/pairing-token-store';
 import {
   type FailureRef,
-  type LastOperation,
+  type OperationOutcome,
+  type OperationRefusal,
   type SessionSnapshot,
   type StepStatus,
   type TelemetrySample,
@@ -22,15 +23,16 @@ import {
   initialSnapshot,
 } from '@/application/session-snapshot';
 import { Store } from '@/application/store';
+import { wantedDataRefIds } from '@/application/subscription-demand';
 import { isIdentified } from '@/domain/aircraft/aircraft-identity';
 import type { BindingResults } from '@/domain/aircraft/availability';
 import { deriveAvailability } from '@/domain/aircraft/availability';
 import { identityFieldFor } from '@/domain/aircraft/identity-datarefs';
 import type { AircraftProfile } from '@/domain/aircraft/profile';
-import { commandBindingOf, profileBindings, writeBindingOf } from '@/domain/aircraft/profile';
+import { findFeature, profileBindings } from '@/domain/aircraft/profile';
 import { selectProfile } from '@/domain/aircraft/profile-selection';
 import { BUNDLED_PROFILES } from '@/domain/aircraft/profiles/catalog';
-import { FEATURE_HEADING_CONTROL, GENERIC_DATAREFS } from '@/domain/aircraft/profiles/generic';
+import { GENERIC_DATAREFS } from '@/domain/aircraft/profiles/generic';
 import { versionWarning } from '@/domain/aircraft/version-check';
 import {
   type XPlaneConnectionConfig,
@@ -43,7 +45,12 @@ import type { ConnectStep } from '@/domain/health/failure-explanation';
 import { type ApiVersion, negotiateApiVersion } from '@/domain/simulator/api-version';
 import { decodeDataRefString } from '@/domain/simulator/dataref-string';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
-import type { CommandDescriptor, DataRefDescriptor, DataRefUpdate } from '@/domain/simulator/types';
+import type {
+  CommandDescriptor,
+  DataRefDescriptor,
+  DataRefUpdate,
+  DataRefValue,
+} from '@/domain/simulator/types';
 import type { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { type Logger, silentLogger } from '@/infrastructure/logging/logger';
 import { type AuthProvider, noAuth } from '@/infrastructure/xplane/auth';
@@ -151,6 +158,15 @@ interface ActiveConnection {
   commandsByName: Map<string, CommandDescriptor>;
   subscribedIds: Set<number>;
   /**
+   * Which ids' updates are accepted, and as which name. Separate from `dataRefsById` on purpose:
+   * an id enters here before its subscribe request is sent, because X-Plane's first update after
+   * a subscribe carries the value even if it never changes again and may arrive before the reply;
+   * an id leaves before its unsubscribe, so a late update cannot resurrect a pruned value.
+   */
+  streamById: Map<number, DataRefDescriptor>;
+  /** Subscription changes on this socket run one at a time, in order. */
+  subscriptionQueue: Promise<void>;
+  /**
    * A compatibility pass running against *this* connection. The pass runs over REST, so one
    * already in flight when the socket drops completes normally, long after a reconnect may have
    * installed a new connection; holding the marker here is what stops that dead pass from
@@ -160,6 +176,11 @@ interface ActiveConnection {
   /** An aircraft change that arrived while this connection's pass was running, owed a pass. */
   recheckPending: boolean;
   unsubscribe: () => void;
+}
+
+/** What a log line may say about a failure: its code, never its message (which can carry a URL). */
+function errorCode(error: unknown): string {
+  return toAvionixError(error, { code: 'UNKNOWN', message: '' }).code;
 }
 
 export class SimulatorSession {
@@ -173,6 +194,10 @@ export class SimulatorSession {
   private active: ActiveConnection | null = null;
   /** The profile the session is working from; the generic one until a probe says otherwise. */
   private profile: AircraftProfile = BUNDLED_PROFILES.generic;
+  /** The visible panel's feature ids; null until a panel says (stream everything). */
+  private demand: readonly string[] | null = null;
+  /** The last demand sync failed, so the same demand set again is not a no-op. */
+  private demandSyncFailed = false;
   private cancelReconnect: (() => void) | null = null;
   private cancelReadiness: (() => void) | null = null;
   /**
@@ -190,6 +215,12 @@ export class SimulatorSession {
   /** Serializes the token store writes so a late clear cannot undo a later pairing. */
   private tokenWrites: Promise<void> = Promise.resolve();
   private roundTrips: number[] = [];
+  /**
+   * Bumped by every `connect()`. An operation settling after a later connect belongs to a session
+   * the pilot has left, possibly on another simulator, so its outcome must not appear against the
+   * new session's control.
+   */
+  private operationsEpoch = 0;
 
   constructor(private readonly deps: SimulatorSessionDeps) {
     this.policy = deps.reconnectPolicy ?? DEFAULT_RECONNECT_POLICY;
@@ -201,6 +232,7 @@ export class SimulatorSession {
   }
 
   async connect(host: string, port: string | number): Promise<void> {
+    this.operationsEpoch += 1;
     this.teardown();
     // A fresh connect (possibly to a different host) must not let samples from whatever was
     // measured before contaminate this session's median. An automatic reconnect to the same
@@ -246,8 +278,8 @@ export class SimulatorSession {
 
   /**
    * Keeps the last known diagnostics, connector and health facts (F-02 R11): a disconnected
-   * session should still show the user what happened and why, not blank out. Telemetry is
-   * cleared because those values are genuinely gone the moment the link drops.
+   * session should still show the user what happened and why, not blank out. Telemetry is kept
+   * as well: panels show the last known values, marked not live (F-04).
    */
   disconnect(): void {
     this.teardown();
@@ -263,7 +295,6 @@ export class SimulatorSession {
     this.store.setState((prev) => ({
       ...prev,
       state: this.settled(prev.state),
-      telemetry: {},
       reconnectAttempt: 0,
       health: {
         ...prev.health,
@@ -348,53 +379,45 @@ export class SimulatorSession {
     );
   }
 
-  async writeHeading(value: number): Promise<void> {
-    if (!Number.isFinite(value) || value < 0 || value > 360) {
-      this.recordOperation({
-        kind: 'write',
-        ok: false,
-        message: 'Heading must be between 0 and 360',
-        failure: null,
-      });
-      return;
-    }
-    const active = this.requireActive('write');
+  /**
+   * Writes one DataRef on behalf of a panel control (F-04). `name` must be a `write: true` DataRef
+   * binding of `featureId` in the active profile: a panel cannot write a name the compatibility
+   * check never vouched for. The outcome is recorded against `name` (R9); nothing here or in any
+   * panel displays the written value, which arrives from the simulator like any other (R10).
+   */
+  async write(featureId: string, name: string, value: DataRefValue): Promise<void> {
+    const epoch = this.operationsEpoch;
+    const active = this.connectedOrRefuse(epoch, name);
     if (active === null) {
       return;
     }
-    const binding = writeBindingOf(active.profile, FEATURE_HEADING_CONTROL);
-    const heading = binding === null ? undefined : active.dataRefsByName.get(binding.name);
-    if (heading === undefined || !this.featureUsable(FEATURE_HEADING_CONTROL)) {
-      // R6: a control whose binding is missing or read-only is inert, and says why in the
-      // pilot's words rather than naming a DataRef the message has no room to explain.
-      this.recordOperation({
-        kind: 'write',
-        ok: false,
-        message: 'Heading control is not available on this aircraft',
-        failure: null,
-      });
+    const binding = findFeature(active.profile, featureId)?.bindings.find(
+      (candidate) =>
+        candidate.kind === 'dataref' && candidate.name === name && candidate.write === true,
+    );
+    const descriptor = binding === undefined ? undefined : active.dataRefsByName.get(name);
+    // A read-only resolution is a miss for a `write: true` binding (profile.ts), but
+    // `probeBindings` still records the descriptor and an optional binding can leave the
+    // feature `partial`: without this, `featureUsable` alone would let a write reach a locked
+    // DataRef. `compatibility.bindings` is the one place that distinguishes "resolved" from
+    // "resolved and writable".
+    const resolvedWritable = this.store.getSnapshot().compatibility.bindings[name]?.status === 'ok';
+    if (descriptor === undefined || !resolvedWritable || !this.featureUsable(featureId)) {
+      this.refuse(epoch, name, 'unavailable');
       return;
     }
+    this.recordOutcome(epoch, name, { status: 'pending', failure: null, refusal: null });
     try {
-      await this.timed(active.generation, () => active.client.setDataRefValue(heading.id, value));
-      this.recordOperation({
-        kind: 'write',
-        ok: true,
-        message: `Wrote heading ${value}`,
-        failure: null,
-      });
+      await this.timed(active.generation, () =>
+        active.client.setDataRefValue(descriptor.id, value),
+      );
+      this.recordOutcome(epoch, name, { status: 'ok', failure: null, refusal: null });
     } catch (error) {
-      const avionixError = toAvionixError(error, { code: 'WRITE_FAILED', message: 'Write failed' });
-      // `message` keeps the raw AvionixError text for the logger only; the UI renders the
-      // failure through FailureNotice(code, step), never this string (F-02 R9).
-      this.recordOperation({
-        kind: 'write',
-        ok: false,
-        message: avionixError.message,
-        failure: { code: avionixError.code, step: 'operation' },
-      });
-      // Writes go over authenticated HTTP, so this is a place the connector can disown us.
-      this.returnToPairingIfUnauthorized(avionixError);
+      this.recordFailure(
+        epoch,
+        name,
+        toAvionixError(error, { code: 'WRITE_FAILED', message: 'Write failed' }),
+      );
     }
   }
 
@@ -412,42 +435,67 @@ export class SimulatorSession {
     await this.runRecheck(active.generation);
   }
 
-  async activateHeadingUp(): Promise<void> {
-    const active = this.requireActive('command');
+  /**
+   * Which profile features the visible panel reads (F-04 R12). The socket is reconciled to carry
+   * those DataRefs plus identification and connection health; values both the old and the new
+   * demand use are neither dropped nor re-subscribed (R3). While there is no live connection the
+   * demand is only recorded, and the next connect subscribes from it.
+   */
+  setDemand(featureIds: readonly string[]): void {
+    const next = [...new Set(featureIds)].sort();
+    if (
+      this.demand !== null &&
+      !this.demandSyncFailed &&
+      next.join('\n') === this.demand.join('\n')
+    ) {
+      return;
+    }
+    this.demand = next;
+    this.demandSyncFailed = false;
+    const active = this.active;
     if (active === null) {
       return;
     }
-    const binding = commandBindingOf(active.profile, FEATURE_HEADING_CONTROL);
-    const command = binding === null ? undefined : active.commandsByName.get(binding.name);
-    if (command === undefined || !this.featureUsable(FEATURE_HEADING_CONTROL)) {
-      this.recordOperation({
-        kind: 'command',
-        ok: false,
-        message: 'Heading control is not available on this aircraft',
-        failure: null,
-      });
+    void this.withSubscriptionLock(active, () => this.syncSubscriptions(active)).catch(
+      (error: unknown) => {
+        // The link is still up. The same demand asked for again must retry rather than be taken
+        // for one already on the socket; a demand change or a re-check also reconciles.
+        this.demandSyncFailed = true;
+        this.logger.warn('subscription update failed', {
+          code: toAvionixError(error, { code: 'SUBSCRIPTION_FAILED', message: '' }).code,
+        });
+      },
+    );
+  }
+
+  /** Presses (or, with `durationSec`, holds) a command binding of `featureId`. */
+  async activate(featureId: string, name: string, durationSec = 0): Promise<void> {
+    const epoch = this.operationsEpoch;
+    const active = this.connectedOrRefuse(epoch, name);
+    if (active === null) {
       return;
     }
+    const binding = findFeature(active.profile, featureId)?.bindings.find(
+      (candidate) => candidate.kind === 'command' && candidate.name === name,
+    );
+    const command = binding === undefined ? undefined : active.commandsByName.get(name);
+    const resolvedOk = this.store.getSnapshot().compatibility.bindings[name]?.status === 'ok';
+    if (command === undefined || !resolvedOk || !this.featureUsable(featureId)) {
+      this.refuse(epoch, name, 'unavailable');
+      return;
+    }
+    this.recordOutcome(epoch, name, { status: 'pending', failure: null, refusal: null });
     try {
-      await this.timed(active.generation, () => active.client.activateCommand(command.id, 0));
-      this.recordOperation({
-        kind: 'command',
-        ok: true,
-        message: `Activated ${command.name}`,
-        failure: null,
-      });
+      await this.timed(active.generation, () =>
+        active.client.activateCommand(command.id, durationSec),
+      );
+      this.recordOutcome(epoch, name, { status: 'ok', failure: null, refusal: null });
     } catch (error) {
-      const avionixError = toAvionixError(error, {
-        code: 'COMMAND_FAILED',
-        message: 'Command failed',
-      });
-      this.recordOperation({
-        kind: 'command',
-        ok: false,
-        message: avionixError.message,
-        failure: { code: avionixError.code, step: 'operation' },
-      });
-      this.returnToPairingIfUnauthorized(avionixError);
+      this.recordFailure(
+        epoch,
+        name,
+        toAvionixError(error, { code: 'COMMAND_FAILED', message: 'Command failed' }),
+      );
     }
   }
 
@@ -470,7 +518,7 @@ export class SimulatorSession {
    */
   private queueTokenWrite(write: () => Promise<void>): Promise<void> {
     const next = this.tokenWrites.then(write, write).catch((error: unknown) => {
-      this.logger.debug('token store write failed', { message: String(error) });
+      this.logger.debug('token store write failed', { code: errorCode(error) });
     });
     this.tokenWrites = next;
     return next;
@@ -506,22 +554,47 @@ export class SimulatorSession {
     return status === 'available' || status === 'partial';
   }
 
-  private requireActive(kind: LastOperation['kind']): ActiveConnection | null {
+  private connectedOrRefuse(epoch: number, name: string): ActiveConnection | null {
     const active = this.active;
     if (active === null || this.store.getSnapshot().state !== 'connected') {
-      this.recordOperation({
-        kind,
-        ok: false,
-        message: 'Avionix is not connected to X-Plane',
-        failure: null,
-      });
+      this.refuse(epoch, name, 'notConnected');
       return null;
     }
     return active;
   }
 
-  private recordOperation(operation: Omit<LastOperation, 'at'>): void {
-    this.store.setState((prev) => ({ ...prev, lastOperation: { ...operation, at: this.now() } }));
+  private refuse(epoch: number, name: string, refusal: OperationRefusal): void {
+    this.recordOutcome(epoch, name, { status: 'failed', failure: null, refusal });
+  }
+
+  /**
+   * `AvionixError.message` is deliberately neither stored nor logged: it can carry URLs, and the
+   * WebSocket URL carries the connector token. The code is enough for FailureNotice and the log.
+   */
+  private recordFailure(epoch: number, name: string, error: AvionixError): void {
+    if (epoch !== this.operationsEpoch) {
+      return;
+    }
+    this.logger.warn('operation failed', { code: error.code });
+    this.recordOutcome(epoch, name, {
+      status: 'failed',
+      failure: { code: error.code, step: 'operation' },
+      refusal: null,
+    });
+    // Writes and commands go over authenticated HTTP, so this is a place the connector can
+    // disown us.
+    this.returnToPairingIfUnauthorized(error);
+  }
+
+  private recordOutcome(epoch: number, name: string, outcome: Omit<OperationOutcome, 'at'>): void {
+    if (epoch !== this.operationsEpoch) {
+      return;
+    }
+    const at = this.now();
+    this.store.setState((prev) => ({
+      ...prev,
+      operations: { ...prev.operations, [name]: { ...outcome, at } },
+    }));
   }
 
   /**
@@ -590,7 +663,8 @@ export class SimulatorSession {
     if (this.returnToPairingIfUnauthorized(error)) {
       return;
     }
-    this.logger.warn('session failure', { code: error.code, message: error.message, mode });
+    // The code only: a message can carry a URL, and the WebSocket URL carries the connector token.
+    this.logger.warn('session failure', { code: error.code, mode });
     const endedAt = this.now();
     this.store.setState((prev) => ({
       ...prev,
@@ -1007,7 +1081,7 @@ export class SimulatorSession {
         recount = await client.getDataRefCount();
       } catch (error) {
         // A failed re-check must not invent a readiness hold: keep the count we already had.
-        this.logger.debug('dataref count re-check failed', { message: String(error) });
+        this.logger.debug('dataref count re-check failed', { code: errorCode(error) });
       }
       if (!this.isCurrent(generation)) {
         return abandon();
@@ -1040,6 +1114,8 @@ export class SimulatorSession {
       dataRefsByName: bindings.dataRefsByName,
       commandsByName: bindings.commandsByName,
       subscribedIds: new Set<number>(),
+      streamById: new Map<number, DataRefDescriptor>(),
+      subscriptionQueue: Promise.resolve(),
       recheckInFlight: false,
       recheckPending: false,
       unsubscribe: () => {
@@ -1052,13 +1128,11 @@ export class SimulatorSession {
     this.applyBindings(bindings);
 
     this.setStep((d) => ({ ...d, subscription: 'pending' }));
-    const ids = [...bindings.dataRefsById.keys()];
     try {
-      await this.timed(generation, () => client.subscribeDataRefs(ids.map((id) => ({ id }))));
+      await this.withSubscriptionLock(active, () => this.syncSubscriptions(active));
       if (!this.isCurrent(generation)) {
         return 'failed';
       }
-      active.subscribedIds = new Set(ids);
       this.setStep((d) => ({ ...d, subscription: 'ok' }));
       this.store.setState((prev) => ({
         ...prev,
@@ -1182,7 +1256,7 @@ export class SimulatorSession {
         .catch((thrown: unknown) => {
           // transition() throws AvionixError on an illegal edge; this timer has no other
           // caller to receive it, so a bug here must not become an unhandled rejection.
-          this.logger.warn('readiness retry failed unexpectedly', { message: String(thrown) });
+          this.logger.warn('readiness retry failed unexpectedly', { code: errorCode(thrown) });
         });
     }, READINESS_RETRY_MS);
   }
@@ -1213,18 +1287,87 @@ export class SimulatorSession {
     );
   }
 
+  private withSubscriptionLock(active: ActiveConnection, run: () => Promise<void>): Promise<void> {
+    const result = active.subscriptionQueue.then(run, run);
+    active.subscriptionQueue = result.catch(() => undefined);
+    return result;
+  }
+
+  /**
+   * Reconciles the socket with the wanted set for `source` (the installed bindings by default, or
+   * a re-check's new ones before they are installed) and the demand current when this runs, so a
+   * queue of changes ends on the latest demand. Added ids are subscribed before removed ids are
+   * dropped: a brief superset costs nothing, while the reverse could leave the socket without the
+   * identification DataRefs if the subscribe then failed.
+   */
+  private async syncSubscriptions(
+    active: ActiveConnection,
+    source: Pick<ActiveConnection, 'profile' | 'dataRefsById'> = active,
+  ): Promise<void> {
+    if (this.active !== active) {
+      return;
+    }
+    const target = wantedDataRefIds(source.profile, source.dataRefsById, this.demand);
+    const added = [...target].filter((id) => !active.subscribedIds.has(id));
+    const removed = [...active.subscribedIds].filter((id) => !target.has(id));
+    if (added.length > 0) {
+      for (const id of added) {
+        const descriptor = source.dataRefsById.get(id);
+        if (descriptor !== undefined) {
+          active.streamById.set(id, descriptor);
+        }
+      }
+      try {
+        await this.timed(active.generation, () =>
+          active.client.subscribeDataRefs(added.map((id) => ({ id }))),
+        );
+      } catch (error) {
+        for (const id of added) {
+          active.streamById.delete(id);
+        }
+        throw error;
+      }
+      active.subscribedIds = new Set([...active.subscribedIds, ...added]);
+    }
+    if (this.active !== active) {
+      return;
+    }
+    const stream = new Map<number, DataRefDescriptor>();
+    for (const id of target) {
+      const descriptor = source.dataRefsById.get(id);
+      if (descriptor !== undefined) {
+        stream.set(id, descriptor);
+      }
+    }
+    active.streamById = stream;
+    const names = new Set([...stream.values()].map((descriptor) => descriptor.name));
+    this.store.setState((prev) => {
+      const kept = Object.entries(prev.telemetry).filter(([name]) => names.has(name));
+      if (kept.length === Object.keys(prev.telemetry).length) {
+        return prev;
+      }
+      // A value the socket no longer carries would otherwise be shown as current when its panel
+      // returns; a dash for one update cycle is honest (spec decision 7).
+      return { ...prev, telemetry: Object.fromEntries(kept) };
+    });
+    if (removed.length > 0) {
+      await active.client.unsubscribeDataRefs(removed.map((id) => ({ id })));
+      active.subscribedIds = new Set([...active.subscribedIds].filter((id) => target.has(id)));
+    }
+  }
+
   private applyUpdates(generation: number, updates: DataRefUpdate[]): void {
     const active = this.active;
     if (active === null || !this.isCurrent(generation) || active.generation !== generation) {
       return;
     }
-    const dataRefsById = active.dataRefsById;
+    const streamById = active.streamById;
     // The Web API publishes no "aircraft changed" event. The identification DataRefs are
     // subscribed like any other, so a new aircraft announces itself here (R8).
     const known = this.store.getSnapshot().compatibility.identity;
     let identityChanged = false;
     for (const update of updates) {
-      const descriptor = dataRefsById.get(update.id);
+      const descriptor = streamById.get(update.id);
       if (descriptor === undefined) {
         continue;
       }
@@ -1242,7 +1385,7 @@ export class SimulatorSession {
       let health = prev.health;
       let changed = false;
       for (const update of updates) {
-        const descriptor = dataRefsById.get(update.id);
+        const descriptor = streamById.get(update.id);
         if (descriptor === undefined) {
           continue;
         }
@@ -1321,42 +1464,30 @@ export class SimulatorSession {
         this.logger.debug('compatibility re-check resolved no dataref, keeping the last result');
         return;
       }
-      const nextIds = new Set(bindings.dataRefsById.keys());
-      const added = [...nextIds].filter((id) => !active.subscribedIds.has(id));
-      const removed = [...active.subscribedIds].filter((id) => !nextIds.has(id));
-      // A delta, not a re-subscribe: unsubscribing everything would blank the telemetry for a
-      // frame on an aircraft change that usually keeps most of its names. Added first: a brief
-      // superset costs nothing, while dropping the old ids first would leave the socket short of
-      // them — the three identification DataRefs included, and they are the only thing that can
-      // ever announce the next aircraft — if the subscribe then failed. `subscribedIds` is
-      // updated as each call returns, so a delta that only half-happened is still recorded as it
-      // actually is on the socket.
-      if (added.length > 0) {
-        await active.client.subscribeDataRefs(added.map((id) => ({ id })));
-        active.subscribedIds = new Set([...active.subscribedIds, ...added]);
-      }
-      // A teardown landing in this gap would leave the unsubscribe below running against a closed
-      // socket, reporting a re-check failure for a connection that is simply gone.
-      if (this.active !== active) {
-        return;
-      }
-      if (removed.length > 0) {
-        await active.client.unsubscribeDataRefs(removed.map((id) => ({ id })));
-        active.subscribedIds = nextIds;
-      }
-      if (this.active !== active || !this.isCurrent(generation)) {
-        return;
-      }
-      active.profile = bindings.profile;
-      active.dataRefsById = bindings.dataRefsById;
-      active.dataRefsByName = bindings.dataRefsByName;
-      active.commandsByName = bindings.commandsByName;
-      this.profile = bindings.profile;
-      this.applyBindings(bindings);
+      // Toward the new bindings before they are installed: a delta that fails throws into the
+      // catch below, which keeps the last good result (F-03). The installation happens inside the
+      // same lock, so a demand change queued behind this sync reconciles against the new
+      // bindings; outside it, that sync could run first and drop the new aircraft's ids.
+      await this.withSubscriptionLock(active, async () => {
+        await this.syncSubscriptions(active, {
+          profile: bindings.profile,
+          dataRefsById: bindings.dataRefsById,
+        });
+        if (this.active !== active || !this.isCurrent(generation)) {
+          return;
+        }
+        active.profile = bindings.profile;
+        active.dataRefsById = bindings.dataRefsById;
+        active.dataRefsByName = bindings.dataRefsByName;
+        active.commandsByName = bindings.commandsByName;
+        this.profile = bindings.profile;
+        this.applyBindings(bindings);
+      });
     } catch (error) {
       // The link is still up: keep the last good result rather than blanking the panel because
-      // one re-check could not finish.
-      this.logger.warn('compatibility re-check failed', { message: String(error) });
+      // one re-check could not finish. The code only: a message can carry a URL, and the
+      // WebSocket URL carries the connector token.
+      this.logger.warn('compatibility re-check failed', { code: errorCode(error) });
     } finally {
       active.recheckInFlight = false;
       if (active.recheckPending) {
@@ -1421,7 +1552,6 @@ export class SimulatorSession {
           ...initialDiagnostics(snapshotDataRefNames(this.profile)),
           connector: prev.connector === null ? 'direct' : 'paired',
         },
-        telemetry: {},
       }));
       void this.runReconnectAttempt(generation, config, attempt);
     }, delayMs);
