@@ -146,7 +146,12 @@ describe('AppShell', () => {
       FEATURE_GPS_DESTINATION,
     ]);
     await fireEvent.press(screen.getByRole('tab', { name: 'Heading' }));
-    expect(session.setDemand).toHaveBeenLastCalledWith([FEATURE_HEADING_CONTROL]);
+    // The flight data strip is docked here too (strip shown by default), so its DataRefs join
+    // Heading's own.
+    expect(session.setDemand).toHaveBeenLastCalledWith([
+      FEATURE_FLIGHT_DATA,
+      FEATURE_HEADING_CONTROL,
+    ]);
   });
 
   it('opens Setup with diagnostics from the status bar on a panel', async () => {
@@ -293,6 +298,37 @@ describe('AppShell', () => {
     const notice = await screen.findByTestId('rotate-notice');
     expect(notice.props.accessibilityLiveRegion).toBe('polite');
     expect(notice.props.accessibilityRole).toBe('text');
+  });
+
+  it('docks the strip on other panels, not on Setup or on Flight data itself', async () => {
+    const { services } = makeServices(liveSnapshot(), await seeded('heading'));
+    await render(tree(services));
+    await screen.findByTestId('panel-heading');
+    expect(screen.getByTestId('flight-data-strip')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('flight-data-strip'));
+    expect(screen.getByTestId('panel-flight-data')).toBeTruthy();
+    expect(screen.queryByTestId('flight-data-strip')).toBeNull();
+    await fireEvent.press(screen.getByRole('tab', { name: 'Setup' }));
+    expect(screen.queryByTestId('flight-data-strip')).toBeNull();
+  });
+
+  it('asks for the flight data DataRefs only while the strip is visible', async () => {
+    const { services, session } = makeServices({}, await seeded('heading'));
+    await render(tree(services));
+    await screen.findByTestId('panel-heading');
+    await waitFor(() =>
+      expect(session.setDemand).toHaveBeenLastCalledWith([
+        FEATURE_FLIGHT_DATA,
+        FEATURE_HEADING_CONTROL,
+      ]),
+    );
+    await fireEvent.press(screen.getByRole('tab', { name: 'Setup' }));
+    await fireEvent.press(
+      screen.getByRole('switch', { name: 'Show the flight data strip on every panel' }),
+    );
+    await fireEvent.press(screen.getByRole('tab', { name: 'Heading' }));
+    expect(screen.queryByTestId('flight-data-strip')).toBeNull();
+    expect(session.setDemand).toHaveBeenLastCalledWith([FEATURE_HEADING_CONTROL]);
   });
 
   it('gives every switcher item and the status bar a full-size touch target', async () => {

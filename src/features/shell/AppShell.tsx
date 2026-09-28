@@ -4,9 +4,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useServices } from '@/app/services-context';
 import { SETUP_ROUTE, resolveRoute } from '@/application/panel-layout';
+import { FEATURE_FLIGHT_DATA } from '@/domain/aircraft/profiles/generic';
 import { panelFit } from '@/domain/panels/device-layout';
 import { shouldHoldScreenAwake } from '@/domain/panels/keep-awake-policy';
 import { LinkStatusBar } from '@/features/health/LinkStatusBar';
+import { FLIGHT_DATA_PANEL } from '@/features/panels/flight-data/FlightDataPanel';
+import { FlightDataStrip } from '@/features/panels/flight-data/FlightDataStrip';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { PANELS, type RegisteredPanel, findPanel } from '@/features/panels/registry';
 import { PanelSwitcher } from '@/features/shell/PanelSwitcher';
@@ -42,7 +45,7 @@ export function AppShell({ panels = PANELS }: { panels?: readonly RegisteredPane
   const { settingsStorage } = useServices();
   const deviceLayout = useDeviceLayout();
   const panelIds = useMemo(() => panels.map((panel) => panel.descriptor.id), [panels]);
-  const { layout, ready, setLast, setHidden } = usePanelLayout(settingsStorage, panelIds);
+  const { layout, ready, setLast, setHidden, setStrip } = usePanelLayout(settingsStorage, panelIds);
   const foreground = useAppForeground();
   const styles = useThemedStyles(makeStyles);
   const theme = useTheme();
@@ -68,8 +71,19 @@ export function AppShell({ panels = PANELS }: { panels?: readonly RegisteredPane
   );
   const active = route === SETUP_ROUTE ? null : findPanel(panels, route);
   const fit = active === null ? null : panelFit(active.descriptor, deviceLayout);
+  const flightDataShown = shown.some((panel) => panel.descriptor.id === FLIGHT_DATA_PANEL.id);
+  const stripVisible =
+    ready &&
+    layout.strip &&
+    active !== null &&
+    fit === 'fits' &&
+    active.descriptor.id !== FLIGHT_DATA_PANEL.id;
   // A string key, so the effect below fires on a change of features, not of array identity.
-  const demandKey = active !== null && fit === 'fits' ? active.descriptor.features.join('\n') : '';
+  const demanded = [
+    ...(active !== null && fit === 'fits' ? active.descriptor.features : []),
+    ...(stripVisible ? [FEATURE_FLIGHT_DATA] : []),
+  ];
+  const demandKey = [...new Set(demanded)].sort().join('\n');
 
   useEffect(() => {
     if (!ready) {
@@ -94,6 +108,7 @@ export function AppShell({ panels = PANELS }: { panels?: readonly RegisteredPane
   };
 
   const actions = useMemo(() => ({ write, activate }), [write, activate]);
+  const onOpenFlightData = flightDataShown ? () => setLast(FLIGHT_DATA_PANEL.id) : null;
   const landscape = deviceLayout.orientation === 'landscape';
   const switcher = (
     <PanelSwitcher
@@ -123,6 +138,9 @@ export function AppShell({ panels = PANELS }: { panels?: readonly RegisteredPane
           }}
         >
           <LinkStatusBar snapshot={snapshot} now={now} onOpenDiagnostics={onStatusBarPress} />
+          {stripVisible ? (
+            <FlightDataStrip snapshot={snapshot} now={now} onOpen={onOpenFlightData} />
+          ) : null}
         </View>
         {ready ? (
           <View
@@ -149,6 +167,7 @@ export function AppShell({ panels = PANELS }: { panels?: readonly RegisteredPane
                   layout={layout}
                   deviceLayout={deviceLayout}
                   onSetHidden={setHidden}
+                  onSetStrip={setStrip}
                 />
               ) : (
                 <>

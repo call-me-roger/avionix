@@ -12,6 +12,7 @@ import { DiscoveredConnectors } from '@/features/connection/DiscoveredConnectors
 import { DiagnosticsScreen } from '@/features/health/DiagnosticsScreen';
 import type { RegisteredPanel } from '@/features/panels/registry';
 import { PanelChooser } from '@/features/shell/PanelChooser';
+import { UnitsSection } from '@/features/units/UnitsSection';
 import { useConnectionSettings } from '@/hooks/useConnectionSettings';
 import { isDiscoveryState, useConnectorDiscovery } from '@/hooks/useConnectorDiscovery';
 import { useSimulatorSession } from '@/hooks/useSimulatorSession';
@@ -40,6 +41,7 @@ export function SetupScreen(props: {
   layout: PanelLayout;
   deviceLayout: DeviceLayout;
   onSetHidden: (id: string, hidden: boolean) => void;
+  onSetStrip: (shown: boolean) => void;
 }) {
   const { snapshot, now } = props;
   const { connect, disconnect, pair, recheckCompatibility } = useSimulatorSession();
@@ -111,12 +113,14 @@ export function SetupScreen(props: {
         <SectionTitle>Display</SectionTitle>
         <ThemeToggle />
       </Section>
+      <UnitsSection />
       <PanelChooser
         panels={props.panels}
         panelIds={props.panelIds}
         layout={props.layout}
         deviceLayout={props.deviceLayout}
         onSetHidden={props.onSetHidden}
+        onSetStrip={props.onSetStrip}
       />
     </ScrollView>
   );
