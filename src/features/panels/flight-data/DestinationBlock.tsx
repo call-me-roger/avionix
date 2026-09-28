@@ -4,27 +4,11 @@ import { Text, View } from 'react-native';
 import { GENERIC_DATAREFS as D } from '@/domain/aircraft/profiles/generic';
 import { destinationView } from '@/domain/flight-data/destination';
 import { formatDistance, formatTimeToGo } from '@/domain/flight-data/format';
+import { makeRowStyles } from '@/features/panels/flight-data/rowStyles';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import { useUnits } from '@/features/units/UnitsProvider';
 import { BodyText } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
-import type { Theme } from '@/theme/tokens';
-
-const makeStyles = (theme: Theme) => ({
-  row: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'baseline' as const,
-    gap: theme.spacing.sm,
-  },
-  value: {
-    color: theme.colors.text,
-    fontSize: theme.typography.titleSize,
-    fontWeight: 'bold' as const,
-    fontVariant: ['tabular-nums' as const],
-  },
-  stale: { color: theme.colors.textMuted },
-});
 
 const LABEL = 'GPS destination';
 
@@ -35,7 +19,7 @@ const LABEL = 'GPS destination';
 export function DestinationBlock() {
   const { snapshot, link } = usePanel();
   const { units } = useUnits();
-  const styles = useThemedStyles(makeStyles);
+  const styles = useThemedStyles(makeRowStyles);
   const view = destinationView({
     idStatus: snapshot.compatibility.bindings[D.gpsDestinationId]?.status,
     distanceStatus: snapshot.compatibility.bindings[D.gpsDistance]?.status,

@@ -1,26 +1,10 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 
+import { makeRowStyles } from '@/features/panels/flight-data/rowStyles';
 import { useFlightValue } from '@/features/panels/flight-data/useFlightValue';
 import { BodyText } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
-import type { Theme } from '@/theme/tokens';
-
-const makeStyles = (theme: Theme) => ({
-  row: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'baseline' as const,
-    gap: theme.spacing.sm,
-  },
-  value: {
-    color: theme.colors.text,
-    fontSize: theme.typography.titleSize,
-    fontWeight: 'bold' as const,
-    fontVariant: ['tabular-nums' as const],
-  },
-  stale: { color: theme.colors.textMuted },
-});
 
 /**
  * One flight-data value, formatted and unit-aware. Same row shape as `Readout` (F-04): a missing
@@ -36,7 +20,7 @@ export function FlightValue({
   format: (values: readonly number[]) => string;
 }) {
   const { text, missing, current } = useFlightValue(names, format);
-  const styles = useThemedStyles(makeStyles);
+  const styles = useThemedStyles(makeRowStyles);
   if (missing) {
     return (
       <View
