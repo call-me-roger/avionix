@@ -20,7 +20,7 @@ function Probe({ storage }: { storage: SettingsStorage }) {
         <Text>go setup</Text>
       </Pressable>
       <Pressable accessibilityRole="button" onPress={() => setHidden('flight-data', true)}>
-        <Text>hide basic</Text>
+        <Text>hide flight-data</Text>
       </Pressable>
       <Pressable accessibilityRole="button" onPress={() => setStrip(false)}>
         <Text>hide strip</Text>
@@ -47,7 +47,7 @@ describe('usePanelLayout', () => {
     await render(<Probe storage={storage} />);
     await waitFor(() => expect(screen.getByTestId('state')).toHaveTextContent('ready setup strip'));
     await fireEvent.press(screen.getByText('go heading'));
-    await fireEvent.press(screen.getByText('hide basic'));
+    await fireEvent.press(screen.getByText('hide flight-data'));
     await waitFor(async () =>
       expect(JSON.parse((await storage.getItem(PANEL_LAYOUT_STORAGE_KEY)) ?? 'null')).toEqual({
         hidden: ['flight-data'],

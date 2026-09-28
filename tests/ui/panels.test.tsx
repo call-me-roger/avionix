@@ -10,7 +10,6 @@ import {
   GENERIC_DATAREFS,
   GENERIC_PROFILE,
 } from '@/domain/aircraft/profiles/generic';
-import { BasicDataPanel } from '@/features/panels/basic-data/BasicDataPanel';
 import { HeadingPanel } from '@/features/panels/heading/HeadingPanel';
 import type { PanelActions } from '@/features/panels/primitives/PanelContext';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
@@ -56,7 +55,7 @@ async function renderPanel(
 
 describe('panel registry', () => {
   it('lists each panel once, in switcher order, never under the reserved Setup id', () => {
-    expect(PANEL_IDS).toEqual(['basic-data', 'heading']);
+    expect(PANEL_IDS).toEqual(['flight-data', 'heading']);
     expect(new Set(PANEL_IDS).size).toBe(PANEL_IDS.length);
     expect(PANEL_IDS).not.toContain(SETUP_ROUTE);
   });
@@ -73,44 +72,6 @@ describe('panel registry', () => {
   it('finds a panel by id', () => {
     expect(findPanel(PANELS, 'heading')?.descriptor.title).toBe('Heading');
     expect(findPanel(PANELS, 'nope')).toBeNull();
-  });
-});
-
-describe('Basic data panel', () => {
-  it('shows airspeed, heading bug and sim time from the simulator', async () => {
-    await renderPanel(
-      BasicDataPanel,
-      live({
-        telemetry: {
-          [GENERIC_DATAREFS.airspeed]: { value: 124.3, receivedAt: NOW },
-          [GENERIC_DATAREFS.headingBug]: { value: 270, receivedAt: NOW },
-          [GENERIC_DATAREFS.heartbeat]: { value: 812, receivedAt: NOW },
-        },
-      }),
-    );
-    expect(screen.getByLabelText('Indicated airspeed: 124.3 kt')).toBeTruthy();
-    expect(screen.getByLabelText('Heading bug: 270°')).toBeTruthy();
-    expect(screen.getByLabelText('Sim running time: 812 s')).toBeTruthy();
-  });
-
-  it('says airspeed is not on this aircraft when its DataRef is missing', async () => {
-    const snapshot = live();
-    await renderPanel(BasicDataPanel, {
-      ...snapshot,
-      compatibility: {
-        ...snapshot.compatibility,
-        bindings: {
-          [GENERIC_DATAREFS.airspeed]: {
-            name: GENERIC_DATAREFS.airspeed,
-            kind: 'dataref',
-            status: 'missing',
-          },
-        },
-      },
-    });
-    expect(
-      screen.getByLabelText('Indicated airspeed: not available on this aircraft'),
-    ).toBeTruthy();
   });
 });
 

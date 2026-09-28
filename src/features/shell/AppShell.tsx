@@ -11,6 +11,7 @@ import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { PANELS, type RegisteredPanel, findPanel } from '@/features/panels/registry';
 import { PanelSwitcher } from '@/features/shell/PanelSwitcher';
 import { SetupScreen } from '@/features/shell/SetupScreen';
+import { UnitsProvider } from '@/features/units/UnitsProvider';
 import { useAppForeground } from '@/hooks/useAppForeground';
 import { useDeviceLayout } from '@/hooks/useDeviceLayout';
 import { usePanelLayout } from '@/hooks/usePanelLayout';
@@ -111,78 +112,80 @@ export function AppShell({ panels = PANELS }: { panels?: readonly RegisteredPane
   );
 
   return (
-    <View testID="app-shell" style={styles.root}>
-      <View
-        testID="status-bar-wrap"
-        style={{
-          paddingTop: insets.top + theme.spacing.sm,
-          paddingLeft: insets.left + theme.spacing.lg,
-          paddingRight: insets.right + theme.spacing.lg,
-        }}
-      >
-        <LinkStatusBar snapshot={snapshot} now={now} onOpenDiagnostics={onStatusBarPress} />
-      </View>
-      {ready ? (
+    <UnitsProvider storage={settingsStorage}>
+      <View testID="app-shell" style={styles.root}>
         <View
-          style={[
-            styles.body,
-            landscape ? styles.row : styles.column,
-            // Landscape has no bottom bar to absorb the home indicator, so the body does.
-            landscape ? { paddingBottom: insets.bottom } : null,
-          ]}
+          testID="status-bar-wrap"
+          style={{
+            paddingTop: insets.top + theme.spacing.sm,
+            paddingLeft: insets.left + theme.spacing.lg,
+            paddingRight: insets.right + theme.spacing.lg,
+          }}
         >
-          {landscape ? switcher : null}
-          <View
-            key="content"
-            testID="shell-content"
-            style={[styles.content, landscape ? { paddingRight: insets.right } : null]}
-          >
-            {active === null ? (
-              <SetupScreen
-                snapshot={snapshot}
-                now={now}
-                showDiagnostics={showDiagnostics}
-                panels={panels}
-                panelIds={panelIds}
-                layout={layout}
-                deviceLayout={deviceLayout}
-                onSetHidden={setHidden}
-              />
-            ) : (
-              <>
-                {fit === 'rotate' ? (
-                  <View
-                    testID="rotate-notice"
-                    // The panel below is blank; a screen reader must hear why.
-                    accessibilityRole="text"
-                    accessibilityLiveRegion="polite"
-                    style={styles.notice}
-                  >
-                    <BodyText>
-                      {`Rotate the device to ${landscape ? 'portrait' : 'landscape'} to use this panel.`}
-                    </BodyText>
-                  </View>
-                ) : null}
-                <View
-                  key={active.descriptor.id}
-                  testID={`panel-${active.descriptor.id}`}
-                  style={fit === 'fits' ? styles.fill : styles.hidden}
-                >
-                  <PanelFrame
-                    title={active.descriptor.title}
-                    snapshot={snapshot}
-                    now={now}
-                    actions={actions}
-                  >
-                    <active.Component />
-                  </PanelFrame>
-                </View>
-              </>
-            )}
-          </View>
-          {landscape ? null : switcher}
+          <LinkStatusBar snapshot={snapshot} now={now} onOpenDiagnostics={onStatusBarPress} />
         </View>
-      ) : null}
-    </View>
+        {ready ? (
+          <View
+            style={[
+              styles.body,
+              landscape ? styles.row : styles.column,
+              // Landscape has no bottom bar to absorb the home indicator, so the body does.
+              landscape ? { paddingBottom: insets.bottom } : null,
+            ]}
+          >
+            {landscape ? switcher : null}
+            <View
+              key="content"
+              testID="shell-content"
+              style={[styles.content, landscape ? { paddingRight: insets.right } : null]}
+            >
+              {active === null ? (
+                <SetupScreen
+                  snapshot={snapshot}
+                  now={now}
+                  showDiagnostics={showDiagnostics}
+                  panels={panels}
+                  panelIds={panelIds}
+                  layout={layout}
+                  deviceLayout={deviceLayout}
+                  onSetHidden={setHidden}
+                />
+              ) : (
+                <>
+                  {fit === 'rotate' ? (
+                    <View
+                      testID="rotate-notice"
+                      // The panel below is blank; a screen reader must hear why.
+                      accessibilityRole="text"
+                      accessibilityLiveRegion="polite"
+                      style={styles.notice}
+                    >
+                      <BodyText>
+                        {`Rotate the device to ${landscape ? 'portrait' : 'landscape'} to use this panel.`}
+                      </BodyText>
+                    </View>
+                  ) : null}
+                  <View
+                    key={active.descriptor.id}
+                    testID={`panel-${active.descriptor.id}`}
+                    style={fit === 'fits' ? styles.fill : styles.hidden}
+                  >
+                    <PanelFrame
+                      title={active.descriptor.title}
+                      snapshot={snapshot}
+                      now={now}
+                      actions={actions}
+                    >
+                      <active.Component />
+                    </PanelFrame>
+                  </View>
+                </>
+              )}
+            </View>
+            {landscape ? null : switcher}
+          </View>
+        ) : null}
+      </View>
+    </UnitsProvider>
   );
 }

@@ -7,6 +7,7 @@ import {
   type PanelActions,
   PanelContext,
   type PanelContextValue,
+  usePanel,
 } from '@/features/panels/primitives/PanelContext';
 import { BodyText } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
@@ -29,6 +30,51 @@ const makeStyles = (theme: Theme) => ({
   },
 });
 
+/** The context's notice, rendered once so `link` is computed only inside PanelScope. */
+function PanelNotice() {
+  const styles = useThemedStyles(makeStyles);
+  const { link } = usePanel();
+  if (link.notice === null) {
+    return null;
+  }
+  return (
+    <View testID="panel-notice" style={styles.notice}>
+      <BodyText>{link.notice}</BodyText>
+    </View>
+  );
+}
+
+/** The panel context without chrome: for read-only views that live outside a panel (the strip). */
+export function PanelScope({
+  snapshot,
+  now,
+  actions,
+  children,
+}: {
+  snapshot: SessionSnapshot;
+  now: number;
+  actions: PanelActions;
+  children: React.ReactNode;
+}) {
+  const { valuesCurrent, controlsEnabled, notice } = panelLinkStatus({
+    state: snapshot.state,
+    activity: snapshot.health.activity,
+    lastHeartbeatAt: snapshot.health.lastHeartbeatAt,
+    now,
+  });
+  const value = useMemo<PanelContextValue>(
+    () => ({
+      snapshot,
+      now,
+      link: { valuesCurrent, controlsEnabled, notice },
+      write: actions.write,
+      activate: actions.activate,
+    }),
+    [snapshot, now, valuesCurrent, controlsEnabled, notice, actions.write, actions.activate],
+  );
+  return <PanelContext.Provider value={value}>{children}</PanelContext.Provider>;
+}
+
 /**
  * The chrome every panel sits in. It computes the link status once and publishes it with the
  * snapshot and the actions, so every Readout and ControlButton agrees, and it renders R7's single
@@ -48,24 +94,8 @@ export function PanelFrame({
   children: React.ReactNode;
 }) {
   const styles = useThemedStyles(makeStyles);
-  const { valuesCurrent, controlsEnabled, notice } = panelLinkStatus({
-    state: snapshot.state,
-    activity: snapshot.health.activity,
-    lastHeartbeatAt: snapshot.health.lastHeartbeatAt,
-    now,
-  });
-  const value = useMemo<PanelContextValue>(
-    () => ({
-      snapshot,
-      now,
-      link: { valuesCurrent, controlsEnabled, notice },
-      write: actions.write,
-      activate: actions.activate,
-    }),
-    [snapshot, now, valuesCurrent, controlsEnabled, notice, actions.write, actions.activate],
-  );
   return (
-    <PanelContext.Provider value={value}>
+    <PanelScope snapshot={snapshot} now={now} actions={actions}>
       <ScrollView
         testID="panel-frame"
         style={styles.scroll}
@@ -77,13 +107,9 @@ export function PanelFrame({
         <Text accessibilityRole="header" style={styles.title}>
           {title}
         </Text>
-        {notice === null ? null : (
-          <View testID="panel-notice" style={styles.notice}>
-            <BodyText>{notice}</BodyText>
-          </View>
-        )}
+        <PanelNotice />
         {children}
       </ScrollView>
-    </PanelContext.Provider>
+    </PanelScope>
   );
 }
