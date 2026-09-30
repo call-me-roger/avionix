@@ -10,7 +10,8 @@ import { type SettingsStorage, createMemorySettingsStorage } from '@/application
 import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
 import {
-  FEATURE_FLIGHT_TELEMETRY,
+  FEATURE_FLIGHT_DATA,
+  FEATURE_GPS_DESTINATION,
   FEATURE_HEADING_CONTROL,
   GENERIC_PROFILE,
 } from '@/domain/aircraft/profiles/generic';
@@ -107,7 +108,7 @@ describe('AppShell', () => {
     const { services } = makeServices();
     await render(tree(services));
     expect(await screen.findByTestId('setup-screen')).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Basic data' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Flight data' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Heading' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Setup' })).toBeSelected();
   });
@@ -123,28 +124,34 @@ describe('AppShell', () => {
       expect(JSON.parse((await storage.getItem(PANEL_LAYOUT_STORAGE_KEY)) ?? 'null')).toEqual({
         hidden: [],
         last: 'heading',
+        strip: true,
       }),
     );
   });
 
   it('restores the last panel on launch', async () => {
-    const { services } = makeServices({}, await seeded('basic-data'));
+    const { services } = makeServices({}, await seeded('flight-data'));
     await render(tree(services));
-    expect(await screen.findByTestId('panel-basic-data')).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Basic data' })).toBeSelected();
+    expect(await screen.findByTestId('panel-flight-data')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Flight data' })).toBeSelected();
   });
 
   it('asks the session for exactly what the visible panel reads', async () => {
     const { services, session } = makeServices();
     await render(tree(services));
     await waitFor(() => expect(session.setDemand).toHaveBeenLastCalledWith([]));
-    await fireEvent.press(screen.getByRole('tab', { name: 'Basic data' }));
+    await fireEvent.press(screen.getByRole('tab', { name: 'Flight data' }));
     expect(session.setDemand).toHaveBeenLastCalledWith([
-      FEATURE_FLIGHT_TELEMETRY,
-      FEATURE_HEADING_CONTROL,
+      FEATURE_FLIGHT_DATA,
+      FEATURE_GPS_DESTINATION,
     ]);
     await fireEvent.press(screen.getByRole('tab', { name: 'Heading' }));
-    expect(session.setDemand).toHaveBeenLastCalledWith([FEATURE_HEADING_CONTROL]);
+    // The flight data strip is docked here too (strip shown by default), so its DataRefs join
+    // Heading's own.
+    expect(session.setDemand).toHaveBeenLastCalledWith([
+      FEATURE_FLIGHT_DATA,
+      FEATURE_HEADING_CONTROL,
+    ]);
   });
 
   it('opens Setup with diagnostics from the status bar on a panel', async () => {
@@ -164,9 +171,9 @@ describe('AppShell', () => {
     const { services } = makeServices();
     await render(tree(services));
     await fireEvent.press(
-      await screen.findByRole('switch', { name: 'Show Basic data in the switcher' }),
+      await screen.findByRole('switch', { name: 'Show Flight data in the switcher' }),
     );
-    expect(screen.queryByRole('tab', { name: 'Basic data' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Flight data' })).toBeNull();
     const lastOne = screen.getByRole('switch', { name: 'Show Heading in the switcher' });
     expect(lastOne).toBeDisabled();
     expect(screen.getByText('At least one panel stays in the switcher.')).toBeTruthy();
@@ -291,6 +298,46 @@ describe('AppShell', () => {
     const notice = await screen.findByTestId('rotate-notice');
     expect(notice.props.accessibilityLiveRegion).toBe('polite');
     expect(notice.props.accessibilityRole).toBe('text');
+  });
+
+  it('docks the strip on other panels, not on Setup or on Flight data itself', async () => {
+    const { services } = makeServices(liveSnapshot(), await seeded('heading'));
+    await render(tree(services));
+    await screen.findByTestId('panel-heading');
+    expect(screen.getByTestId('flight-data-strip')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('flight-data-strip'));
+    expect(screen.getByTestId('panel-flight-data')).toBeTruthy();
+    expect(screen.queryByTestId('flight-data-strip')).toBeNull();
+    await fireEvent.press(screen.getByRole('tab', { name: 'Setup' }));
+    expect(screen.queryByTestId('flight-data-strip')).toBeNull();
+  });
+
+  it('asks for the flight data DataRefs only while the strip is visible', async () => {
+    const { services, session } = makeServices({}, await seeded('heading'));
+    await render(tree(services));
+    await screen.findByTestId('panel-heading');
+    await waitFor(() =>
+      expect(session.setDemand).toHaveBeenLastCalledWith([
+        FEATURE_FLIGHT_DATA,
+        FEATURE_HEADING_CONTROL,
+      ]),
+    );
+    await fireEvent.press(screen.getByRole('tab', { name: 'Setup' }));
+    await fireEvent.press(
+      screen.getByRole('switch', { name: 'Show the flight data strip on every panel' }),
+    );
+    await fireEvent.press(screen.getByRole('tab', { name: 'Heading' }));
+    expect(screen.queryByTestId('flight-data-strip')).toBeNull();
+    expect(session.setDemand).toHaveBeenLastCalledWith([FEATURE_HEADING_CONTROL]);
+  });
+
+  it('is not pressable when Flight data is hidden from the switcher', async () => {
+    const { services } = makeServices(liveSnapshot(), await seeded('heading', ['flight-data']));
+    await render(tree(services));
+    await screen.findByTestId('panel-heading');
+    const strip = screen.getByTestId('flight-data-strip');
+    expect(strip.props.accessibilityRole).not.toBe('button');
+    expect(strip.props.accessibilityLabel).not.toContain('Open flight data.');
   });
 
   it('gives every switcher item and the status bar a full-size touch target', async () => {

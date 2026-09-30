@@ -16,8 +16,10 @@ import { CompatibilityScreen } from '@/features/aircraft/CompatibilityScreen';
 import { DiscoveredConnectors } from '@/features/connection/DiscoveredConnectors';
 import { DiagnosticsScreen } from '@/features/health/DiagnosticsScreen';
 import { LinkStatusBar } from '@/features/health/LinkStatusBar';
+import { FlightDataStrip } from '@/features/panels/flight-data/FlightDataStrip';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { PANELS } from '@/features/panels/registry';
+import { UnitsProvider } from '@/features/units/UnitsProvider';
 import { ThemeProvider } from '@/theme/theme-context';
 
 const mockShareText = jest.fn(async (_text: string, _title: string) => undefined);
@@ -93,36 +95,48 @@ function failedOperationsFor(code: AvionixErrorCode): SessionSnapshot['operation
 
 describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
   it('is rendered as a cause and an action, not as its message', async () => {
+    const storage = createMemorySettingsStorage();
     await render(
-      <ThemeProvider storage={createMemorySettingsStorage()}>
-        <LinkStatusBar snapshot={snapshotFor(code)} now={10_000} onOpenDiagnostics={jest.fn()} />
-        <DiagnosticsScreen
-          snapshot={snapshotFor(code)}
-          now={10_000}
-          onRetry={jest.fn()}
-          onDisconnect={jest.fn()}
-        />
-        <DiscoveredConnectors snapshot={discoverySnapshotFor(code)} enabled onSelect={jest.fn()} />
-        <AircraftSummary
-          snapshot={snapshotFor(code)}
-          now={10_000}
-          onOpenCompatibility={jest.fn()}
-        />
-        <CompatibilityScreen snapshot={snapshotFor(code)} now={10_000} onRecheck={jest.fn()} />
-        {PANELS.map(({ descriptor, Component }) => (
-          <PanelFrame
-            key={descriptor.id}
-            title={descriptor.title}
+      <ThemeProvider storage={storage}>
+        <UnitsProvider storage={storage}>
+          <LinkStatusBar snapshot={snapshotFor(code)} now={10_000} onOpenDiagnostics={jest.fn()} />
+          <DiagnosticsScreen
+            snapshot={snapshotFor(code)}
+            now={10_000}
+            onRetry={jest.fn()}
+            onDisconnect={jest.fn()}
+          />
+          <DiscoveredConnectors
+            snapshot={discoverySnapshotFor(code)}
+            enabled
+            onSelect={jest.fn()}
+          />
+          <AircraftSummary
+            snapshot={snapshotFor(code)}
+            now={10_000}
+            onOpenCompatibility={jest.fn()}
+          />
+          <CompatibilityScreen snapshot={snapshotFor(code)} now={10_000} onRecheck={jest.fn()} />
+          <FlightDataStrip
             snapshot={{ ...snapshotFor(code), operations: failedOperationsFor(code) }}
             now={10_000}
-            actions={{
-              write: jest.fn(async () => undefined),
-              activate: jest.fn(async () => undefined),
-            }}
-          >
-            <Component />
-          </PanelFrame>
-        ))}
+            onOpen={jest.fn()}
+          />
+          {PANELS.map(({ descriptor, Component }) => (
+            <PanelFrame
+              key={descriptor.id}
+              title={descriptor.title}
+              snapshot={{ ...snapshotFor(code), operations: failedOperationsFor(code) }}
+              now={10_000}
+              actions={{
+                write: jest.fn(async () => undefined),
+                activate: jest.fn(async () => undefined),
+              }}
+            >
+              <Component />
+            </PanelFrame>
+          ))}
+        </UnitsProvider>
       </ThemeProvider>,
     );
     expect(screen.queryByText(new RegExp('http://'))).toBeNull();

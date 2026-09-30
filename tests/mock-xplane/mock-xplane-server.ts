@@ -68,6 +68,66 @@ export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
     valueType: 'data',
     value: 'Q2Vzc25hIDE3MiBTUA==',
   },
+  {
+    id: 1009,
+    name: 'sim/cockpit2/gauges/indicators/ground_speed_kt',
+    valueType: 'float',
+    value: 142.4,
+  },
+  {
+    id: 1010,
+    name: 'sim/cockpit2/gauges/indicators/true_airspeed_kts_pilot',
+    valueType: 'float',
+    value: 150.2,
+  },
+  {
+    id: 1011,
+    name: 'sim/cockpit2/gauges/indicators/ground_track_mag_pilot',
+    valueType: 'float',
+    value: 87.2,
+  },
+  {
+    id: 1012,
+    name: 'sim/cockpit2/gauges/indicators/wind_speed_kts',
+    valueType: 'float',
+    value: 12.4,
+  },
+  {
+    id: 1013,
+    name: 'sim/cockpit2/gauges/indicators/wind_heading_deg_mag',
+    valueType: 'float',
+    value: 270,
+  },
+  {
+    id: 1014,
+    name: 'sim/cockpit2/temperature/outside_air_temp_degc',
+    valueType: 'float',
+    value: -12.3,
+  },
+  { id: 1015, name: 'sim/cockpit2/gauges/indicators/TAT_pilot', valueType: 'float', value: -9 },
+  { id: 1016, name: 'sim/flightmodel/weight/m_fuel_total', valueType: 'float', value: 1234.5 },
+  { id: 1017, name: 'sim/time/zulu_time_sec', valueType: 'float', value: 50709 },
+  { id: 1018, name: 'sim/time/local_time_sec', valueType: 'float', value: 32709 },
+  { id: 1019, name: 'sim/time/is_in_replay', valueType: 'int', value: 0 },
+  {
+    id: 1020,
+    name: 'sim/cockpit2/radios/indicators/gps_dme_distance_nm',
+    valueType: 'float',
+    value: 126.4,
+  },
+  {
+    id: 1021,
+    name: 'sim/cockpit2/radios/indicators/gps_dme_time_min',
+    valueType: 'float',
+    value: 53.2,
+  },
+  // "KSEA" NUL-padded, base64, as X-Plane sends a byte-array DataRef.
+  {
+    id: 1022,
+    name: 'sim/cockpit2/radios/indicators/gps_nav_id',
+    valueType: 'data',
+    value: 'S1NFQQAAAAA=',
+  },
 ];
 
 export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [

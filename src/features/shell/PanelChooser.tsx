@@ -27,12 +27,14 @@ export function PanelChooser({
   layout,
   deviceLayout,
   onSetHidden,
+  onSetStrip,
 }: {
   panels: readonly RegisteredPanel[];
   panelIds: readonly string[];
   layout: PanelLayout;
   deviceLayout: DeviceLayout;
   onSetHidden: (id: string, hidden: boolean) => void;
+  onSetStrip: (shown: boolean) => void;
 }) {
   const styles = useThemedStyles(makeStyles);
   return (
@@ -64,6 +66,16 @@ export function PanelChooser({
           </View>
         );
       })}
+      <Pressable
+        accessibilityRole="switch"
+        accessibilityLabel="Show the flight data strip on every panel"
+        accessibilityState={{ checked: layout.strip }}
+        onPress={() => onSetStrip(!layout.strip)}
+        style={styles.row}
+      >
+        <BodyText>Flight data strip</BodyText>
+        <BodyText muted>{layout.strip ? 'Shown' : 'Hidden'}</BodyText>
+      </Pressable>
     </Section>
   );
 }

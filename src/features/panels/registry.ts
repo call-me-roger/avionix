@@ -1,7 +1,7 @@
 import type React from 'react';
 
 import type { PanelDescriptor } from '@/domain/panels/panel';
-import { BASIC_DATA_PANEL, BasicDataPanel } from '@/features/panels/basic-data/BasicDataPanel';
+import { FLIGHT_DATA_PANEL, FlightDataPanel } from '@/features/panels/flight-data/FlightDataPanel';
 import { HEADING_PANEL, HeadingPanel } from '@/features/panels/heading/HeadingPanel';
 
 export interface RegisteredPanel {
@@ -11,7 +11,7 @@ export interface RegisteredPanel {
 
 /** Switcher order. A panel's id is persisted, so it is never reused for a different panel. */
 export const PANELS: readonly RegisteredPanel[] = [
-  { descriptor: BASIC_DATA_PANEL, Component: BasicDataPanel },
+  { descriptor: FLIGHT_DATA_PANEL, Component: FlightDataPanel },
   { descriptor: HEADING_PANEL, Component: HeadingPanel },
 ];
 
