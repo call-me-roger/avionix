@@ -97,7 +97,7 @@ Each instrument renders exactly one of these states, in this precedence:
 | Unavailable | a DataRef it needs is `missing` | empty face, "Not available on this aircraft" |
 | No value | `value === null` | empty face (no pointer, no tape numbers), digital "—" |
 | Live | `current` | pointer and digits in normal colours |
-| Not live | `!current` | last pointer and digits kept (never zeroed, never animated), drawn in muted colours, a red X across the whole face, and a "NOT LIVE" flag |
+| Not live | `!current` | last pointer and digits kept (never zeroed, never animated), drawn at 40% opacity, a red X across the whole face, and a "NOT LIVE" flag |
 
 "Not live" is the real-avionics red-X failure flag: a frozen attitude indicator cannot be mistaken
 for a working one (R6, R7). The panel notice from `PanelFrame` gives the reason and the age.
@@ -245,14 +245,16 @@ a screen-reader user loses nothing by switching.
 | `src/domain/units/units.ts` (+ `unit-preferences.ts`, `UnitsSection.tsx`) | `pressure` unit |
 | `src/domain/aircraft/profiles/generic.ts` | 1.2.0, two features, names |
 | `src/features/panels/instruments/` | `InstrumentsPanel`, `useInstrumentReading`, `usePresentation`, `InstrumentFace` (states, red X, accessibility wrapper), `pfd/*`, `six-pack/*`, `BaroControls` |
-| `src/theme/tokens.ts` | `instrument` colour group per theme (sky, ground, marking, pointer, face, arcs, flag) |
+| `src/theme/tokens.ts` | `instrument` colour group per theme (face, tape, sky, ground, marking, pointer, arcs, flag) |
 | `src/features/panels/registry.ts` | register first |
 | `tests/mock-xplane/mock-xplane-server.ts` | the 17 new names (ids from 1023), baro writable |
 
 ## Theme
 
-Each theme gains `colors.instrument`: `sky`, `ground`, `horizon`, `marking`, `pointer`, `face`,
-`arcWhite`, `arcGreen`, `arcYellow`, `arcRed`, `flag`, `muted`. Light and dark use conventional
+Each theme gains `theme.instrument` (beside `colors`, so the existing colour checks are untouched):
+`face`, `tape`, `sky`, `ground`, `horizon`, `marking`, `pointer`, `arcWhite`, `arcGreen`,
+`arcYellow`, `arcRed`, `flag`, `flagText`. A not-live instrument's pointers and digits are drawn
+at 40% opacity under the red X, which mutes them in every theme without a second colour set. Light and dark use conventional
 avionics colours (blue sky, brown ground, white markings, black faces — instruments are dark in
 every theme, as in a real panel). Night keeps every one at relative luminance ≤ 0.30 like the rest
 of the night palette (the existing token test is extended to the new group), and `flag` stays
