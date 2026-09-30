@@ -15,14 +15,21 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
 - Detect the X-Plane version and the supported Web API versions; use the highest of v2/v3.
 - Resolve DataRefs and commands by name (ids are session-specific and never stored).
 - Panels reachable from a switcher (a bottom bar in portrait, a side rail in landscape) alongside
-  Setup: Flight data (ground speed, true airspeed, track, wind, OAT/TAT, fuel remaining, sim zulu
-  and local time, paused/replay, the GPS destination) and Heading (write the autopilot heading bug,
-  activate `sim/autopilot/heading_up`). A compact strip with ground speed, wind, fuel and sim zulu
-  docks under the status bar on every other panel and opens Flight data when tapped; a Setup toggle
-  turns it off. The WebSocket subscribes only the visible panel's DataRefs (plus the strip's, while
-  shown), identification and connection health, and follows a panel switch within one update cycle.
-- A **Units** section in Setup lets the pilot choose fuel (kg/lb), temperature (°C/°F) and distance
-  (nm/km); the choice is shared by every panel and persisted. Speeds stay in knots.
+  Setup: Instruments (below), Flight data (ground speed, true airspeed, track, wind, OAT/TAT, fuel
+  remaining, sim zulu and local time, paused/replay, the GPS destination) and Heading (write the
+  autopilot heading bug, activate `sim/autopilot/heading_up`). A compact strip with ground speed,
+  wind, fuel and sim zulu docks under the status bar on every other panel and opens Flight data when
+  tapped; a Setup toggle turns it off. The WebSocket subscribes only the visible panel's DataRefs
+  (plus the strip's, while shown), identification and connection health, and follows a panel switch
+  within one update cycle.
+- An **Instruments** panel: airspeed, attitude, altitude, vertical speed, heading, and turn and slip,
+  drawn on the device from the simulator's own values (no streamed images), in a PFD or a six-pack
+  presentation the pilot picks; the choice persists and is remembered per aircraft. The altimeter
+  setting is read and written in inches of mercury or hectopascals, with one-tap STD; a stale link
+  marks every instrument with a red X and never zeroes or animates a value.
+- A **Units** section in Setup lets the pilot choose fuel (kg/lb), temperature (°C/°F), distance
+  (nm/km) and altimeter pressure (inHg/hPa); the choice is shared by every panel and persisted.
+  Speeds stay in knots.
 - Identify the loaded aircraft and name it, its profile and its add-on version in an Aircraft
   panel in Setup; a new aircraft is picked up without reconnecting.
 - A compatibility view behind that panel: every feature with its status, and every binding the

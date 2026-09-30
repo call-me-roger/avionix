@@ -103,6 +103,12 @@ Each instrument renders exactly one of these states, in this precedence:
 for a working one (R6, R7). The panel notice from `PanelFrame` gives the reason and the age.
 Paused counts as live (F-04 rule); the strip docked above the panel shows PAUSED/REPLAY (F-11).
 
+**Compact faces.** `InstrumentFace` treats a face under 100 dp wide or 48 dp tall as compact (the
+PFD's narrow tapes and scales): the "NOT LIVE" flag is omitted and the unavailable note shortens to
+"N/A", since the words do not fit; the red X (and, where the face is large enough, its own
+instrument's failure wording — the attitude's "NOT LIVE") still carries the stale state. Accessible
+labels are unchanged either way.
+
 ## Presentation choice (R3)
 
 `Presentation = 'pfd' | 'sixPack'`. Stored under **`avionix.instruments`** as
@@ -221,8 +227,11 @@ export const INSTRUMENTS_PANEL: PanelDescriptor = {
 };
 ```
 
-It is **first** in `PANELS` (instruments, flight-data, heading), so a new install opens on it; an
-existing install keeps its stored `last`, and the new panel id starts visible (F-04 rule).
+It is **first** in `PANELS` (instruments, flight-data, heading). A fresh install still opens on
+Setup — it must pair first — but Instruments is the fallback whenever the remembered panel is
+hidden or unknown (`resolveRoute`'s first available panel), so it is the first panel a pilot lands
+on once paired; an existing install keeps its stored `last`, and the new panel id starts visible
+(F-04 rule).
 
 Accessibility: each instrument is one accessible element whose label carries its value in words —
 "Airspeed 112 knots", "Attitude: pitch 3 degrees up, bank 15 degrees right", "Altitude 4,520

@@ -5,7 +5,7 @@
 | ID | `F-10` |
 | Stage | `1` |
 | Category | Monitoring |
-| Status | Proposed |
+| Status | Delivered (Stage 1) |
 | Depends on | `F-03`, `F-04` |
 | Competitor prevalence | Matrix count 6 of 12 representative products (`research/competitors.md`). Wider set: 7 of 12 panel and remote-panel products researched (Air Manager, Simionic G1000 PFD, XpRemotePanel, Flight Sim Remote Panel, RemoteFlight COCKPIT HD, Flight Deck ONE, FS-FlightControl) |
 

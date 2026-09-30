@@ -128,3 +128,35 @@ The pause flag, `sim/time/paused` (float, 0 or 1), is community-sourced and unve
 three GPS names above, which is why `connection-health`'s binding to it is optional. If it does not
 resolve, activity becomes `pausedOrStalled` and no PAUSED badge shows: the badge only ever comes
 from `activity === 'paused'`, never from a guess.
+
+## Instruments (F-10)
+
+`flight-instruments` (`GENERIC_PROFILE` 1.2.0, all bindings optional) and `altimeter-setting` (one
+required, writable binding). A missing `flight-instruments` name costs only its own instrument
+(R9); a read-only or missing `altimeter-setting` binding disables only the altimeter controls (R5).
+
+| Name | Type | Units | Source |
+|---|---|---|---|
+| `sim/cockpit2/gauges/indicators/airspeed_kts_pilot` | float | knots | Verified against `DataRefs.txt` |
+| `sim/cockpit2/gauges/indicators/mach_pilot` | float | Mach | Verified against `DataRefs.txt` |
+| `sim/cockpit2/gauges/indicators/altitude_ft_pilot` | float | feet | Verified against `DataRefs.txt` |
+| `sim/cockpit2/gauges/indicators/vvi_fpm_pilot` | float | ft/min | Verified against `DataRefs.txt` |
+| `sim/cockpit2/gauges/indicators/heading_AHARS_deg_mag_pilot` | float | degrees magnetic | Verified against `DataRefs.txt` |
+| `sim/cockpit2/gauges/indicators/pitch_AHARS_deg_pilot` | float | degrees up | Verified against `DataRefs.txt` |
+| `sim/cockpit2/gauges/indicators/roll_AHARS_deg_pilot` | float | degrees right | Verified against `DataRefs.txt` |
+| `sim/cockpit2/gauges/indicators/turn_rate_roll_deg_pilot` | float | degrees deflection | Verified against `DataRefs.txt` |
+| `sim/cockpit2/gauges/indicators/slip_deg` | float | degrees of ball deflection from centred | Verified against `DataRefs.txt` |
+| `sim/cockpit2/gauges/indicators/radio_altimeter_height_ft_pilot` | float | feet | Verified against `DataRefs.txt` |
+| `sim/aircraft/prop/acf_en_type` | int[16] | engine-type enum (0 recip carb, 1 recip injected, 3 electric, 5 single-spool jet, 6 rocket, 7 multi-spool jet, 9 free turboprop, 10 fixed turboprop) | Verified against `DataRefs.txt` |
+| `sim/aircraft/view/acf_Vso` | float | knots (kias) | Verified against `DataRefs.txt` |
+| `sim/aircraft/view/acf_Vs` | float | unit not stated; treated as knots indicated like its siblings | Verified against `DataRefs.txt` |
+| `sim/aircraft/view/acf_Vfe` | float | knots (kias) | Verified against `DataRefs.txt` |
+| `sim/aircraft/view/acf_Vno` | float | knots (kias) | Verified against `DataRefs.txt` |
+| `sim/aircraft/view/acf_Vne` | float | knots (kias) | Verified against `DataRefs.txt` |
+| `sim/cockpit2/gauges/actuators/barometer_setting_in_hg_pilot` | float | inches Hg | Verified against `DataRefs.txt` |
+
+The barometer is the panel's only write (R4, R12); STD writes `29.92` to it rather than to a
+separate flag. `sim/cockpit2/gauges/actuators/barometer_setting_is_std_pilot`, the name the roadmap
+named, is **not** in `DataRefs.txt` and is not used. The standard-rate turn deflection (assumed 20°,
+`STANDARD_RATE_DEFLECTION_DEG`) and the sign of `slip_deg` (assumed positive = ball right) are
+unverified pending the device rows in `docs/testing/xplane-smoke-test.md`.
