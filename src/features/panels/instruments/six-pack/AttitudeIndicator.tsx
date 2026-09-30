@@ -41,7 +41,7 @@ export const AttitudeIndicator = React.memo(function AttitudeIndicator({
           cy={C}
           pxPerDeg={4.5}
           windowDeg={20}
-          bankRadius={88}
+          bankRadius={86}
           clip={{ kind: 'circle', r: 96 }}
         />
       )}

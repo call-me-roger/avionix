@@ -18,6 +18,9 @@ const C = 100;
 /** One turn of the hundreds hand is 1,000 ft; the 1,000 mark would repeat 0. */
 const TICKS = scaleTicks(0, 1000, 20, 100).filter((tick) => tick.value < 1000);
 const DEG_PER_FOOT = 0.36;
+// The windows sit between the scale digits, never over one: the Kollsman window at three o'clock
+// inside the 2 and the 3, where a real altimeter has it, and the altitude window above the 4, 5
+// and 6.
 
 export const AltimeterDial = React.memo(function AltimeterDial({
   size,
@@ -111,9 +114,9 @@ export const AltimeterDial = React.memo(function AltimeterDial({
             />
           </G>
           <Circle cx={C} cy={C} r={6} fill={ink.marking} />
-          <DigitalWindow x={C} y={136} width={84} text={groupThousands(roundAltitude(feet))} />
+          <DigitalWindow x={C} y={134} width={84} text={groupThousands(roundAltitude(feet))} />
           {baroShort === null ? null : (
-            <DigitalWindow x={C} y={166} width={64} text={baroShort} fontSize={14} />
+            <DigitalWindow x={134} y={C} width={48} text={baroShort} fontSize={14} />
           )}
           {radioAltitudeShown(radioAltitude) ? (
             <SvgText x={C} y={62} fontSize={14} fill={ink.marking} textAnchor="middle">

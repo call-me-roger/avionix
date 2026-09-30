@@ -15,6 +15,10 @@ import { useTheme } from '@/theme/theme-context';
 const VB = { width: 200, height: 200 };
 const C = 100;
 const TICKS = scaleTicks(-2000, 2000, 100, 500);
+// Between the hub and the two "2" labels at three o'clock, covering neither; wide enough for
+// "-1,200" at 14.
+const WINDOW_X = 132;
+const WINDOW_WIDTH = 48;
 
 /** The dial's labels are thousands of ft/min either way: 500 is ".5", 1,500 is "1.5". */
 function thousands(value: number): string {
@@ -98,9 +102,9 @@ export const VsiDial = React.memo(function VsiDial({
           </G>
           <Circle cx={C} cy={C} r={6} fill={ink.marking} />
           <DigitalWindow
-            x={140}
+            x={WINDOW_X}
             y={C}
-            width={64}
+            width={WINDOW_WIDTH}
             text={groupThousands(roundVerticalSpeed(fpm))}
             fontSize={14}
           />
