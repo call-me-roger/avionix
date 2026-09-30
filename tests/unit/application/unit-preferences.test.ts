@@ -15,16 +15,23 @@ describe('unit preferences', () => {
 
   it('round-trips under the documented key', async () => {
     const storage = createMemorySettingsStorage();
-    await saveUnitPreferences(storage, { fuel: 'lb', temperature: 'F', distance: 'km' });
+    await saveUnitPreferences(storage, {
+      fuel: 'lb',
+      temperature: 'F',
+      distance: 'km',
+      pressure: 'hPa',
+    });
     expect(JSON.parse((await storage.getItem(UNITS_STORAGE_KEY)) ?? 'null')).toEqual({
       fuel: 'lb',
       temperature: 'F',
       distance: 'km',
+      pressure: 'hPa',
     });
     await expect(loadUnitPreferences(storage)).resolves.toEqual({
       fuel: 'lb',
       temperature: 'F',
       distance: 'km',
+      pressure: 'hPa',
     });
   });
 
@@ -35,6 +42,30 @@ describe('unit preferences', () => {
       fuel: 'lb',
       temperature: 'C',
       distance: 'nm',
+      pressure: 'inHg',
+    });
+  });
+
+  it('keeps the other units when a stored value predates pressure', async () => {
+    const storage = createMemorySettingsStorage();
+    await storage.setItem(
+      UNITS_STORAGE_KEY,
+      JSON.stringify({ fuel: 'lb', temperature: 'F', distance: 'km' }),
+    );
+    await expect(loadUnitPreferences(storage)).resolves.toEqual({
+      fuel: 'lb',
+      temperature: 'F',
+      distance: 'km',
+      pressure: 'inHg',
+    });
+  });
+
+  it('round-trips hectopascals', async () => {
+    const storage = createMemorySettingsStorage();
+    await saveUnitPreferences(storage, { ...DEFAULT_UNITS, pressure: 'hPa' });
+    await expect(loadUnitPreferences(storage)).resolves.toEqual({
+      ...DEFAULT_UNITS,
+      pressure: 'hPa',
     });
   });
 

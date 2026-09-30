@@ -5,6 +5,7 @@ import {
   DEFAULT_UNITS,
   DISTANCE_UNITS,
   FUEL_UNITS,
+  PRESSURE_UNITS,
   TEMPERATURE_UNITS,
   type UnitPreferences,
 } from '@/domain/units/units';
@@ -16,6 +17,7 @@ const storedSchema = z.object({
   fuel: z.enum([...FUEL_UNITS]).catch(DEFAULT_UNITS.fuel),
   temperature: z.enum([...TEMPERATURE_UNITS]).catch(DEFAULT_UNITS.temperature),
   distance: z.enum([...DISTANCE_UNITS]).catch(DEFAULT_UNITS.distance),
+  pressure: z.enum([...PRESSURE_UNITS]).catch(DEFAULT_UNITS.pressure),
 });
 
 export async function loadUnitPreferences(storage: SettingsStorage): Promise<UnitPreferences> {

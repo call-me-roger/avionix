@@ -11,10 +11,20 @@ import {
 
 describe('units', () => {
   it('defaults to kilograms, Celsius and nautical miles', () => {
-    expect(DEFAULT_UNITS).toEqual({ fuel: 'kg', temperature: 'C', distance: 'nm' });
+    expect(DEFAULT_UNITS).toEqual({
+      fuel: 'kg',
+      temperature: 'C',
+      distance: 'nm',
+      pressure: 'inHg',
+    });
     expect(FUEL_UNITS).toEqual(['kg', 'lb']);
     expect(TEMPERATURE_UNITS).toEqual(['C', 'F']);
     expect(DISTANCE_UNITS).toEqual(['nm', 'km']);
+  });
+
+  it('defaults pressure to inches of mercury and labels both units', () => {
+    expect(DEFAULT_UNITS.pressure).toBe('inHg');
+    expect(UNIT_LABEL.pressure).toEqual({ inHg: 'inHg', hPa: 'hPa' });
   });
 
   it('converts fuel mass exactly', () => {
