@@ -14,9 +14,31 @@ export interface ThemeColors {
   placeholder: string;
 }
 
+/**
+ * F-10 instruments. A real panel's instruments are dark in daylight too, so light and dark share
+ * one set; night keeps every colour at relative luminance 0.30 or less, like the rest of its
+ * palette. A stale instrument is drawn through `flag` (the red-X failure flag pilots know).
+ */
+export interface InstrumentColors {
+  face: string;
+  tape: string;
+  sky: string;
+  ground: string;
+  horizon: string;
+  marking: string;
+  pointer: string;
+  arcWhite: string;
+  arcGreen: string;
+  arcYellow: string;
+  arcRed: string;
+  flag: string;
+  flagText: string;
+}
+
 export interface Theme {
   mode: ThemeMode;
   colors: ThemeColors;
+  instrument: InstrumentColors;
   spacing: { xs: number; sm: number; md: number; lg: number; xl: number };
   radius: { sm: number; md: number };
   typography: { headingSize: number; titleSize: number; bodySize: number };
@@ -28,6 +50,22 @@ const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
 const radius = { sm: 4, md: 8 } as const;
 const typography = { headingSize: 24, titleSize: 16, bodySize: 14 } as const;
 const touch = { minTarget: 48, spacing: 8 } as const;
+
+const dayInstrument: InstrumentColors = {
+  face: '#000000',
+  tape: '#2b2f36',
+  sky: '#2f7fd1',
+  ground: '#8a5a2b',
+  horizon: '#ffffff',
+  marking: '#ffffff',
+  pointer: '#ffd200',
+  arcWhite: '#ffffff',
+  arcGreen: '#2fbf4a',
+  arcYellow: '#f2c200',
+  arcRed: '#e5322d',
+  flag: '#e5322d',
+  flagText: '#ffffff',
+};
 
 export const lightTheme: Theme = {
   mode: 'light',
@@ -44,6 +82,7 @@ export const lightTheme: Theme = {
     inputBackground: '#ffffff',
     placeholder: '#6b7280',
   },
+  instrument: dayInstrument,
   spacing,
   radius,
   typography,
@@ -65,6 +104,7 @@ export const darkTheme: Theme = {
     inputBackground: '#0d1117',
     placeholder: '#8b949e',
   },
+  instrument: dayInstrument,
   spacing,
   radius,
   typography,
@@ -90,6 +130,21 @@ export const nightTheme: Theme = {
     success: '#6f9a4a',
     inputBackground: '#000000',
     placeholder: '#917752',
+  },
+  instrument: {
+    face: '#000000',
+    tape: '#14100b',
+    sky: '#1d3a5c',
+    ground: '#3e2a17',
+    horizon: '#a88a60',
+    marking: '#a88a60',
+    pointer: '#a8862a',
+    arcWhite: '#8a7a64',
+    arcGreen: '#4f7a35',
+    arcYellow: '#a08a2a',
+    arcRed: '#b0473b',
+    flag: '#d0584a',
+    flagText: '#000000',
   },
   spacing,
   radius,
