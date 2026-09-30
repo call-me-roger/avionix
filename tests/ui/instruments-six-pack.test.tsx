@@ -71,6 +71,14 @@ function tree(snapshot: SessionSnapshot, storage = createMemorySettingsStorage()
   );
 }
 
+const OTHER_FACES = [
+  'instrument-airspeed',
+  'instrument-attitude',
+  'instrument-turn',
+  'instrument-heading',
+  'instrument-vertical-speed',
+];
+
 describe('six-pack', () => {
   it('names every instrument and its value', async () => {
     await render(tree(live()));
@@ -166,7 +174,8 @@ describe('six-pack', () => {
       screen.getByLabelText('Altitude 4,600 feet, altimeter 29.92 inches, standard'),
     ).toBeTruthy();
     expect(instrumentRenders['instrument-altitude']).toBe(1);
-    expect(instrumentRenders['instrument-airspeed'] ?? 0).toBe(0);
-    expect(instrumentRenders['instrument-attitude'] ?? 0).toBe(0);
+    for (const other of OTHER_FACES) {
+      expect(instrumentRenders[other] ?? 0).toBe(0);
+    }
   });
 });

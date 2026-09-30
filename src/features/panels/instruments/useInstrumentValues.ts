@@ -2,7 +2,12 @@ import { useMemo } from 'react';
 
 import { GENERIC_DATAREFS as D } from '@/domain/aircraft/profiles/generic';
 import { baroShort, baroWords, formatBaro } from '@/domain/instruments/baro';
-import { type InstrumentStatus, instrumentStatus } from '@/domain/instruments/labels';
+import {
+  type InstrumentStatus,
+  instrumentStatus,
+  machShown,
+  radioAltitudeShown,
+} from '@/domain/instruments/labels';
 import { type SpeedMarkings, speedMarkings } from '@/domain/instruments/speed-markings';
 import type { DataRefValue } from '@/domain/simulator/types';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
@@ -61,6 +66,10 @@ export function useInstrumentValues(): InstrumentValues {
   const slip = read(D.slip);
   const baro = read(D.barometer);
   const unit = units.pressure;
+  // Null while out of the shown band, so a radio altitude moving at cruise or a Mach number
+  // creeping below 0.40 re-renders nothing; every drawing and label applies the same test.
+  const mach = read(D.mach);
+  const radioAltitude = read(D.radioAltitude);
 
   const vso = read(D.vso);
   const vs = read(D.vs);
@@ -82,12 +91,16 @@ export function useInstrumentValues(): InstrumentValues {
   );
 
   return {
-    airspeed: { status: status([D.airspeed], [knots]), knots, mach: read(D.mach) },
+    airspeed: {
+      status: status([D.airspeed], [knots]),
+      knots,
+      mach: machShown(mach) ? mach : null,
+    },
     attitude: { status: status([D.pitch, D.roll], [pitch, roll]), pitch, roll },
     altitude: {
       status: status([D.altitude], [feet]),
       feet,
-      radioAltitude: read(D.radioAltitude),
+      radioAltitude: radioAltitudeShown(radioAltitude) ? radioAltitude : null,
       baroShort: baro === null ? null : baroShort(baro, unit),
       baroText: baro === null ? null : formatBaro(baro, unit),
       baroWords: baro === null ? null : baroWords(baro, unit),

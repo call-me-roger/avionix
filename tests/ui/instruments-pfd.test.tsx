@@ -6,6 +6,7 @@ import { createMemorySettingsStorage } from '@/application/settings-store';
 import { GENERIC_DATAREFS as D, GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import { NOT_LIVE_OPACITY } from '@/features/panels/instruments/InstrumentFace';
 import { PfdView } from '@/features/panels/instruments/pfd/PfdView';
+import { instrumentRenders } from '@/features/panels/instruments/svg-parts';
 import { PanelScope } from '@/features/panels/primitives/PanelFrame';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
 import { ThemeProvider } from '@/theme/theme-context';
@@ -57,8 +58,8 @@ function withMissing(snapshot: SessionSnapshot, ...names: string[]): SessionSnap
   return { ...snapshot, compatibility: { ...snapshot.compatibility, bindings } };
 }
 
-// The Mach and altimeter-setting boxes are hidden from screen readers (the airspeed and altitude
-// labels read them aloud), so the queries that find them must include hidden elements.
+// The Mach, altimeter-setting and radio-altitude boxes are hidden from screen readers (the airspeed
+// and altitude labels read them aloud), so the queries that find them must include hidden elements.
 const HIDDEN = { includeHiddenElements: true };
 
 const actions = { write: jest.fn(async () => undefined), activate: jest.fn(async () => undefined) };
@@ -73,6 +74,21 @@ function tree(snapshot: SessionSnapshot, storage = createMemorySettingsStorage()
       </UnitsProvider>
     </ThemeProvider>
   );
+}
+
+const FACES = [
+  'instrument-airspeed',
+  'instrument-attitude',
+  'instrument-altitude',
+  'instrument-vertical-speed',
+  'instrument-heading',
+  'instrument-turn',
+];
+
+function resetRenders() {
+  for (const key of Object.keys(instrumentRenders)) {
+    instrumentRenders[key] = 0;
+  }
 }
 
 describe('PFD', () => {
@@ -132,6 +148,49 @@ describe('PFD', () => {
     ).toBeTruthy();
   });
 
+  it('shows radio altitude on the attitude even with no attitude to draw', async () => {
+    const snapshot = live();
+    const { [D.pitch]: _dropped, ...rest } = snapshot.telemetry;
+    await render(
+      tree({ ...snapshot, telemetry: { ...rest, ...telemetry({ [D.radioAltitude]: 812.6 }) } }),
+    );
+    expect(screen.getByLabelText('Attitude: no value')).toBeTruthy();
+    expect(screen.getByText('813', HIDDEN)).toBeTruthy();
+  });
+
+  it('re-renders only the altitude tape when only the altitude changes', async () => {
+    const storage = createMemorySettingsStorage();
+    const first = live();
+    const view = await render(tree(first, storage));
+    resetRenders();
+    await view.rerender(
+      tree(
+        { ...first, telemetry: { ...first.telemetry, ...telemetry({ [D.altitude]: 4600 }) } },
+        storage,
+      ),
+    );
+    expect(instrumentRenders['instrument-altitude']).toBe(1);
+    for (const face of FACES.filter((face) => face !== 'instrument-altitude')) {
+      expect(instrumentRenders[face] ?? 0).toBe(0);
+    }
+  });
+
+  it('re-renders no instrument when radio altitude changes above 2,500 ft', async () => {
+    const storage = createMemorySettingsStorage();
+    const first = live();
+    const view = await render(tree(first, storage));
+    resetRenders();
+    await view.rerender(
+      tree(
+        { ...first, telemetry: { ...first.telemetry, ...telemetry({ [D.radioAltitude]: 3100 }) } },
+        storage,
+      ),
+    );
+    for (const face of FACES) {
+      expect(instrumentRenders[face] ?? 0).toBe(0);
+    }
+  });
+
   it('flags every instrument not live when the link drops, keeping values', async () => {
     await render(tree(live({ state: 'reconnecting' })));
     for (const label of [
@@ -154,10 +213,19 @@ describe('PFD', () => {
     expect(within(screen.getByTestId('instrument-attitude')).getByText('NOT LIVE')).toBeTruthy();
   });
 
-  it('fades the Mach and altimeter-setting boxes with the link', async () => {
-    await render(tree(live({ state: 'reconnecting' })));
+  it('fades the Mach, altimeter-setting and radio-altitude boxes with the link', async () => {
+    const snapshot = live({ state: 'reconnecting' });
+    await render(
+      tree({
+        ...snapshot,
+        telemetry: { ...snapshot.telemetry, ...telemetry({ [D.radioAltitude]: 812.6 }) },
+      }),
+    );
     expect(screen.getByTestId('pfd-mach', HIDDEN)).toHaveStyle({ opacity: NOT_LIVE_OPACITY });
     expect(screen.getByTestId('pfd-baro', HIDDEN)).toHaveStyle({ opacity: NOT_LIVE_OPACITY });
+    expect(screen.getByTestId('pfd-radio-altitude', HIDDEN)).toHaveStyle({
+      opacity: NOT_LIVE_OPACITY,
+    });
   });
 
   it('shows no Mach while the airspeed itself is unavailable', async () => {
