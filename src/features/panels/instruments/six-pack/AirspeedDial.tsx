@@ -115,6 +115,13 @@ export const AirspeedDial = React.memo(function AirspeedDial({
     >
       {knots === null ? null : (
         <>
+          {/* Windows first: the pointers pass over them, as on a real dial. */}
+          <DigitalWindow x={C} y={136} width={64} text={String(Math.round(knots))} />
+          {machShown(mach) ? (
+            <SvgText x={C} y={168} fontSize={14} fill={ink.marking} textAnchor="middle">
+              {`M ${mach.toFixed(2)}`}
+            </SvgText>
+          ) : null}
           <G transform={`rotate(${angle(knots)} ${C} ${C})`}>
             <Line
               x1={C}
@@ -127,12 +134,6 @@ export const AirspeedDial = React.memo(function AirspeedDial({
             />
           </G>
           <Circle cx={C} cy={C} r={6} fill={ink.marking} />
-          <DigitalWindow x={C} y={136} width={64} text={String(Math.round(knots))} />
-          {machShown(mach) ? (
-            <SvgText x={C} y={168} fontSize={14} fill={ink.marking} textAnchor="middle">
-              {`M ${mach.toFixed(2)}`}
-            </SvgText>
-          ) : null}
         </>
       )}
     </InstrumentFace>

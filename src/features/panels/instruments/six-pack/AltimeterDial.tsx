@@ -91,6 +91,16 @@ export const AltimeterDial = React.memo(function AltimeterDial({
     >
       {feet === null || hands === null ? null : (
         <>
+          {/* Windows first: the pointers pass over them, as on a real dial. */}
+          <DigitalWindow x={C} y={134} width={84} text={groupThousands(roundAltitude(feet))} />
+          {baroShort === null ? null : (
+            <DigitalWindow x={134} y={C} width={48} text={baroShort} fontSize={14} />
+          )}
+          {radioAltitudeShown(radioAltitude) ? (
+            <SvgText x={C} y={62} fontSize={14} fill={ink.marking} textAnchor="middle">
+              {`RA ${Math.round(radioAltitude)}`}
+            </SvgText>
+          ) : null}
           <G transform={`rotate(${hands.thousandsDeg} ${C} ${C})`}>
             <Line
               x1={C}
@@ -114,15 +124,6 @@ export const AltimeterDial = React.memo(function AltimeterDial({
             />
           </G>
           <Circle cx={C} cy={C} r={6} fill={ink.marking} />
-          <DigitalWindow x={C} y={134} width={84} text={groupThousands(roundAltitude(feet))} />
-          {baroShort === null ? null : (
-            <DigitalWindow x={134} y={C} width={48} text={baroShort} fontSize={14} />
-          )}
-          {radioAltitudeShown(radioAltitude) ? (
-            <SvgText x={C} y={62} fontSize={14} fill={ink.marking} textAnchor="middle">
-              {`RA ${Math.round(radioAltitude)}`}
-            </SvgText>
-          ) : null}
         </>
       )}
     </InstrumentFace>

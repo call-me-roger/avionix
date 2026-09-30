@@ -89,6 +89,14 @@ export const VsiDial = React.memo(function VsiDial({
     >
       {fpm === null ? null : (
         <>
+          {/* Windows first: the pointers pass over them, as on a real dial. */}
+          <DigitalWindow
+            x={WINDOW_X}
+            y={C}
+            width={WINDOW_WIDTH}
+            text={groupThousands(roundVerticalSpeed(fpm))}
+            fontSize={14}
+          />
           <G transform={`rotate(${vsiAngle(fpm)} ${C} ${C})`}>
             <Line
               x1={C}
@@ -101,13 +109,6 @@ export const VsiDial = React.memo(function VsiDial({
             />
           </G>
           <Circle cx={C} cy={C} r={6} fill={ink.marking} />
-          <DigitalWindow
-            x={WINDOW_X}
-            y={C}
-            width={WINDOW_WIDTH}
-            text={groupThousands(roundVerticalSpeed(fpm))}
-            fontSize={14}
-          />
         </>
       )}
     </InstrumentFace>
