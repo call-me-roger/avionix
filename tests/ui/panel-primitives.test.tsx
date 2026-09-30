@@ -266,6 +266,47 @@ describe('ControlButton', () => {
     expect(onPress).not.toHaveBeenCalled();
   });
 
+  it('stays quiet: no reason and no outcome text, for a control whose sibling already shows them', async () => {
+    const onPress = jest.fn();
+    const snapshot = live();
+    await renderInFrame(
+      {
+        ...snapshot,
+        compatibility: {
+          ...snapshot.compatibility,
+          features: snapshot.compatibility.features.map((feature) =>
+            feature.id === FEATURE_HEADING_CONTROL
+              ? {
+                  ...feature,
+                  status: 'unavailable' as const,
+                  missing: [
+                    {
+                      name: HEADING,
+                      kind: 'dataref' as const,
+                      purpose: 'Heading bug',
+                      status: 'missing' as const,
+                    },
+                  ],
+                }
+              : feature,
+          ),
+        },
+        operations: { t: failed({ failure: { code: 'WRITE_FAILED', step: 'operation' } }) },
+      },
+      <ControlButton
+        label="Heading up"
+        featureId={FEATURE_HEADING_CONTROL}
+        target="t"
+        onPress={onPress}
+        quiet
+      />,
+    );
+    expect(
+      screen.queryByText('Heading control is not available on this aircraft: Heading bug.'),
+    ).toBeNull();
+    expect(screen.queryByText(explainFailure('WRITE_FAILED', 'operation').cause)).toBeNull();
+  });
+
   it('says an unchecked feature has not been checked yet', async () => {
     await renderInFrame(
       { ...base, state: 'disconnected' },
