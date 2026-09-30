@@ -1,9 +1,10 @@
-import { render, screen } from '@testing-library/react-native';
+import { render, screen, within } from '@testing-library/react-native';
 import React from 'react';
 
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { GENERIC_DATAREFS as D, GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
+import { NOT_LIVE_OPACITY } from '@/features/panels/instruments/InstrumentFace';
 import { PfdView } from '@/features/panels/instruments/pfd/PfdView';
 import { PanelScope } from '@/features/panels/primitives/PanelFrame';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
@@ -131,15 +132,51 @@ describe('PFD', () => {
     ).toBeTruthy();
   });
 
-  it('flags every instrument NOT LIVE when the link drops, keeping values', async () => {
+  it('flags every instrument not live when the link drops, keeping values', async () => {
     await render(tree(live({ state: 'reconnecting' })));
-    expect(screen.getAllByText('NOT LIVE')).toHaveLength(6);
-    expect(screen.getByLabelText('Heading 270 degrees, not live')).toBeTruthy();
+    for (const label of [
+      'Airspeed 112 knots',
+      'Attitude: pitch 3 degrees up, bank 15 degrees right',
+      'Altitude 4,520 feet, altimeter 29.92 inches, standard',
+      'Turn: rate 1.2 standard rate right, ball 2 degrees right',
+      'Heading 270 degrees',
+      'Vertical speed climbing 500 feet per minute',
+    ]) {
+      expect(screen.getByLabelText(`${label}, not live`)).toBeTruthy();
+    }
+  });
+
+  it('writes the NOT LIVE flag only on the attitude, the one face wide and tall enough for it', async () => {
+    // At 360 wide the tapes are 60 and 40 across and the heading and turn strips 40 and 20 tall:
+    // all compact, so the red X alone marks them.
+    await render(tree(live({ state: 'reconnecting' })));
+    expect(screen.getAllByText('NOT LIVE')).toHaveLength(1);
+    expect(within(screen.getByTestId('instrument-attitude')).getByText('NOT LIVE')).toBeTruthy();
+  });
+
+  it('fades the Mach and altimeter-setting boxes with the link', async () => {
+    await render(tree(live({ state: 'reconnecting' })));
+    expect(screen.getByTestId('pfd-mach', HIDDEN)).toHaveStyle({ opacity: NOT_LIVE_OPACITY });
+    expect(screen.getByTestId('pfd-baro', HIDDEN)).toHaveStyle({ opacity: NOT_LIVE_OPACITY });
+  });
+
+  it('shows no Mach while the airspeed itself is unavailable', async () => {
+    const snapshot = live();
+    await render(
+      tree(
+        withMissing(
+          { ...snapshot, telemetry: { ...snapshot.telemetry, ...telemetry({ [D.mach]: 0.782 }) } },
+          D.airspeed,
+        ),
+      ),
+    );
+    expect(screen.queryByText(/^M /, HIDDEN)).toBeNull();
   });
 
   it('marks only the missing instrument unavailable', async () => {
     await render(tree(withMissing(live(), D.verticalSpeed)));
     expect(screen.getByLabelText('Vertical speed: not available on this aircraft')).toBeTruthy();
+    expect(within(screen.getByTestId('instrument-vertical-speed')).getByText('N/A')).toBeTruthy();
     expect(screen.getByLabelText('Airspeed 112 knots')).toBeTruthy();
   });
 });

@@ -8,7 +8,12 @@ import { useTheme, useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
 /** How much a stale instrument's pointers and digits fade behind the red X. */
-const NOT_LIVE_OPACITY = 0.4;
+export const NOT_LIVE_OPACITY = 0.4;
+
+/** Narrower than this (dp), "NOT LIVE" and "Not available on this aircraft" break mid-word. */
+const COMPACT_BELOW_WIDTH = 100;
+/** Shorter than this (dp), a flag spills out of the face onto its neighbours. */
+const COMPACT_BELOW_HEIGHT = 48;
 
 const makeStyles = (theme: Theme) => ({
   overlay: {
@@ -37,6 +42,10 @@ const makeStyles = (theme: Theme) => ({
   },
 });
 
+function isCompact(width: number, height: number): boolean {
+  return width < COMPACT_BELOW_WIDTH || height < COMPACT_BELOW_HEIGHT;
+}
+
 interface Props {
   testID: string;
   label: string;
@@ -54,7 +63,9 @@ interface Props {
  * Every instrument's frame: one accessible element carrying its value in words, and the four
  * states of the spec's table. Not live keeps the last pointers, faded, under a red X with a
  * NOT LIVE flag — the failure flag pilots know, so a frozen instrument is never mistaken for a
- * working one (R6, R7).
+ * working one (R6, R7). A face too small for the flag's words (the PFD's tapes and scales) is
+ * compact: the red X alone marks it not live, and "N/A" stands for the unavailable note. The
+ * accessible label says it in full either way.
  */
 export function InstrumentFace({
   testID,
@@ -70,7 +81,9 @@ export function InstrumentFace({
   const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
   const hasValue = status === 'live' || status === 'notLive';
-  const stroke = viewBox.width / 40;
+  const compact = isCompact(width, height);
+  // From the longer side, so the X on a tall narrow tape is no hairline.
+  const stroke = Math.max(viewBox.width, viewBox.height) / 40;
   return (
     <View
       testID={testID}
@@ -103,14 +116,20 @@ export function InstrumentFace({
           </G>
         ) : null}
       </Svg>
-      {status === 'notLive' ? (
+      {status === 'notLive' && !compact ? (
         <View pointerEvents="none" style={styles.overlay}>
           <Text style={styles.flag}>NOT LIVE</Text>
         </View>
       ) : null}
       {status === 'unavailable' ? (
         <View pointerEvents="none" style={styles.overlay}>
-          <Text style={styles.note}>Not available on this aircraft</Text>
+          {compact ? (
+            <Text style={styles.note} numberOfLines={1} adjustsFontSizeToFit>
+              N/A
+            </Text>
+          ) : (
+            <Text style={styles.note}>Not available on this aircraft</Text>
+          )}
         </View>
       ) : null}
       {status === 'noValue' ? (
