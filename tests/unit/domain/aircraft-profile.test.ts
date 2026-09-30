@@ -7,8 +7,10 @@ import {
 } from '@/domain/aircraft/profile';
 import { BUNDLED_PROFILES } from '@/domain/aircraft/profiles/catalog';
 import {
+  FEATURE_ALTIMETER_SETTING,
   FEATURE_CONNECTION_HEALTH,
   FEATURE_FLIGHT_DATA,
+  FEATURE_FLIGHT_INSTRUMENTS,
   FEATURE_FLIGHT_TELEMETRY,
   FEATURE_GPS_DESTINATION,
   FEATURE_HEADING_CONTROL,
@@ -69,6 +71,22 @@ describe('profileBindings', () => {
       GENERIC_DATAREFS.gpsDistance,
       GENERIC_DATAREFS.gpsTimeToGo,
       GENERIC_DATAREFS.gpsDestinationId,
+      GENERIC_DATAREFS.mach,
+      GENERIC_DATAREFS.altitude,
+      GENERIC_DATAREFS.verticalSpeed,
+      GENERIC_DATAREFS.heading,
+      GENERIC_DATAREFS.pitch,
+      GENERIC_DATAREFS.roll,
+      GENERIC_DATAREFS.turnRate,
+      GENERIC_DATAREFS.slip,
+      GENERIC_DATAREFS.radioAltitude,
+      GENERIC_DATAREFS.engineType,
+      GENERIC_DATAREFS.vso,
+      GENERIC_DATAREFS.vs,
+      GENERIC_DATAREFS.vfe,
+      GENERIC_DATAREFS.vno,
+      GENERIC_DATAREFS.vne,
+      GENERIC_DATAREFS.barometer,
     ]);
   });
 });
@@ -104,6 +122,8 @@ describe('the generic profile', () => {
       FEATURE_HEADING_CONTROL,
       FEATURE_FLIGHT_DATA,
       FEATURE_GPS_DESTINATION,
+      FEATURE_FLIGHT_INSTRUMENTS,
+      FEATURE_ALTIMETER_SETTING,
     ]);
   });
 
@@ -140,14 +160,51 @@ describe('the generic profile', () => {
     }
   });
 
-  it('names every DataRef once across the whole profile', () => {
+  it('names every DataRef once across the whole profile, except airspeed, which flight instruments deliberately reuses', () => {
     const names = GENERIC_PROFILE.features.flatMap((feature) =>
       feature.bindings.map((binding) => binding.name),
     );
-    expect(new Set(names).size).toBe(names.length);
+    const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
+    expect(duplicates).toEqual([GENERIC_DATAREFS.airspeed]);
   });
 
   it('bumps the profile version for the new bindings', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.1.0');
+    expect(GENERIC_PROFILE.version).toBe('1.2.0');
+  });
+
+  it('declares the flight instruments, every one optional, and the altimeter setting', () => {
+    expect(GENERIC_PROFILE.version).toBe('1.2.0');
+    const instruments = findFeature(GENERIC_PROFILE, FEATURE_FLIGHT_INSTRUMENTS);
+    expect(instruments?.label).toBe('Flight instruments');
+    expect(instruments?.bindings.map((binding) => binding.name)).toEqual([
+      GENERIC_DATAREFS.airspeed,
+      GENERIC_DATAREFS.mach,
+      GENERIC_DATAREFS.altitude,
+      GENERIC_DATAREFS.verticalSpeed,
+      GENERIC_DATAREFS.heading,
+      GENERIC_DATAREFS.pitch,
+      GENERIC_DATAREFS.roll,
+      GENERIC_DATAREFS.turnRate,
+      GENERIC_DATAREFS.slip,
+      GENERIC_DATAREFS.radioAltitude,
+      GENERIC_DATAREFS.engineType,
+      GENERIC_DATAREFS.vso,
+      GENERIC_DATAREFS.vs,
+      GENERIC_DATAREFS.vfe,
+      GENERIC_DATAREFS.vno,
+      GENERIC_DATAREFS.vne,
+    ]);
+    expect(instruments?.bindings.every((binding) => !binding.required && !binding.write)).toBe(
+      true,
+    );
+    const baro = findFeature(GENERIC_PROFILE, FEATURE_ALTIMETER_SETTING);
+    expect(baro?.bindings).toEqual([
+      expect.objectContaining({
+        kind: 'dataref',
+        name: 'sim/cockpit2/gauges/actuators/barometer_setting_in_hg_pilot',
+        required: true,
+        write: true,
+      }),
+    ]);
   });
 });

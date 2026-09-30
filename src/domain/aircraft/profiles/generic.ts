@@ -24,6 +24,22 @@ export const GENERIC_DATAREFS = {
   gpsDistance: 'sim/cockpit2/radios/indicators/gps_dme_distance_nm',
   gpsTimeToGo: 'sim/cockpit2/radios/indicators/gps_dme_time_min',
   gpsDestinationId: 'sim/cockpit2/radios/indicators/gps_nav_id',
+  mach: 'sim/cockpit2/gauges/indicators/mach_pilot',
+  altitude: 'sim/cockpit2/gauges/indicators/altitude_ft_pilot',
+  verticalSpeed: 'sim/cockpit2/gauges/indicators/vvi_fpm_pilot',
+  heading: 'sim/cockpit2/gauges/indicators/heading_AHARS_deg_mag_pilot',
+  pitch: 'sim/cockpit2/gauges/indicators/pitch_AHARS_deg_pilot',
+  roll: 'sim/cockpit2/gauges/indicators/roll_AHARS_deg_pilot',
+  turnRate: 'sim/cockpit2/gauges/indicators/turn_rate_roll_deg_pilot',
+  slip: 'sim/cockpit2/gauges/indicators/slip_deg',
+  radioAltitude: 'sim/cockpit2/gauges/indicators/radio_altimeter_height_ft_pilot',
+  engineType: 'sim/aircraft/prop/acf_en_type',
+  vso: 'sim/aircraft/view/acf_Vso',
+  vs: 'sim/aircraft/view/acf_Vs',
+  vfe: 'sim/aircraft/view/acf_Vfe',
+  vno: 'sim/aircraft/view/acf_Vno',
+  vne: 'sim/aircraft/view/acf_Vne',
+  barometer: 'sim/cockpit2/gauges/actuators/barometer_setting_in_hg_pilot',
 } as const;
 
 export const GENERIC_COMMANDS = {
@@ -35,6 +51,8 @@ export const FEATURE_FLIGHT_TELEMETRY = 'flight-telemetry';
 export const FEATURE_HEADING_CONTROL = 'heading-control';
 export const FEATURE_FLIGHT_DATA = 'flight-data';
 export const FEATURE_GPS_DESTINATION = 'gps-destination';
+export const FEATURE_FLIGHT_INSTRUMENTS = 'flight-instruments';
+export const FEATURE_ALTIMETER_SETTING = 'altimeter-setting';
 
 /**
  * The fallback for every aircraft, and the only profile Avionix ships today. Add-ons that reuse
@@ -43,12 +61,14 @@ export const FEATURE_GPS_DESTINATION = 'gps-destination';
  * Connection health binds to `sim/time/*`, which is simulator-global: no aircraft can rename it,
  * which is why `HealthMonitor` may read those two names directly instead of through the profile.
  * Flight data and the GPS destination (F-11) bind only optional names: several are
- * community-sourced, and a miss must cost one field, never the strip.
+ * community-sourced, and a miss must cost one field, never the strip. The flight instruments
+ * (F-10) bind only optional names too, so a miss costs one instrument; the altimeter setting's
+ * one binding is required and written, so a read-only resolution disables only its controls (R5).
  */
 export const GENERIC_PROFILE: AircraftProfile = {
   id: 'avionix.generic',
   name: 'Generic X-Plane aircraft',
-  version: '1.1.0',
+  version: '1.2.0',
   match: { kind: 'generic' },
   features: [
     {
@@ -193,6 +213,116 @@ export const GENERIC_PROFILE: AircraftProfile = {
           name: GENERIC_DATAREFS.gpsDestinationId,
           required: false,
           purpose: 'GPS destination identifier',
+        },
+      ],
+    },
+    {
+      id: FEATURE_FLIGHT_INSTRUMENTS,
+      label: 'Flight instruments',
+      bindings: [
+        {
+          kind: 'dataref',
+          name: GENERIC_DATAREFS.airspeed,
+          required: false,
+          purpose: 'Airspeed indicator',
+        },
+        { kind: 'dataref', name: GENERIC_DATAREFS.mach, required: false, purpose: 'Mach number' },
+        {
+          kind: 'dataref',
+          name: GENERIC_DATAREFS.altitude,
+          required: false,
+          purpose: 'Altimeter',
+        },
+        {
+          kind: 'dataref',
+          name: GENERIC_DATAREFS.verticalSpeed,
+          required: false,
+          purpose: 'Vertical speed indicator',
+        },
+        {
+          kind: 'dataref',
+          name: GENERIC_DATAREFS.heading,
+          required: false,
+          purpose: 'Heading indicator',
+        },
+        {
+          kind: 'dataref',
+          name: GENERIC_DATAREFS.pitch,
+          required: false,
+          purpose: 'Attitude indicator (pitch)',
+        },
+        {
+          kind: 'dataref',
+          name: GENERIC_DATAREFS.roll,
+          required: false,
+          purpose: 'Attitude indicator (bank)',
+        },
+        {
+          kind: 'dataref',
+          name: GENERIC_DATAREFS.turnRate,
+          required: false,
+          purpose: 'Turn rate',
+        },
+        {
+          kind: 'dataref',
+          name: GENERIC_DATAREFS.slip,
+          required: false,
+          purpose: 'Slip and skid ball',
+        },
+        {
+          kind: 'dataref',
+          name: GENERIC_DATAREFS.radioAltitude,
+          required: false,
+          purpose: 'Radio altitude',
+        },
+        {
+          kind: 'dataref',
+          name: GENERIC_DATAREFS.engineType,
+          required: false,
+          purpose: 'Engine type, which picks the default presentation',
+        },
+        {
+          kind: 'dataref',
+          name: GENERIC_DATAREFS.vso,
+          required: false,
+          purpose: 'Stall speed, landing configuration',
+        },
+        {
+          kind: 'dataref',
+          name: GENERIC_DATAREFS.vs,
+          required: false,
+          purpose: 'Stall speed, clean',
+        },
+        {
+          kind: 'dataref',
+          name: GENERIC_DATAREFS.vfe,
+          required: false,
+          purpose: 'Maximum flap extended speed',
+        },
+        {
+          kind: 'dataref',
+          name: GENERIC_DATAREFS.vno,
+          required: false,
+          purpose: 'Maximum structural cruising speed',
+        },
+        {
+          kind: 'dataref',
+          name: GENERIC_DATAREFS.vne,
+          required: false,
+          purpose: 'Never-exceed speed',
+        },
+      ],
+    },
+    {
+      id: FEATURE_ALTIMETER_SETTING,
+      label: 'Altimeter setting',
+      bindings: [
+        {
+          kind: 'dataref',
+          name: GENERIC_DATAREFS.barometer,
+          required: true,
+          write: true,
+          purpose: 'Altimeter setting, written when you change it',
         },
       ],
     },
