@@ -162,7 +162,9 @@ place what those functions return.
   standard-rate marks as the turn coordinator. The slip indicator is a trapezoid under the roll
   pointer, offset by `slip_deg`.
 - **Six-pack extras**: Mach (≥ 0.40) under the airspeed digits; radio altitude (≤ 2,500 ft) under
-  the altimeter digits. Both presentations therefore show the same values (R3).
+  the altimeter digits. Both presentations therefore show the same values (R3). The PFD shows
+  Mach as "M .782" (three decimals, the airliner convention) and the six-pack as "M 0.78"; the
+  accessible label reads two decimals.
 
 The turn-rate deflection for a standard-rate turn and the sign of `slip_deg` are not documented;
 20° and "positive = right" are assumptions, both named constants, both checked on the device
@@ -192,7 +194,8 @@ orientations. The instrument block is sized from the frame's measured width and 
 
 `pressure: 'inHg' | 'hPa'` joins F-11's `UnitPreferences` (default `inHg`), stored in the existing
 `avionix.units` with the same per-field `.catch`, so saved preferences without it keep their other
-fields. The Units section in Setup gains "Pressure: inHg | hPa".
+fields. The Units section in Setup gains an "Altimeter setting: inHg | hPa" row (accessible label
+"Pressure unit").
 
 Domain (`src/domain/instruments/baro.ts`): `HPA_PER_INHG = 33.8639`; `STD_INHG = 29.92`;
 `isStandard(inHg)` within ±0.005; `formatBaro(inHg, unit)` → `29.92 inHg` / `1013 hPa` (+ ` STD`
