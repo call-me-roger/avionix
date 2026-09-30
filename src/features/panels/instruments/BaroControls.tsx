@@ -48,6 +48,17 @@ export function BaroControls() {
   const noFlight = snapshot.state === 'connected' && snapshot.health.activity === 'noFlight';
   const inHg = noFlight ? null : firstNumber(snapshot.telemetry[D.barometer]?.value);
   const send = (value: number) => void write(FEATURE_ALTIMETER_SETTING, D.barometer, value);
+  // A read-back outside the window clamps to its edge, which can lie the other way ("−" from 27.50
+  // lands on 28.00); such a press writes nothing rather than move against its label.
+  const step = (direction: 1 | -1) => {
+    if (inHg === null) {
+      return;
+    }
+    const next = baroStep(inHg, unit, direction);
+    if ((next - inHg) * direction >= 0) {
+      send(next);
+    }
+  };
   const reading = missing
     ? 'not available on this aircraft'
     : inHg === null
@@ -74,7 +85,7 @@ export function BaroControls() {
           target={D.barometer}
           invalid={inHg === null}
           quiet
-          onPress={() => inHg !== null && send(baroStep(inHg, unit, -1))}
+          onPress={() => step(-1)}
         />
         <ControlButton
           label="+"
@@ -83,7 +94,7 @@ export function BaroControls() {
           target={D.barometer}
           invalid={inHg === null}
           quiet
-          onPress={() => inHg !== null && send(baroStep(inHg, unit, 1))}
+          onPress={() => step(1)}
         />
         <ControlButton
           label="STD"

@@ -178,4 +178,13 @@ describe('altimeter setting controls', () => {
     expect(screen.getByLabelText('Increase altimeter setting')).toBeDisabled();
     expect(screen.getByLabelText('Altimeter setting: no value')).toBeTruthy();
   });
+
+  it('never steps the wrong way from a setting outside the window', async () => {
+    // 27.50 is below the 28.00 stop: "−" would clamp up to 28.00, so it writes nothing.
+    await render(tree(live({ telemetry: telemetry({ [D.barometer]: 27.5 }) })));
+    await fireEvent.press(screen.getByLabelText('Decrease altimeter setting'));
+    expect(actions.write).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByLabelText('Increase altimeter setting'));
+    expect(actions.write).toHaveBeenLastCalledWith('altimeter-setting', D.barometer, 28);
+  });
 });

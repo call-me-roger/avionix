@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 import React from 'react';
 
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
-import { createMemorySettingsStorage } from '@/application/settings-store';
+import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
 import { GENERIC_DATAREFS as D, GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import { InstrumentPreferencesProvider } from '@/features/panels/instruments/InstrumentPreferencesProvider';
 import { InstrumentsPanel } from '@/features/panels/instruments/InstrumentsPanel';
@@ -118,7 +118,7 @@ describe('Instruments panel', () => {
         byAircraft: { C172: 'pfd' },
       }),
     );
-    // A different piston single still gets its engine default…
+    // A piston twin with no choice of its own still gets its engine default…
     await view.rerender(tree(withIdentity(live(), 'BE58'), storage));
     expect(screen.getByTestId('six-pack')).toBeTruthy();
     // …and the C172 comes back to the PFD, without a restart.
@@ -137,10 +137,74 @@ describe('Instruments panel', () => {
   });
 
   it('uses the last choice for an unidentified aircraft with no engine type', async () => {
+    const storage = createMemorySettingsStorage();
+    await storage.setItem(
+      'avionix.instruments',
+      JSON.stringify({ last: 'sixPack', byAircraft: {} }),
+    );
     const snapshot = withIdentity(live(), null);
     const { [D.engineType]: _dropped, ...rest } = snapshot.telemetry;
-    await render(tree({ ...snapshot, telemetry: rest }));
+    await render(tree({ ...snapshot, telemetry: rest }, storage));
+    expect(await screen.findByTestId('six-pack')).toBeTruthy();
+  });
+
+  it('follows an engine-type change for an aircraft with no stored choice, without a restart', async () => {
+    const snapshot = withIdentity(live(), 'C172');
+    const storage = createMemorySettingsStorage();
+    const view = await render(tree(snapshot, storage));
+    expect(screen.getByTestId('six-pack')).toBeTruthy();
+    await view.rerender(
+      tree(
+        {
+          ...snapshot,
+          telemetry: { ...snapshot.telemetry, ...telemetry({ [D.engineType]: [7, 7] }) },
+        },
+        storage,
+      ),
+    );
     expect(screen.getByTestId('pfd')).toBeTruthy();
+  });
+
+  it('keeps every stored choice when one is made before they load', async () => {
+    const memory = createMemorySettingsStorage();
+    await memory.setItem(
+      'avionix.instruments',
+      JSON.stringify({ last: 'sixPack', byAircraft: { B738: 'sixPack' } }),
+    );
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const storage: SettingsStorage = {
+      // Read when asked, answered only on release: the early choice's save cannot leak into it.
+      getItem: async (key) => {
+        const value = await memory.getItem(key);
+        if (key === 'avionix.instruments') {
+          await held;
+        }
+        return value;
+      },
+      setItem: (key, value) => memory.setItem(key, value),
+    };
+    const view = await render(tree(withIdentity(live(), 'C172'), storage));
+    await fireEvent.press(screen.getByLabelText('Primary flight display'));
+    expect(screen.getByTestId('pfd')).toBeTruthy();
+
+    release();
+    const merged = { last: 'pfd', byAircraft: { B738: 'sixPack', C172: 'pfd' } };
+    await waitFor(async () =>
+      expect(JSON.parse((await memory.getItem('avionix.instruments')) ?? '{}')).toEqual(merged),
+    );
+    // In state too: the early choice holds, and the jet keeps its stored six-pack.
+    expect(screen.getByTestId('pfd')).toBeTruthy();
+    const jet = withIdentity(live(), 'B738');
+    await view.rerender(
+      tree(
+        { ...jet, telemetry: { ...jet.telemetry, ...telemetry({ [D.engineType]: [7, 7] }) } },
+        storage,
+      ),
+    );
+    expect(screen.getByTestId('six-pack')).toBeTruthy();
   });
 
   it('shows the altimeter controls under the instruments', async () => {

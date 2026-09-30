@@ -33,7 +33,7 @@ const InstrumentPreferencesContext = createContext<InstrumentPreferencesValue | 
 
 /**
  * The presentation choice (F-10 R3), per aircraft type. Same load rule as the units and the panel
- * layout: a real choice made before the stored value arrives wins over it.
+ * layout: a real choice made before the stored value arrives wins over it, for its own aircraft.
  */
 export function InstrumentPreferencesProvider({
   storage,
@@ -54,8 +54,20 @@ export function InstrumentPreferencesProvider({
       if (cancelled) {
         return;
       }
-      // Decided in the updater, as in UnitsProvider: a choice queued before this still wins.
-      setPreferences((prev) => (touched.current ? prev : stored));
+      // Decided in the updater, as in UnitsProvider: a choice queued before this still wins. Unlike
+      // the units, a choice names one aircraft, so it is merged over the stored ones rather than
+      // replacing them: the early save wrote the choice alone, and this save restores the others.
+      setPreferences((prev) => {
+        if (!touched.current) {
+          return stored;
+        }
+        const merged: PresentationPreferences = {
+          last: prev.last,
+          byAircraft: { ...stored.byAircraft, ...prev.byAircraft },
+        };
+        void saveInstrumentPreferences(storage, merged);
+        return merged;
+      });
       setReady(true);
     });
     return () => {
