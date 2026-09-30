@@ -10,7 +10,9 @@ import { type SettingsStorage, createMemorySettingsStorage } from '@/application
 import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
 import {
+  FEATURE_ALTIMETER_SETTING,
   FEATURE_FLIGHT_DATA,
+  FEATURE_FLIGHT_INSTRUMENTS,
   FEATURE_GPS_DESTINATION,
   FEATURE_HEADING_CONTROL,
   GENERIC_PROFILE,
@@ -108,9 +110,30 @@ describe('AppShell', () => {
     const { services } = makeServices();
     await render(tree(services));
     expect(await screen.findByTestId('setup-screen')).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Flight data' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Heading' })).toBeTruthy();
+    // Instruments first: the switcher's order is the registry's.
+    expect(screen.getAllByRole('tab').map((tab) => tab.props.accessibilityLabel)).toEqual([
+      'Instruments',
+      'Flight data',
+      'Heading',
+      'Setup',
+    ]);
     expect(screen.getByRole('tab', { name: 'Setup' })).toBeSelected();
+  });
+
+  it('falls back to Instruments, first in the switcher, when the remembered panel is hidden', async () => {
+    const { services, session } = makeServices({}, await seeded('heading', ['heading']));
+    await render(tree(services));
+    expect(await screen.findByTestId('panel-instruments')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Instruments' })).toBeSelected();
+    expect(screen.getByTestId('pfd')).toBeTruthy();
+    // The strip is docked here too, so its DataRefs join the instruments' own.
+    await waitFor(() =>
+      expect(session.setDemand).toHaveBeenLastCalledWith([
+        FEATURE_ALTIMETER_SETTING,
+        FEATURE_FLIGHT_DATA,
+        FEATURE_FLIGHT_INSTRUMENTS,
+      ]),
+    );
   });
 
   it('switches to a panel and remembers it', async () => {
@@ -171,8 +194,10 @@ describe('AppShell', () => {
     const { services } = makeServices();
     await render(tree(services));
     await fireEvent.press(
-      await screen.findByRole('switch', { name: 'Show Flight data in the switcher' }),
+      await screen.findByRole('switch', { name: 'Show Instruments in the switcher' }),
     );
+    await fireEvent.press(screen.getByRole('switch', { name: 'Show Flight data in the switcher' }));
+    expect(screen.queryByRole('tab', { name: 'Instruments' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Flight data' })).toBeNull();
     const lastOne = screen.getByRole('switch', { name: 'Show Heading in the switcher' });
     expect(lastOne).toBeDisabled();
