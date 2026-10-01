@@ -12,8 +12,11 @@ const makeStyles = (theme: Theme) => ({
   grid: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: theme.spacing.sm },
   key: {
     flexBasis: '30%' as const,
-    flexGrow: 1,
+    // No flexGrow: a lone key on its own row (Clear, under a 0–7 squawk keypad) must stay one
+    // column wide, never stretch to fill the row (M4).
+    flexGrow: 0,
     minHeight: KEY_HEIGHT,
+    minWidth: theme.touch.minTarget,
     borderRadius: theme.radius.md,
     borderWidth: 1,
     borderColor: theme.colors.border,

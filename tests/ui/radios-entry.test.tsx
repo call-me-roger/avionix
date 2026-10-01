@@ -93,6 +93,53 @@ describe('Radios keypad entry', () => {
     expect(screen.getByLabelText('COM1: active 121.500, standby 118.005')).toBeTruthy();
   });
 
+  it('always reads as typed, never jumping to the padded value (I2)', async () => {
+    await render(tree(live()));
+    await fireEvent.press(screen.getByLabelText('Enter COM1 standby'));
+    for (const key of ['1', '2', '1', '5']) {
+      await fireEvent.press(screen.getByLabelText(key));
+    }
+    expect(screen.getByText('121.5__')).toBeTruthy();
+    expect(screen.getByText('Sets 121.500')).toBeTruthy();
+    expect(screen.getByLabelText('COM1 standby, new value 121.5')).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('0'));
+    expect(screen.getByText('121.50_')).toBeTruthy();
+    expect(screen.getByText('Sets 121.500')).toBeTruthy();
+  });
+
+  it('labels an empty draft as nothing typed yet, never a lone point (I2)', async () => {
+    await render(tree(live()));
+    await fireEvent.press(screen.getByLabelText('Enter COM1 standby'));
+    expect(screen.getByLabelText('COM1 standby, nothing typed yet')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('1'));
+    expect(screen.getByLabelText('COM1 standby, new value 1')).toBeTruthy();
+  });
+
+  it('omits the "is still" clause when X-Plane reports a non-positive value (I3)', async () => {
+    const view = await render(
+      tree(live({ telemetry: telemetry({ ...VALUES, [D.com1Standby]: 0 }) })),
+    );
+    await fireEvent.press(screen.getByLabelText('Enter COM1 standby'));
+    for (const key of ['1', '2', '2', '8', '0', '0']) {
+      await fireEvent.press(screen.getByLabelText(key));
+    }
+    await fireEvent.press(screen.getByLabelText('Set COM1 standby'));
+    const ok = {
+      [D.com1Standby]: { status: 'ok' as const, failure: null, refusal: null, at: NOW },
+    };
+    await view.rerender(
+      tree(
+        live({
+          telemetry: telemetry({ ...VALUES, [D.com1Standby]: 0 }),
+          operations: ok,
+        }),
+        NOW + 4000,
+      ),
+    );
+    expect(screen.getByText('X-Plane did not take 122.800.')).toBeTruthy();
+  });
+
   it('sends the staged channel with Set', async () => {
     await render(tree(live()));
     await fireEvent.press(screen.getByLabelText('Enter COM1 standby'));
@@ -106,7 +153,7 @@ describe('Radios keypad entry', () => {
   it('rejects 118.020 with the nearest channels and keeps Set disabled', async () => {
     await render(tree(live()));
     await fireEvent.press(screen.getByLabelText('Enter COM1 standby'));
-    for (const key of ['1', '1', '8', '0', '2']) {
+    for (const key of ['1', '1', '8', '0', '2', '0']) {
       await fireEvent.press(screen.getByLabelText(key));
     }
     expect(
@@ -117,6 +164,34 @@ describe('Radios keypad entry', () => {
     });
     await fireEvent.press(screen.getByLabelText('Set COM1 standby'));
     expect(actions.write).not.toHaveBeenCalled();
+  });
+
+  it('shows no rejection while a valid channel could still be typed (M3)', async () => {
+    await render(tree(live()));
+    await fireEvent.press(screen.getByLabelText('Enter COM1 standby'));
+    // 118.025 is a valid channel; at five digits ("11802") it still parses as the invalid 118.020,
+    // but one more digit (5) could still complete it, so no message shows yet.
+    for (const key of ['1', '1', '8', '0', '2']) {
+      await fireEvent.press(screen.getByLabelText(key));
+    }
+    expect(screen.queryByText(/is not a COM channel/)).toBeNull();
+    expect(screen.getByLabelText('Set COM1 standby').props.accessibilityState).toMatchObject({
+      disabled: true,
+    });
+    await fireEvent.press(screen.getByLabelText('5'));
+    expect(screen.getByText('118.025')).toBeTruthy();
+    expect(screen.getByLabelText('Set COM1 standby').props.accessibilityState).toMatchObject({
+      disabled: false,
+    });
+  });
+
+  it('shows the band message immediately, before the draft is full length', async () => {
+    await render(tree(live()));
+    await fireEvent.press(screen.getByLabelText('Enter COM1 standby'));
+    for (const key of ['2', '0', '0']) {
+      await fireEvent.press(screen.getByLabelText(key));
+    }
+    expect(screen.getByText('COM channels run from 118.000 to 136.990.')).toBeTruthy();
   });
 
   it('enters NAV frequencies with two decimals', async () => {
@@ -167,7 +242,8 @@ describe('Radios keypad entry', () => {
       },
     };
     await view.rerender(tree(live({ operations: failed })));
-    expect(screen.getByText('122.800')).toBeTruthy();
+    expect(screen.getByText('122.8__')).toBeTruthy();
+    expect(screen.getByText('Sets 122.800')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('Set COM1 standby'));
     const ok = {
       [D.com1Standby]: { status: 'ok' as const, failure: null, refusal: null, at: NOW },

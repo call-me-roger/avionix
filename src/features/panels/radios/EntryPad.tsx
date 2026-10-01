@@ -2,7 +2,13 @@ import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { isEightThirtyThreeOnly } from '@/domain/radios/channels';
-import { entryText, parseEntry } from '@/domain/radios/entry';
+import {
+  MAX_DIGITS,
+  entryText,
+  parseEntry,
+  shouldExplain,
+  typedValue,
+} from '@/domain/radios/entry';
 import { isEmergencySquawk } from '@/domain/radios/squawk';
 import { firstNumber } from '@/features/panels/instruments/useInstrumentValues';
 import { ControlButton } from '@/features/panels/primitives/ControlButton';
@@ -65,8 +71,12 @@ function notTakenSentence(
   if (target.kind === 'squawk') {
     return `X-Plane did not take squawk ${text}.`;
   }
+  // A frequency that is not a positive number is no value at all (I3): the clause is omitted
+  // rather than reading "is still 0.000" or "is still -1.999".
   const still =
-    current === null ? '' : ` ${target.title} is still ${formatFrequency(target.kind, current)}.`;
+    current === null || current <= 0
+      ? ''
+      : ` ${target.title} is still ${formatFrequency(target.kind, current)}.`;
   const hint =
     target.kind === 'com' && isEightThirtyThreeOnly(value)
       ? ' This aircraft’s radio may tune 25 kHz channels only.'
@@ -87,7 +97,18 @@ export function EntryPad({ entry, readBack }: { entry: RadioEntry; readBack: Rea
     return null;
   }
   const parsed = parseEntry(target.kind, entry.draft);
-  const shown = parsed.status === 'valid' ? parsed.text : entryText(target.kind, entry.draft);
+  const draft = entry.draft;
+  // The box always reads as typed, never the padded value a trailing zero would hide (I2): a
+  // draft shorter than the full length only reveals what Set would actually send below, as "Sets
+  // 121.500", muted rather than in the draft colour, so it still looks provisional.
+  const shown = entryText(target.kind, draft);
+  const sets =
+    parsed.status === 'valid' && draft.length < MAX_DIGITS[target.kind] ? parsed.text : null;
+  const explain = parsed.status === 'invalid' && shouldExplain(target.kind, draft, parsed);
+  const accessibilityLabel =
+    draft.length === 0
+      ? `${target.title}, nothing typed yet`
+      : `${target.title}, new value ${typedValue(target.kind, draft)}`;
   const send = () => {
     if (parsed.status !== 'valid') {
       return;
@@ -110,15 +131,19 @@ export function EntryPad({ entry, readBack }: { entry: RadioEntry; readBack: Rea
         style={styles.display}
         accessible
         accessibilityLiveRegion="polite"
-        accessibilityLabel={`${target.title}, new value ${shown.replace(/_/g, '')}`}
+        accessibilityLabel={accessibilityLabel}
       >
         <BodyText>New</BodyText>
         <Text style={styles.draft}>{shown}</Text>
       </View>
+      {sets === null ? null : <BodyText muted>{`Sets ${sets}`}</BodyText>}
       {parsed.status === 'valid' && parsed.note !== null ? (
         <BodyText tone="danger">{parsed.note}</BodyText>
       ) : null}
-      {parsed.status !== 'valid' && parsed.message !== null ? (
+      {parsed.status === 'incomplete' && parsed.message !== null ? (
+        <BodyText tone="danger">{parsed.message}</BodyText>
+      ) : null}
+      {parsed.status === 'invalid' && explain ? (
         <BodyText tone="danger">{parsed.message}</BodyText>
       ) : null}
       <Keypad
