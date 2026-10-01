@@ -5,6 +5,7 @@ import { useReadBack } from '@/features/panels/primitives/useReadBack';
 import { EntryPad } from '@/features/panels/radios/EntryPad';
 import { RadioRow } from '@/features/panels/radios/RadioRow';
 import { RADIOS } from '@/features/panels/radios/radios';
+import { TransponderSection } from '@/features/panels/radios/TransponderSection';
 import { useRadioEntry } from '@/features/panels/radios/useRadioEntry';
 
 export { RADIOS_PANEL } from '@/features/panels/radios/radios';
@@ -32,6 +33,7 @@ function RadiosContent() {
           onEnterStandby={() => entry.open(radio.key)}
         />
       ))}
+      <TransponderSection readBack={readBack} onEnterCode={() => entry.open('squawk')} />
       <EntryPad entry={entry} readBack={readBack} />
     </>
   );
