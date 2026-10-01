@@ -1,5 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
+import { Dimensions, StyleSheet } from 'react-native';
 
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
@@ -184,5 +185,28 @@ describe('Radios panel', () => {
   it('shows a dash for a value that is not a number', async () => {
     await render(tree(live({ telemetry: telemetry({ ...VALUES, [D.com1Active]: 'AAAA' }) })));
     expect(screen.getByLabelText('COM1: active —, standby 118.005')).toBeTruthy();
+  });
+
+  it('puts the entry beside the stack on a wide screen, and under it on a narrow one', async () => {
+    const original = Dimensions.get('window');
+    Dimensions.set({ window: { width: 1024, height: 768, scale: 1, fontScale: 1 } });
+    try {
+      await render(tree(live()));
+      await fireEvent.press(screen.getByLabelText('Enter COM1 standby'));
+      expect(
+        StyleSheet.flatten(screen.getByTestId('radios-columns').props.style).flexDirection,
+      ).toBe('row');
+
+      await act(async () => {
+        Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
+      });
+      expect(
+        StyleSheet.flatten(screen.getByTestId('radios-columns').props.style).flexDirection,
+      ).toBe('column');
+    } finally {
+      await act(async () => {
+        Dimensions.set({ window: original });
+      });
+    }
   });
 });
