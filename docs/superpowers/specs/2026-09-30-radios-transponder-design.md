@@ -164,8 +164,13 @@ value, so there is nothing to revert.
 - The link dropped during the watch → no verdict; the panel notice already explains.
 - The sentence clears on the next send to that radio or transponder, or when the aircraft changes.
 
-`adoptionVerdict` is a pure function; `useReadBack` owns one timer per watch and reads the latest
-telemetry when it fires.
+`readBackVerdict` is a pure function of the latest value, the expected value, the target's
+operation outcome and the panel clock: the 3 s count from the moment X-Plane accepted the write
+(`OperationOutcome.at`), and a pending, failed or refused operation gives no verdict (its own
+failure is already shown). `useReadBack` evaluates watches on every render (the panel clock ticks
+each second, so a verdict lands 3–4 s after acceptance) and settles each one once, so a value the
+pilot later changes in the simulator never produces a late sentence. The panel's content is keyed
+by aircraft identity, so an aircraft change resets the drafts and the read-back sentences.
 
 ## IDENT (T5)
 
@@ -177,7 +182,7 @@ says `IDENT sent` for 5 seconds. Separately, `Identing` shows exactly while
 ## ATC-assigned code (T7)
 
 When `transponder_assigned` resolves and reports a valid non-zero code: `ATC assigned 4521`. If it
-differs from the dialled code, the line is in the warning tone and adds `— not set`, plus a
+differs from the dialled code, the line is in the danger tone (the theme has no warning tone) and adds `— not set`, plus a
 `Squawk 4521` button that writes it (the same read-back applies). Equal → `ATC assigned 4521 ✓`.
 Unresolved, zero or not a valid code → the line is absent. No error, ever.
 
@@ -221,12 +226,14 @@ on screen or in logs. Nothing new is logged.
 ## File plan
 
 - `src/domain/radios/`: `channels.ts` (COM/NAV validation, formatting, nearest channels, units),
-  `squawk.ts`, `transponder-mode.ts`, `entry.ts` (draft reducer and parse per target kind),
-  `adoption.ts` (verdict).
+  `squawk.ts`, `transponder-mode.ts`, `entry.ts` (draft reducer and parse per target kind).
+- `src/domain/panels/read-back.ts` (the verdict) and `src/features/panels/primitives/useReadBack.ts`:
+  generic, because the autopilot (F-20) will check its writes the same way.
 - `src/domain/aircraft/profiles/generic.ts`: 1.3.0, names, seven features.
-- `src/features/panels/primitives/ControlButton.tsx`: `selected`.
+- `src/features/panels/primitives/ControlButton.tsx`: `selected`, and `OperationNotice` exported so
+  a row can print a quiet control's outcome once (the swap's failure under its row).
 - `src/features/panels/radios/`: `RadiosPanel.tsx`, `RadioRow.tsx`, `TransponderSection.tsx`,
-  `EntryPad.tsx`, `Keypad.tsx`, `useReadBack.ts`, `useRadioEntry.ts` (target + draft + drop rules).
+  `EntryPad.tsx`, `Keypad.tsx`, `useRadioEntry.ts`, `radios.ts` (target + draft + drop rules).
 - `src/features/panels/registry.ts`: Radios second.
 - `tests/mock-xplane/mock-xplane-server.ts`: new DataRefs and commands; flip swaps, IDENT sets
   `transponder_id`; `ignoreWrites` option.
@@ -259,7 +266,7 @@ on screen or in logs. Nothing new is logged.
 | C2, T2 | `useRadioEntry`, `EntryPad`: draft only in the entry display, Set writes |
 | C3 | `channels.ts`; reasons and nearest channels |
 | T3 | `squawk.ts`; 0–7 keypad; four digits |
-| C4, T4 | `adoption.ts`, `useReadBack` |
+| C4, T4 | `read-back.ts`, `useReadBack` |
 | T5 | IDENT sent (5 s) and Identing from `transponder_id` |
 | C5, T6 | per-radio and per-transponder-control features; `ControlButton` reasons |
 | T7 | assigned code optional, absent silently |
