@@ -82,6 +82,30 @@ const FLIGHT_DATA_FAKE_DATAREFS: Record<string, FakeDataRef> = {
   [GENERIC_DATAREFS.gpsDestinationId]: { id: 33, valueType: 'data', value: base64('KSEA') },
 };
 
+/**
+ * F-10's flight instrument bindings and the altimeter setting, absent from `DEFAULT_FAKE_DATAREFS`
+ * for the same reason as `FLIGHT_DATA_FAKE_DATAREFS`: a test whose intent is "every feature
+ * available" merges these in instead of every other test in this file gaining new ids.
+ */
+const INSTRUMENT_FAKE_DATAREFS: Record<string, FakeDataRef> = {
+  [GENERIC_DATAREFS.mach]: { id: 40, valueType: 'float' },
+  [GENERIC_DATAREFS.altitude]: { id: 41, valueType: 'float' },
+  [GENERIC_DATAREFS.verticalSpeed]: { id: 42, valueType: 'float' },
+  [GENERIC_DATAREFS.heading]: { id: 43, valueType: 'float' },
+  [GENERIC_DATAREFS.pitch]: { id: 44, valueType: 'float' },
+  [GENERIC_DATAREFS.roll]: { id: 45, valueType: 'float' },
+  [GENERIC_DATAREFS.turnRate]: { id: 46, valueType: 'float' },
+  [GENERIC_DATAREFS.slip]: { id: 47, valueType: 'float' },
+  [GENERIC_DATAREFS.radioAltitude]: { id: 48, valueType: 'float' },
+  [GENERIC_DATAREFS.engineType]: { id: 49, valueType: 'int_array' },
+  [GENERIC_DATAREFS.vso]: { id: 50, valueType: 'float' },
+  [GENERIC_DATAREFS.vs]: { id: 51, valueType: 'float' },
+  [GENERIC_DATAREFS.vfe]: { id: 52, valueType: 'float' },
+  [GENERIC_DATAREFS.vno]: { id: 53, valueType: 'float' },
+  [GENERIC_DATAREFS.vne]: { id: 54, valueType: 'float' },
+  [GENERIC_DATAREFS.barometer]: { id: 55, valueType: 'float', isWritable: true },
+};
+
 class FakeClient implements SimulatorClient {
   updateListeners = new Set<(updates: DataRefUpdate[]) => void>();
   closeListeners = new Set<(info: SocketCloseInfo) => void>();
@@ -1675,7 +1699,11 @@ describe('no flight loaded', () => {
 describe('aircraft compatibility', () => {
   it('identifies the aircraft and selects the generic profile', async () => {
     const client = new FakeClient();
-    client.dataRefs = { ...client.dataRefs, ...FLIGHT_DATA_FAKE_DATAREFS };
+    client.dataRefs = {
+      ...client.dataRefs,
+      ...FLIGHT_DATA_FAKE_DATAREFS,
+      ...INSTRUMENT_FAKE_DATAREFS,
+    };
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
     const { compatibility } = snapshot();

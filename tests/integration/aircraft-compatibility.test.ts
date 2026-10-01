@@ -3,7 +3,9 @@ import { createPairingTokenStore } from '@/application/pairing-token-store';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import { SimulatorSession } from '@/application/simulator-session';
 import {
+  FEATURE_ALTIMETER_SETTING,
   FEATURE_CONNECTION_HEALTH,
+  FEATURE_FLIGHT_INSTRUMENTS,
   FEATURE_FLIGHT_TELEMETRY,
   FEATURE_HEADING_CONTROL,
   GENERIC_DATAREFS,
@@ -12,7 +14,7 @@ import { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
 import { XPlaneClient } from '@/infrastructure/xplane/xplane-client';
-import { MockXPlaneServer } from '../mock-xplane/mock-xplane-server';
+import { DEFAULT_MOCK_DATAREFS, MockXPlaneServer } from '../mock-xplane/mock-xplane-server';
 
 function createSession(): SimulatorSession {
   return new SimulatorSession({
@@ -70,6 +72,8 @@ describe('aircraft compatibility against the mock X-Plane', () => {
     expect(compatibility.identity.icaoType).toBe('C172');
     expect(compatibility.identity.tailNumber).toBe('N172SP');
     expect(compatibility.features.map((feature) => feature.status)).toEqual([
+      'available',
+      'available',
       'available',
       'available',
       'available',
@@ -142,6 +146,31 @@ describe('aircraft compatibility against the mock X-Plane', () => {
     expect(featureStatus(session.store.getSnapshot().compatibility, FEATURE_HEADING_CONTROL)).toBe(
       'unavailable',
     );
+    session.disconnect();
+  });
+
+  it('marks the altimeter setting unavailable, and only it, when its DataRef is read-only', async () => {
+    server.removeDataRef(GENERIC_DATAREFS.barometer);
+    const readOnlyBarometer = DEFAULT_MOCK_DATAREFS.find(
+      (dataRef) => dataRef.name === GENERIC_DATAREFS.barometer,
+    );
+    if (readOnlyBarometer === undefined) {
+      throw new Error('mock dataref not defined');
+    }
+    server.addDataRef({ ...readOnlyBarometer, writable: false });
+    const session = createSession();
+    await session.connect(server.host, server.port);
+    const snapshot = session.store.getSnapshot();
+    expect(snapshot.state).toBe('connected');
+    expect(featureStatus(snapshot.compatibility, FEATURE_ALTIMETER_SETTING)).toBe('unavailable');
+    const missing = snapshot.compatibility.features.find(
+      (feature) => feature.id === FEATURE_ALTIMETER_SETTING,
+    );
+    expect(missing?.missing[0]).toMatchObject({
+      name: GENERIC_DATAREFS.barometer,
+      status: 'readOnly',
+    });
+    expect(featureStatus(snapshot.compatibility, FEATURE_FLIGHT_INSTRUMENTS)).toBe('available');
     session.disconnect();
   });
 

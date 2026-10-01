@@ -55,6 +55,11 @@ interface Props {
   /** The panel's own input is not valid yet (e.g. an empty entry). */
   invalid?: boolean;
   accessibilityLabel?: string;
+  /**
+   * For a control whose sibling on the same target already shows the availability reason and the
+   * outcome: without it, one read-only DataRef would print the same sentence under every button.
+   */
+  quiet?: boolean;
 }
 
 /** The only way a panel renders a pressable control: it applies every framework rule at once. */
@@ -103,8 +108,10 @@ export function ControlButton(props: Props) {
       >
         <Text style={[styles.label, enabled ? null : styles.labelDisabled]}>{shown}</Text>
       </Pressable>
-      {availability.reason === null ? null : <BodyText muted>{availability.reason}</BodyText>}
-      <Outcome outcome={outcome} />
+      {availability.reason === null || props.quiet === true ? null : (
+        <BodyText muted>{availability.reason}</BodyText>
+      )}
+      {props.quiet === true ? null : <Outcome outcome={outcome} />}
     </View>
   );
 }

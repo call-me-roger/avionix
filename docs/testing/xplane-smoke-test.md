@@ -89,6 +89,16 @@ Record results at the bottom.
 | 60 | Pause X-Plane, then start a replay | PAUSED badge with values bright, then REPLAY | |
 | 61 | On Heading, on the smallest phone available, in portrait and landscape | The strip shows four values on one row under the status bar and stays on one row; tapping it opens Flight data. Pause X-Plane: the strip still fits on one row, with the PAUSED badge inline. Disconnect: the strip still fits on one row, muted, with "not live" shown | |
 | 62 | Setup → Panels, turn the strip off | It disappears from every panel and stays off after a restart | |
+| 63 | Rebuild the development build (react-native-svg is a new native module), open the app fresh and pair | It opens on Setup, as any fresh install must pair first; after pairing, Instruments is the first switcher entry and the PFD or six-pack draws, nothing blank | |
+| 64 | Default C172, engine running on the ground | Six-pack by default; airspeed 0 with white/green/yellow arcs and a red line; altimeter matches X-Plane's own to the foot; heading matches; nothing on any gauge overlaps or is cut off (the Kollsman and VSI windows sit clear of the scale digits) | |
+| 65 | Fly a level standard-rate turn using X-Plane's own turn coordinator | Ours puts the wing on the standard-rate mark (checks the 20° assumption); label says about "rate 1.0 standard rate" | |
+| 66 | Apply rudder in level flight | The ball moves the same way as X-Plane's ball (checks the slip sign), on the six-pack and under the PFD's roll pointer | |
+| 67 | Roll to 30° bank and pitch 10° up | Both presentations show the same bank and pitch as X-Plane's attitude indicator; nothing overlaps or is cut off (the slip trapezoid stays clear of the roll pointer, the heading and Mach/baro boxes stay framed) | |
+| 68 | Switch to PFD, then load the default 737, then the C172 again | 737 opens on PFD; C172 comes back on the PFD you chose; restart the app: still PFD for the C172 | |
+| 69 | Tap +, −, STD, and type 30.12 then Set, in inHg; switch Units → hPa and repeat with 1009 | X-Plane's altimeter follows each; our reading shows the read-back; STD shows "29.92 inHg STD" / "1013 hPa STD" | |
+| 70 | On the PFD, stop X-Plane's network (or quit X-Plane) mid-flight | Every instrument keeps its last values; a red X over every instrument, NOT LIVE on the attitude (the narrower tapes and scales are too small for the words); the panel says why and how long ago | |
+| 71 | Return to the main menu (no flight) | No values on any instrument; the panel says no flight is loaded | |
+| 72 | 737 above FL250 and on short final | Mach appears from 0.40; radio altitude appears below 2,500 ft on both presentations | |
 
 Rows 44 and 45 verify the keep-awake hold, and row 53 the safe areas: behaviour no automated test
 can observe.

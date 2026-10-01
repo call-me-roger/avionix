@@ -63,7 +63,7 @@ describe('CompatibilityScreen', () => {
     expect(screen.getByText('Boeing 737-800 (B738) · N738AV')).toBeTruthy();
     expect(screen.getByText('Add-on version 4.4')).toBeTruthy();
     expect(
-      screen.getByText('Profile: Generic X-Plane aircraft 1.1.0 (generic fallback)'),
+      screen.getByText('Profile: Generic X-Plane aircraft 1.2.0 (generic fallback)'),
     ).toBeTruthy();
   });
 

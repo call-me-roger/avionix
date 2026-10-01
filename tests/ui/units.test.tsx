@@ -47,11 +47,29 @@ describe('units', () => {
         fuel: 'lb',
         temperature: 'F',
         distance: 'km',
+        pressure: 'inHg',
       }),
     );
     await first.unmount();
     await render(tree(storage));
     await waitFor(() => expect(screen.getByTestId('units')).toHaveTextContent('ready lb F km'));
+  });
+
+  it('changes the altimeter setting unit', async () => {
+    const storage = createMemorySettingsStorage();
+    await render(tree(storage));
+    expect(screen.getByLabelText('Pressure unit')).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'Pressure in inches of mercury' })).toBeChecked();
+    await fireEvent.press(screen.getByRole('radio', { name: 'Pressure in hectopascals' }));
+    expect(screen.getByRole('radio', { name: 'Pressure in hectopascals' })).toBeChecked();
+    await waitFor(async () =>
+      expect(JSON.parse((await storage.getItem(UNITS_STORAGE_KEY)) ?? 'null')).toEqual({
+        fuel: 'kg',
+        temperature: 'C',
+        distance: 'nm',
+        pressure: 'hPa',
+      }),
+    );
   });
 
   it('a choice made before the stored units load is not overwritten', async () => {

@@ -1,0 +1,250 @@
+import { render, screen, within } from '@testing-library/react-native';
+import React from 'react';
+
+import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
+import { createMemorySettingsStorage } from '@/application/settings-store';
+import { GENERIC_DATAREFS as D, GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
+import { NOT_LIVE_OPACITY } from '@/features/panels/instruments/InstrumentFace';
+import { PfdView } from '@/features/panels/instruments/pfd/PfdView';
+import { instrumentRenders } from '@/features/panels/instruments/svg-parts';
+import { PanelScope } from '@/features/panels/primitives/PanelFrame';
+import { UnitsProvider } from '@/features/units/UnitsProvider';
+import { ThemeProvider } from '@/theme/theme-context';
+
+const NOW = 1_000_000;
+const base = initialSnapshot(GENERIC_PROFILE, 5);
+
+const VALUES: Record<string, number | number[]> = {
+  [D.airspeed]: 112.4,
+  [D.mach]: 0.18,
+  [D.altitude]: 4524,
+  [D.verticalSpeed]: 503,
+  [D.heading]: 270.2,
+  [D.pitch]: 3.2,
+  [D.roll]: 15.4,
+  [D.turnRate]: 24,
+  [D.slip]: 2.2,
+  [D.radioAltitude]: 3000,
+  [D.engineType]: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [D.vso]: 40,
+  [D.vs]: 48,
+  [D.vfe]: 85,
+  [D.vno]: 129,
+  [D.vne]: 163,
+  [D.barometer]: 29.92,
+};
+
+function telemetry(values: Record<string, number | number[] | string>, receivedAt = NOW) {
+  return Object.fromEntries(
+    Object.entries(values).map(([name, value]) => [name, { value, receivedAt }]),
+  );
+}
+
+function live(overrides: Partial<SessionSnapshot> = {}): SessionSnapshot {
+  return {
+    ...base,
+    state: 'connected',
+    health: { ...base.health, activity: 'running', live: true, lastHeartbeatAt: NOW },
+    telemetry: telemetry(VALUES),
+    ...overrides,
+  };
+}
+
+function withMissing(snapshot: SessionSnapshot, ...names: string[]): SessionSnapshot {
+  const bindings = { ...snapshot.compatibility.bindings };
+  for (const name of names) {
+    bindings[name] = { name, kind: 'dataref', status: 'missing' };
+  }
+  return { ...snapshot, compatibility: { ...snapshot.compatibility, bindings } };
+}
+
+// The Mach, altimeter-setting and radio-altitude boxes are hidden from screen readers (the airspeed
+// and altitude labels read them aloud), so the queries that find them must include hidden elements.
+const HIDDEN = { includeHiddenElements: true };
+
+const actions = { write: jest.fn(async () => undefined), activate: jest.fn(async () => undefined) };
+
+function tree(snapshot: SessionSnapshot, storage = createMemorySettingsStorage()) {
+  return (
+    <ThemeProvider storage={storage} systemSchemeOverride="dark">
+      <UnitsProvider storage={storage}>
+        <PanelScope snapshot={snapshot} now={NOW} actions={actions}>
+          <PfdView width={360} />
+        </PanelScope>
+      </UnitsProvider>
+    </ThemeProvider>
+  );
+}
+
+const FACES = [
+  'instrument-airspeed',
+  'instrument-attitude',
+  'instrument-altitude',
+  'instrument-vertical-speed',
+  'instrument-heading',
+  'instrument-turn',
+];
+
+function resetRenders() {
+  for (const key of Object.keys(instrumentRenders)) {
+    instrumentRenders[key] = 0;
+  }
+}
+
+describe('PFD', () => {
+  it('names every instrument exactly as the six-pack does', async () => {
+    await render(tree(live()));
+    expect(screen.getByLabelText('Airspeed 112 knots')).toBeTruthy();
+    expect(
+      screen.getByLabelText('Attitude: pitch 3 degrees up, bank 15 degrees right'),
+    ).toBeTruthy();
+    expect(
+      screen.getByLabelText('Altitude 4,520 feet, altimeter 29.92 inches, standard'),
+    ).toBeTruthy();
+    expect(
+      screen.getByLabelText('Turn: rate 1.2 standard rate right, ball 2 degrees right'),
+    ).toBeTruthy();
+    expect(screen.getByLabelText('Heading 270 degrees')).toBeTruthy();
+    expect(screen.getByLabelText('Vertical speed climbing 500 feet per minute')).toBeTruthy();
+  });
+
+  it('shows the altimeter setting below the altitude tape in the chosen unit', async () => {
+    await render(tree(live()));
+    expect(screen.getByText('29.92 inHg STD', HIDDEN)).toBeTruthy();
+  });
+
+  it('shows Mach from 0.40 only', async () => {
+    const snapshot = live();
+    await render(tree(snapshot));
+    expect(screen.queryByText(/^M /, HIDDEN)).toBeNull();
+    await render(
+      tree({
+        ...snapshot,
+        telemetry: {
+          ...snapshot.telemetry,
+          ...telemetry({ [D.mach]: 0.782, [D.airspeed]: 280 }),
+        },
+      }),
+    );
+    expect(screen.getByText('M .782', HIDDEN)).toBeTruthy();
+    expect(screen.getByLabelText('Airspeed 280 knots, Mach 0.78')).toBeTruthy();
+  });
+
+  it('adds radio altitude to the label at or below 2,500 ft', async () => {
+    const snapshot = live();
+    await render(
+      tree({
+        ...snapshot,
+        telemetry: {
+          ...snapshot.telemetry,
+          ...telemetry({ [D.radioAltitude]: 812.6, [D.altitude]: 820 }),
+        },
+      }),
+    );
+    expect(
+      screen.getByLabelText(
+        'Altitude 820 feet, altimeter 29.92 inches, standard, radio altitude 813 feet',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('shows radio altitude on the attitude even with no attitude to draw', async () => {
+    const snapshot = live();
+    const { [D.pitch]: _dropped, ...rest } = snapshot.telemetry;
+    await render(
+      tree({ ...snapshot, telemetry: { ...rest, ...telemetry({ [D.radioAltitude]: 812.6 }) } }),
+    );
+    expect(screen.getByLabelText('Attitude: no value')).toBeTruthy();
+    expect(screen.getByText('813', HIDDEN)).toBeTruthy();
+  });
+
+  it('re-renders only the altitude tape when only the altitude changes', async () => {
+    const storage = createMemorySettingsStorage();
+    const first = live();
+    const view = await render(tree(first, storage));
+    resetRenders();
+    await view.rerender(
+      tree(
+        { ...first, telemetry: { ...first.telemetry, ...telemetry({ [D.altitude]: 4600 }) } },
+        storage,
+      ),
+    );
+    expect(instrumentRenders['instrument-altitude']).toBe(1);
+    for (const face of FACES.filter((face) => face !== 'instrument-altitude')) {
+      expect(instrumentRenders[face] ?? 0).toBe(0);
+    }
+  });
+
+  it('re-renders no instrument when radio altitude changes above 2,500 ft', async () => {
+    const storage = createMemorySettingsStorage();
+    const first = live();
+    const view = await render(tree(first, storage));
+    resetRenders();
+    await view.rerender(
+      tree(
+        { ...first, telemetry: { ...first.telemetry, ...telemetry({ [D.radioAltitude]: 3100 }) } },
+        storage,
+      ),
+    );
+    for (const face of FACES) {
+      expect(instrumentRenders[face] ?? 0).toBe(0);
+    }
+  });
+
+  it('flags every instrument not live when the link drops, keeping values', async () => {
+    await render(tree(live({ state: 'reconnecting' })));
+    for (const label of [
+      'Airspeed 112 knots',
+      'Attitude: pitch 3 degrees up, bank 15 degrees right',
+      'Altitude 4,520 feet, altimeter 29.92 inches, standard',
+      'Turn: rate 1.2 standard rate right, ball 2 degrees right',
+      'Heading 270 degrees',
+      'Vertical speed climbing 500 feet per minute',
+    ]) {
+      expect(screen.getByLabelText(`${label}, not live`)).toBeTruthy();
+    }
+  });
+
+  it('writes the NOT LIVE flag only on the attitude, the one face wide and tall enough for it', async () => {
+    // At 360 wide the tapes are 60 and 40 across and the heading and turn strips 40 and 20 tall:
+    // all compact, so the red X alone marks them.
+    await render(tree(live({ state: 'reconnecting' })));
+    expect(screen.getAllByText('NOT LIVE')).toHaveLength(1);
+    expect(within(screen.getByTestId('instrument-attitude')).getByText('NOT LIVE')).toBeTruthy();
+  });
+
+  it('fades the Mach, altimeter-setting and radio-altitude boxes with the link', async () => {
+    const snapshot = live({ state: 'reconnecting' });
+    await render(
+      tree({
+        ...snapshot,
+        telemetry: { ...snapshot.telemetry, ...telemetry({ [D.radioAltitude]: 812.6 }) },
+      }),
+    );
+    expect(screen.getByTestId('pfd-mach', HIDDEN)).toHaveStyle({ opacity: NOT_LIVE_OPACITY });
+    expect(screen.getByTestId('pfd-baro', HIDDEN)).toHaveStyle({ opacity: NOT_LIVE_OPACITY });
+    expect(screen.getByTestId('pfd-radio-altitude', HIDDEN)).toHaveStyle({
+      opacity: NOT_LIVE_OPACITY,
+    });
+  });
+
+  it('shows no Mach while the airspeed itself is unavailable', async () => {
+    const snapshot = live();
+    await render(
+      tree(
+        withMissing(
+          { ...snapshot, telemetry: { ...snapshot.telemetry, ...telemetry({ [D.mach]: 0.782 }) } },
+          D.airspeed,
+        ),
+      ),
+    );
+    expect(screen.queryByText(/^M /, HIDDEN)).toBeNull();
+  });
+
+  it('marks only the missing instrument unavailable', async () => {
+    await render(tree(withMissing(live(), D.verticalSpeed)));
+    expect(screen.getByLabelText('Vertical speed: not available on this aircraft')).toBeTruthy();
+    expect(within(screen.getByTestId('instrument-vertical-speed')).getByText('N/A')).toBeTruthy();
+    expect(screen.getByLabelText('Airspeed 112 knots')).toBeTruthy();
+  });
+});

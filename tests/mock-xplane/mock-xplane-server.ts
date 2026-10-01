@@ -128,6 +128,69 @@ export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
     valueType: 'data',
     value: 'S1NFQQAAAAA=',
   },
+  // A C172 in a gentle climbing right turn.
+  { id: 1023, name: 'sim/cockpit2/gauges/indicators/mach_pilot', valueType: 'float', value: 0.18 },
+  {
+    id: 1024,
+    name: 'sim/cockpit2/gauges/indicators/altitude_ft_pilot',
+    valueType: 'float',
+    value: 4520,
+  },
+  {
+    id: 1025,
+    name: 'sim/cockpit2/gauges/indicators/vvi_fpm_pilot',
+    valueType: 'float',
+    value: 500,
+  },
+  {
+    id: 1026,
+    name: 'sim/cockpit2/gauges/indicators/heading_AHARS_deg_mag_pilot',
+    valueType: 'float',
+    value: 270,
+  },
+  {
+    id: 1027,
+    name: 'sim/cockpit2/gauges/indicators/pitch_AHARS_deg_pilot',
+    valueType: 'float',
+    value: 3,
+  },
+  {
+    id: 1028,
+    name: 'sim/cockpit2/gauges/indicators/roll_AHARS_deg_pilot',
+    valueType: 'float',
+    value: 15,
+  },
+  {
+    id: 1029,
+    name: 'sim/cockpit2/gauges/indicators/turn_rate_roll_deg_pilot',
+    valueType: 'float',
+    value: 20,
+  },
+  { id: 1030, name: 'sim/cockpit2/gauges/indicators/slip_deg', valueType: 'float', value: 0 },
+  {
+    id: 1031,
+    name: 'sim/cockpit2/gauges/indicators/radio_altimeter_height_ft_pilot',
+    valueType: 'float',
+    value: 850,
+  },
+  {
+    id: 1032,
+    name: 'sim/aircraft/prop/acf_en_type',
+    valueType: 'int_array',
+    value: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  },
+  { id: 1033, name: 'sim/aircraft/view/acf_Vso', valueType: 'float', value: 40 },
+  { id: 1034, name: 'sim/aircraft/view/acf_Vs', valueType: 'float', value: 48 },
+  { id: 1035, name: 'sim/aircraft/view/acf_Vfe', valueType: 'float', value: 85 },
+  { id: 1036, name: 'sim/aircraft/view/acf_Vno', valueType: 'float', value: 129 },
+  { id: 1037, name: 'sim/aircraft/view/acf_Vne', valueType: 'float', value: 163 },
+  {
+    id: 1038,
+    name: 'sim/cockpit2/gauges/actuators/barometer_setting_in_hg_pilot',
+    valueType: 'float',
+    value: 29.92,
+    writable: true,
+  },
 ];
 
 export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [

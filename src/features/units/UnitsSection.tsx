@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { DistanceUnit, FuelUnit, TemperatureUnit } from '@/domain/units/units';
+import type { DistanceUnit, FuelUnit, PressureUnit, TemperatureUnit } from '@/domain/units/units';
 import { useUnits } from '@/features/units/UnitsProvider';
 import { RadioChips } from '@/theme/RadioChips';
 import { BodyText, Section, SectionTitle } from '@/theme/primitives';
@@ -16,6 +16,10 @@ const TEMPERATURE: { value: TemperatureUnit; label: string; accessibilityLabel: 
 const DISTANCE: { value: DistanceUnit; label: string; accessibilityLabel: string }[] = [
   { value: 'nm', label: 'nm', accessibilityLabel: 'Distance in nautical miles' },
   { value: 'km', label: 'km', accessibilityLabel: 'Distance in kilometres' },
+];
+const PRESSURE: { value: PressureUnit; label: string; accessibilityLabel: string }[] = [
+  { value: 'inHg', label: 'inHg', accessibilityLabel: 'Pressure in inches of mercury' },
+  { value: 'hPa', label: 'hPa', accessibilityLabel: 'Pressure in hectopascals' },
 ];
 
 /** Speeds stay in knots and directions in degrees, as on every pilot-facing instrument. */
@@ -44,6 +48,13 @@ export function UnitsSection() {
         selected={units.distance}
         onSelect={(value) => setUnit('distance', value)}
         accessibilityLabel="Distance unit"
+      />
+      <BodyText>Altimeter setting</BodyText>
+      <RadioChips
+        options={PRESSURE}
+        selected={units.pressure}
+        onSelect={(value) => setUnit('pressure', value)}
+        accessibilityLabel="Pressure unit"
       />
     </Section>
   );

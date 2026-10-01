@@ -160,4 +160,33 @@ describe('AppShell on react-native-web', () => {
     expect(container.querySelector('[data-testid="panel-heading"]')).not.toBeNull();
     expect(container.textContent ?? '').toContain('Heading up');
   });
+
+  it('draws the instruments as DOM, Instruments first in the switcher', async () => {
+    const s = services();
+    await act(async () => {
+      root.render(
+        <ServicesProvider services={s}>
+          <ThemeProvider storage={s.settingsStorage} systemSchemeOverride="light">
+            <AppShell />
+          </ThemeProvider>
+        </ServicesProvider>,
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const tabs = [...container.querySelectorAll('[data-testid^="switch-"]')];
+    expect(tabs[0]?.getAttribute('data-testid')).toBe('switch-instruments');
+    await act(async () => {
+      (tabs[0] as HTMLElement).click();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // react-native-svg on the web: the PFD must render as real SVG, not fail or render nothing.
+    const pfd = container.querySelector('[data-testid="pfd"]');
+    expect(pfd).not.toBeNull();
+    expect(pfd?.querySelector('svg')).not.toBeNull();
+    expect(container.querySelector('[aria-label^="Attitude"]')).not.toBeNull();
+  });
 });

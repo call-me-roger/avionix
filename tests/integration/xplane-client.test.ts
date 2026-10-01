@@ -136,7 +136,7 @@ describe.each(['v2', 'v3'] as const)('XPlaneClient over %s', (apiVersion) => {
   });
 
   it('reports the dataref count', async () => {
-    await expect(client.getDataRefCount()).resolves.toBe(22);
+    await expect(client.getDataRefCount()).resolves.toBe(38);
   });
 
   it('reads scalar, array, indexed and data values', async () => {

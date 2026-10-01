@@ -5,7 +5,7 @@
 | ID | `F-10` |
 | Stage | `1` |
 | Category | Monitoring |
-| Status | Proposed |
+| Status | Done |
 | Depends on | `F-03`, `F-04` |
 | Competitor prevalence | Matrix count 6 of 12 representative products (`research/competitors.md`). Wider set: 7 of 12 panel and remote-panel products researched (Air Manager, Simionic G1000 PFD, XpRemotePanel, Flight Sim Remote Panel, RemoteFlight COCKPIT HD, Flight Deck ONE, FS-FlightControl) |
 
@@ -170,3 +170,4 @@ options are F-52.
 8. https://apps.apple.com/us/app/simionic-g1000-pfd/id501990787
 9. `docs/xplane.md`; `docs/roadmap/research/` — `xplane-web-api.md`, `panel-builders.md`,
    `remote-control-apps.md`
+10. docs/superpowers/specs/2026-09-30-flight-instruments-design.md

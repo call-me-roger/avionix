@@ -103,6 +103,33 @@ describe('theme tokens', () => {
     expect(new Set([danger, success, text]).size).toBe(3);
   });
 
+  it('keeps every instrument colour dark at night', () => {
+    for (const [key, value] of Object.entries(nightTheme.instrument)) {
+      expect({ key, luminance: relativeLuminance(value) <= 0.3 }).toEqual({
+        key,
+        luminance: true,
+      });
+    }
+  });
+
+  it('draws instruments on a dark face in every theme, as a real panel does', () => {
+    for (const theme of [lightTheme, darkTheme, nightTheme]) {
+      expect(contrastRatio(theme.instrument.marking, theme.instrument.face)).toBeGreaterThanOrEqual(
+        4.5,
+      );
+      expect(
+        contrastRatio(theme.instrument.flagText, theme.instrument.flag),
+      ).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('keeps the failure flag apart from the yellow and green arcs', () => {
+    for (const theme of [lightTheme, darkTheme, nightTheme]) {
+      const { flag, arcYellow, arcGreen } = theme.instrument;
+      expect(new Set([flag, arcYellow, arcGreen]).size).toBe(3);
+    }
+  });
+
   it('gives the keyboard a dark appearance at night', () => {
     expect(keyboardAppearanceFor('light')).toBe('light');
     expect(keyboardAppearanceFor('dark')).toBe('dark');

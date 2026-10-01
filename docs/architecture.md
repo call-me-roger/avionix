@@ -251,6 +251,39 @@ from under itself while it is still registered. A retired id in `hidden` is not 
 simply dropped, like any other unknown id, so a hidden Basic data never carries over as a hidden
 Flight data; the new panel appears by default.
 
+## Instruments
+
+`src/domain/instruments/` holds every instrument calculation as pure, tested functions with no
+React and no simulator types: `geometry.ts` (dial angles, hands, tape windows and ticks, the
+attitude transform, turn and slip offsets), `speed-markings.ts` (V-speed validation to arcs and
+bands, or none), `baro.ts` (pressure conversion, formatting, STD, range and step), `presentation.ts`
+(the six-pack/PFD choice, the aircraft key, the engine-type default) and `labels.ts` (the one
+accessible label builder both presentations share).
+
+`useInstrumentValues` (`src/features/panels/instruments/`) reads the snapshot once per render and
+reduces it to primitives — numbers, booleans, short strings — so every instrument is a
+`React.memo` component whose props never carry the snapshot itself: a change to the altitude alone
+re-renders only the altimeter or altitude tape, never the other five.
+
+`InstrumentFace` is the one frame every instrument renders through, in four states: unavailable (a
+DataRef it needs is missing), no value (`value === null`), live, and not live (last pointers and
+digits kept at 40% opacity under a red X). A face under 100 dp wide or 48 dp tall is compact — the
+PFD's narrow tapes and scales — and drops the "NOT LIVE" flag and shortens the unavailable note to
+"N/A", since neither fits; the red X alone then carries the stale state, and accessible labels are
+unchanged.
+
+The presentation choice persists under **`avionix.instruments`**, loaded and saved by
+`InstrumentPreferencesProvider`, which mounts in `AppShell` beside `UnitsProvider`. The altimeter
+setting reads and writes a new `pressure` unit (`inHg` | `hPa`) in the same shared units module as
+fuel, temperature and distance (F-11), so every screen that shows a pressure agrees. `ControlButton`
+gained a `quiet` prop: a control that shares its target with siblings already showing the
+availability reason and the outcome (the altimeter's −, + and STD buttons, and its typed entry) sets
+it so the same sentence is not repeated under every button.
+
+**No smoothing** is a project-wide rule, not only an instruments one: every value is drawn exactly
+as received, never interpolated between samples or extrapolated past the last one, so a needle can
+never keep moving on a dead link (R2, R7).
+
 ## Error model
 
 Everything that crosses into the application layer is an `AvionixError` with a stable `code`
