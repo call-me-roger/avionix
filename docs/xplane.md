@@ -174,13 +174,13 @@ that one control, never the other two.
 
 | Name | Type | Units | Writable | Source |
 |---|---|---|---|---|
-| `sim/cockpit2/radios/actuators/com1_frequency_hz_833` | int | Hz, whole kHz (Avionix assumption, see below) | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/com1_frequency_hz_833` | int | Hz, whole kHz (Avionix assumption, see below) | yes | Verified against `DataRefs.txt` |
 | `sim/cockpit2/radios/actuators/com1_standby_frequency_hz_833` | int | Hz, whole kHz | yes | Verified against `DataRefs.txt` |
-| `sim/cockpit2/radios/actuators/com2_frequency_hz_833` | int | Hz, whole kHz | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/com2_frequency_hz_833` | int | Hz, whole kHz | yes | Verified against `DataRefs.txt` |
 | `sim/cockpit2/radios/actuators/com2_standby_frequency_hz_833` | int | Hz, whole kHz | yes | Verified against `DataRefs.txt` |
-| `sim/cockpit2/radios/actuators/nav1_frequency_hz` | int | Hz | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/nav1_frequency_hz` | int | Hz | yes | Verified against `DataRefs.txt` |
 | `sim/cockpit2/radios/actuators/nav1_standby_frequency_hz` | int | Hz | yes | Verified against `DataRefs.txt` |
-| `sim/cockpit2/radios/actuators/nav2_frequency_hz` | int | Hz | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/nav2_frequency_hz` | int | Hz | yes | Verified against `DataRefs.txt` |
 | `sim/cockpit2/radios/actuators/nav2_standby_frequency_hz` | int | Hz | yes | Verified against `DataRefs.txt` |
 | `sim/cockpit2/radios/actuators/nav1_course_deg_mag_pilot` | float | degrees magnetic | yes | Verified against `DataRefs.txt` |
 | `sim/cockpit2/radios/actuators/nav2_course_deg_mag_pilot` | float | degrees magnetic | yes | Verified against `DataRefs.txt` |
@@ -205,6 +205,7 @@ rather than correct it, since the simulator only recognizes the name as written.
 
 The `_833` COM DataRefs are documented in `DataRefs.txt` only as "hz, supports 8.3 khz spacing",
 with no stated unit for the integer value. Avionix assumes they are whole kHz (so 121.500 MHz reads
-and writes as `121500`), the same convention the non-`_833` legacy COM DataRefs use; the device
-check in `docs/testing/xplane-smoke-test.md` confirms this against a real X-Plane install before
-the Radios panel ships.
+and writes as `121500`). This differs from the legacy (non-`_833`) COM DataRefs, which
+`DataRefs.txt` documents as `10hertz` — the same 10 kHz units as the NAV DataRefs above, not whole
+kHz; the device check in `docs/testing/xplane-smoke-test.md` confirms the `_833` assumption against
+a real X-Plane install before the Radios panel ships.
