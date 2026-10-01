@@ -2,8 +2,10 @@ import React from 'react';
 
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import { useReadBack } from '@/features/panels/primitives/useReadBack';
+import { EntryPad } from '@/features/panels/radios/EntryPad';
 import { RadioRow } from '@/features/panels/radios/RadioRow';
 import { RADIOS } from '@/features/panels/radios/radios';
+import { useRadioEntry } from '@/features/panels/radios/useRadioEntry';
 
 export { RADIOS_PANEL } from '@/features/panels/radios/radios';
 
@@ -19,6 +21,7 @@ export function RadiosPanel() {
 
 function RadiosContent() {
   const readBack = useReadBack();
+  const entry = useRadioEntry();
   return (
     <>
       {RADIOS.map((radio) => (
@@ -26,9 +29,10 @@ function RadiosContent() {
           key={radio.key}
           radio={radio}
           readBack={readBack}
-          onEnterStandby={() => undefined}
+          onEnterStandby={() => entry.open(radio.key)}
         />
       ))}
+      <EntryPad entry={entry} readBack={readBack} />
     </>
   );
 }

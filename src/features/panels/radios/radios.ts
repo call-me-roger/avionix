@@ -11,6 +11,7 @@ import {
 } from '@/domain/aircraft/profiles/generic';
 import { EVERYWHERE, type PanelDescriptor } from '@/domain/panels/panel';
 import { formatCom, formatNav } from '@/domain/radios/channels';
+import type { EntryKind } from '@/domain/radios/entry';
 
 export type RadioKey = 'com1' | 'com2' | 'nav1' | 'nav2';
 
@@ -77,6 +78,43 @@ export const RADIOS: readonly RadioSpec[] = [
 
 export function formatFrequency(kind: 'com' | 'nav', value: number): string {
   return kind === 'com' ? formatCom(value) : formatNav(value);
+}
+
+export type EntryTargetId = RadioKey | 'squawk';
+
+export interface EntryTarget {
+  id: EntryTargetId;
+  title: string;
+  kind: EntryKind;
+  featureId: string;
+  /** The DataRef Set writes. */
+  name: string;
+  readBackKey: string;
+}
+
+export function entryTarget(id: EntryTargetId): EntryTarget {
+  if (id === 'squawk') {
+    return {
+      id,
+      title: 'Squawk code',
+      kind: 'squawk',
+      featureId: FEATURE_TRANSPONDER_CODE,
+      name: D.transponderCode,
+      readBackKey: 'squawk',
+    };
+  }
+  const radio = RADIOS.find((candidate) => candidate.key === id);
+  if (radio === undefined) {
+    throw new Error('unknown radio');
+  }
+  return {
+    id,
+    title: `${radio.label} standby`,
+    kind: radio.kind,
+    featureId: radio.featureId,
+    name: radio.standby,
+    readBackKey: radio.key,
+  };
 }
 
 export const RADIOS_PANEL: PanelDescriptor = {
