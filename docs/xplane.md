@@ -131,7 +131,8 @@ from `activity === 'paused'`, never from a guess.
 
 ## Instruments (F-10)
 
-`flight-instruments` (`GENERIC_PROFILE` 1.2.0, all bindings optional) and `altimeter-setting` (one
+`flight-instruments` (`GENERIC_PROFILE` 1.2.0 added these two features; all bindings optional) and
+`altimeter-setting` (one
 required, writable binding). A missing `flight-instruments` name costs only its own instrument
 (R9); a read-only or missing `altimeter-setting` binding disables only the altimeter controls (R5).
 
@@ -160,3 +161,50 @@ separate flag. `sim/cockpit2/gauges/actuators/barometer_setting_is_std_pilot`, t
 named, is **not** in `DataRefs.txt` and is not used. The standard-rate turn deflection (assumed 20°,
 `STANDARD_RATE_DEFLECTION_DEG`) and the sign of `slip_deg` (assumed positive = ball right) are
 unverified pending the device rows in `docs/testing/xplane-smoke-test.md`.
+
+## Radios and transponder (F-21, F-22)
+
+Seven features in `GENERIC_PROFILE` 1.3.0: `com1`, `com2`, `nav1`, `nav2`, `transponder-code`,
+`transponder-mode` and `transponder-ident`. Each radio feature is independent, with its active
+frequency (required, read-only), its standby frequency (required, written when you tune one) and
+its swap command (required); NAV1 and NAV2 add four optional indicators each (station identifier,
+DME signal, DME distance, selected course), so a miss there costs only that indicator. The
+transponder is three features — code, mode and IDENT — so a missing or read-only name disables only
+that one control, never the other two.
+
+| Name | Type | Units | Writable | Source |
+|---|---|---|---|---|
+| `sim/cockpit2/radios/actuators/com1_frequency_hz_833` | int | Hz, whole kHz (Avionix assumption, see below) | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/com1_standby_frequency_hz_833` | int | Hz, whole kHz | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/com2_frequency_hz_833` | int | Hz, whole kHz | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/com2_standby_frequency_hz_833` | int | Hz, whole kHz | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/nav1_frequency_hz` | int | Hz | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/nav1_standby_frequency_hz` | int | Hz | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/nav2_frequency_hz` | int | Hz | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/nav2_standby_frequency_hz` | int | Hz | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/nav1_course_deg_mag_pilot` | float | degrees magnetic | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/nav2_course_deg_mag_pilot` | float | degrees magnetic | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/nav1_nav_id` | data (base64, NUL-padded) | identifier text | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/nav2_nav_id` | data (base64, NUL-padded) | identifier text | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/nav1_has_dme` | int | 0 or 1 | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/nav2_has_dme` | int | 0 or 1 | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/nav1_dme_distance_nm` | float | nautical miles | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/nav2_dme_distance_nm` | float | nautical miles | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/transponder_code` | int | squawk code | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/transponder_mode` | int | mode enum | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/transponder_id` | int | 0 or 1, identing | no | Verified against `DataRefs.txt` |
+| `sim/atc/transponder_assigned` | int (assumed, like `transponder_code`) | squawk code assigned by X-Plane ATC | no | Named in the [X-Plane 12.4.4 release notes](https://www.x-plane.com/kb/x-plane-12-4-4-release-notes/); present only from 12.4.4 onward, which is why its binding is optional |
+| `sim/radios/com1_standy_flip` | command | — | — | Verified against `Commands.txt` |
+| `sim/radios/com2_standy_flip` | command | — | — | Verified against `Commands.txt` |
+| `sim/radios/nav1_standy_flip` | command | — | — | Verified against `Commands.txt` |
+| `sim/radios/nav2_standy_flip` | command | — | — | Verified against `Commands.txt` |
+| `sim/transponder/transponder_ident` | command | — | — | Verified against `Commands.txt` |
+
+Laminar's own command names misspell "standby" as `standy`; Avionix keeps that spelling verbatim
+rather than correct it, since the simulator only recognizes the name as written.
+
+The `_833` COM DataRefs are documented in `DataRefs.txt` only as "hz, supports 8.3 khz spacing",
+with no stated unit for the integer value. Avionix assumes they are whole kHz (so 121.500 MHz reads
+and writes as `121500`), the same convention the non-`_833` legacy COM DataRefs use; the device
+check in `docs/testing/xplane-smoke-test.md` confirms this against a real X-Plane install before
+the Radios panel ships.
