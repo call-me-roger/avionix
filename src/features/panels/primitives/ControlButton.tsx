@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { featureOf } from '@/application/compatibility';
-import type { OperationOutcome, OperationRefusal } from '@/application/session-snapshot';
+import type { OperationRefusal } from '@/application/session-snapshot';
 import { controlAvailability } from '@/domain/panels/control-availability';
 import { FailureNotice } from '@/features/health/FailureNotice';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
@@ -60,6 +60,8 @@ interface Props {
    * outcome: without it, one read-only DataRef would print the same sentence under every button.
    */
   quiet?: boolean;
+  /** One of a set of positions (a transponder mode): marked for sight and for screen readers. */
+  selected?: boolean;
 }
 
 /** The only way a panel renders a pressable control: it applies every framework rule at once. */
@@ -85,7 +87,11 @@ export function ControlButton(props: Props) {
     return () => clearTimeout(timer);
   }, [armed]);
 
-  const shown = armed ? `Tap again: ${props.label}` : props.label;
+  const shown = armed
+    ? `Tap again: ${props.label}`
+    : props.selected === true
+      ? `● ${props.label}`
+      : props.label;
   const accessibleName = armed ? shown : (props.accessibilityLabel ?? props.label);
   const onPress = () => {
     if (props.confirm === true && !armed) {
@@ -101,7 +107,11 @@ export function ControlButton(props: Props) {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={accessibleName}
-        accessibilityState={{ disabled: !enabled, busy: pending }}
+        accessibilityState={{
+          disabled: !enabled,
+          busy: pending,
+          selected: props.selected === true,
+        }}
         disabled={!enabled}
         onPress={onPress}
         style={[styles.button, enabled ? null : styles.disabled, armed ? styles.armed : null]}
@@ -111,13 +121,18 @@ export function ControlButton(props: Props) {
       {availability.reason === null || props.quiet === true ? null : (
         <BodyText muted>{availability.reason}</BodyText>
       )}
-      {props.quiet === true ? null : <Outcome outcome={outcome} />}
+      {props.quiet === true ? null : <OperationNotice target={props.target} />}
     </View>
   );
 }
 
-/** Failures reach the screen only through FailureNotice (R11); refusals in fixed words. */
-function Outcome({ outcome }: { outcome: OperationOutcome | undefined }) {
+/**
+ * Failures reach the screen only through FailureNotice (R11); refusals in fixed words. Exported so
+ * a row of quiet controls can print their target's outcome once.
+ */
+export function OperationNotice({ target }: { target: string }) {
+  const { snapshot } = usePanel();
+  const outcome = snapshot.operations[target];
   if (outcome === undefined || outcome.status !== 'failed') {
     return null;
   }

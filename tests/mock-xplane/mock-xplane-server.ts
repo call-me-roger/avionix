@@ -191,11 +191,129 @@ export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
     value: 29.92,
     writable: true,
   },
+  {
+    id: 1039,
+    name: 'sim/cockpit2/radios/actuators/com1_frequency_hz_833',
+    valueType: 'int',
+    value: 121_500,
+    writable: true,
+  },
+  {
+    id: 1040,
+    name: 'sim/cockpit2/radios/actuators/com1_standby_frequency_hz_833',
+    valueType: 'int',
+    value: 118_005,
+    writable: true,
+  },
+  {
+    id: 1041,
+    name: 'sim/cockpit2/radios/actuators/com2_frequency_hz_833',
+    valueType: 'int',
+    value: 118_000,
+    writable: true,
+  },
+  {
+    id: 1042,
+    name: 'sim/cockpit2/radios/actuators/com2_standby_frequency_hz_833',
+    valueType: 'int',
+    value: 124_850,
+    writable: true,
+  },
+  {
+    id: 1043,
+    name: 'sim/cockpit2/radios/actuators/nav1_frequency_hz',
+    valueType: 'int',
+    value: 11_030,
+    writable: true,
+  },
+  {
+    id: 1044,
+    name: 'sim/cockpit2/radios/actuators/nav1_standby_frequency_hz',
+    valueType: 'int',
+    value: 10_850,
+    writable: true,
+  },
+  {
+    id: 1045,
+    name: 'sim/cockpit2/radios/actuators/nav2_frequency_hz',
+    valueType: 'int',
+    value: 11_390,
+    writable: true,
+  },
+  {
+    id: 1046,
+    name: 'sim/cockpit2/radios/actuators/nav2_standby_frequency_hz',
+    valueType: 'int',
+    value: 11_720,
+    writable: true,
+  },
+  {
+    id: 1047,
+    name: 'sim/cockpit2/radios/actuators/nav1_course_deg_mag_pilot',
+    valueType: 'float',
+    value: 247,
+    writable: true,
+  },
+  {
+    id: 1048,
+    name: 'sim/cockpit2/radios/actuators/nav2_course_deg_mag_pilot',
+    valueType: 'float',
+    value: 90,
+    writable: true,
+  },
+  // "IBOS" and an empty identifier, NUL-padded and base64-encoded as X-Plane sends `data` values.
+  {
+    id: 1049,
+    name: 'sim/cockpit2/radios/indicators/nav1_nav_id',
+    valueType: 'data',
+    value: 'SUJPUwAAAAA=',
+  },
+  {
+    id: 1050,
+    name: 'sim/cockpit2/radios/indicators/nav2_nav_id',
+    valueType: 'data',
+    value: 'AAAAAAAAAAA=',
+  },
+  { id: 1051, name: 'sim/cockpit2/radios/indicators/nav1_has_dme', valueType: 'int', value: 1 },
+  { id: 1052, name: 'sim/cockpit2/radios/indicators/nav2_has_dme', valueType: 'int', value: 0 },
+  {
+    id: 1053,
+    name: 'sim/cockpit2/radios/indicators/nav1_dme_distance_nm',
+    valueType: 'float',
+    value: 12.4,
+  },
+  {
+    id: 1054,
+    name: 'sim/cockpit2/radios/indicators/nav2_dme_distance_nm',
+    valueType: 'float',
+    value: 0,
+  },
+  {
+    id: 1055,
+    name: 'sim/cockpit2/radios/actuators/transponder_code',
+    valueType: 'int',
+    value: 1200,
+    writable: true,
+  },
+  {
+    id: 1056,
+    name: 'sim/cockpit2/radios/actuators/transponder_mode',
+    valueType: 'int',
+    value: 1,
+    writable: true,
+  },
+  { id: 1057, name: 'sim/cockpit2/radios/indicators/transponder_id', valueType: 'int', value: 0 },
+  { id: 1058, name: 'sim/atc/transponder_assigned', valueType: 'int', value: 4521 },
 ];
 
 export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [
   { id: 2001, name: 'sim/autopilot/heading_up', description: 'Autopilot heading up.' },
   { id: 2002, name: 'sim/operation/pause_toggle', description: 'Pause the simulation.' },
+  { id: 2003, name: 'sim/radios/com1_standy_flip', description: 'COM 1 flip standby.' },
+  { id: 2004, name: 'sim/radios/com2_standy_flip', description: 'COM 2 flip standby.' },
+  { id: 2005, name: 'sim/radios/nav1_standy_flip', description: 'NAV 1 flip standby.' },
+  { id: 2006, name: 'sim/radios/nav2_standy_flip', description: 'NAV 2 flip standby.' },
+  { id: 2007, name: 'sim/transponder/transponder_ident', description: 'Transponder ID.' },
 ];
 
 interface JsonError {
@@ -245,6 +363,8 @@ export class MockXPlaneServer {
   rejectWritesWith: string | null = null;
   /** Tokens handed out by `/avionix/pair`, in issue order. */
   readonly issuedTokens: string[] = [];
+
+  private readonly ignoredWrites = new Set<string>();
 
   private readonly apiVersions: string[];
   private readonly xplaneVersion: string;
@@ -345,6 +465,24 @@ export class MockXPlaneServer {
 
   addDataRef(dataRef: MockDataRef): void {
     this.dataRefs.set(dataRef.id, { ...dataRef });
+  }
+
+  /** Simulates an add-on that accepts a write to `name` and then ignores it (F-21 R4). */
+  ignoreWritesTo(name: string): void {
+    this.ignoredWrites.add(name);
+  }
+
+  /** Simulates a command this aircraft does not have. */
+  removeCommand(name: string): void {
+    this.commands.delete(this.commandIdByName(name));
+  }
+
+  commandIdByName(name: string): number {
+    const command = [...this.commands.values()].find((candidate) => candidate.name === name);
+    if (command === undefined) {
+      throw new Error(`mock command ${name} not defined`);
+    }
+    return command.id;
   }
 
   /** Simulates a connector that has forgotten every paired device (token file deleted). */
@@ -623,6 +761,9 @@ export class MockXPlaneServer {
     if (dataRef.writable !== true) {
       this.fail(403, 'dataref_is_readonly', 'Attempted to write to a read-only dataref');
     }
+    if (this.ignoredWrites.has(dataRef.name)) {
+      return;
+    }
     if (index !== undefined) {
       if (!Array.isArray(dataRef.value)) {
         this.fail(400, 'not_an_array', 'An index was provided but the dataref is not an array');
@@ -645,6 +786,26 @@ export class MockXPlaneServer {
       const heading = this.getDataRefByName('sim/cockpit2/autopilot/heading_dial_deg_mag_pilot');
       if (heading !== undefined && typeof heading.value === 'number') {
         heading.value = (heading.value + 1) % 360;
+      }
+    }
+    const flip = /^sim\/radios\/(com|nav)([12])_standy_flip$/.exec(command?.name ?? '');
+    if (flip !== null) {
+      const [, kind, unit] = flip;
+      const suffix = kind === 'com' ? '_833' : '';
+      const active = this.getDataRefByName(
+        `sim/cockpit2/radios/actuators/${kind}${unit}_frequency_hz${suffix}`,
+      );
+      const standby = this.getDataRefByName(
+        `sim/cockpit2/radios/actuators/${kind}${unit}_standby_frequency_hz${suffix}`,
+      );
+      if (active !== undefined && standby !== undefined) {
+        [active.value, standby.value] = [standby.value, active.value];
+      }
+    }
+    if (command?.name === 'sim/transponder/transponder_ident') {
+      const identing = this.getDataRefByName('sim/cockpit2/radios/indicators/transponder_id');
+      if (identing !== undefined) {
+        identing.value = 1;
       }
     }
   }

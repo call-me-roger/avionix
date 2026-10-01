@@ -113,6 +113,7 @@ describe('AppShell', () => {
     // Instruments first: the switcher's order is the registry's.
     expect(screen.getAllByRole('tab').map((tab) => tab.props.accessibilityLabel)).toEqual([
       'Instruments',
+      'Radios',
       'Flight data',
       'Heading',
       'Setup',
@@ -196,8 +197,10 @@ describe('AppShell', () => {
     await fireEvent.press(
       await screen.findByRole('switch', { name: 'Show Instruments in the switcher' }),
     );
+    await fireEvent.press(screen.getByRole('switch', { name: 'Show Radios in the switcher' }));
     await fireEvent.press(screen.getByRole('switch', { name: 'Show Flight data in the switcher' }));
     expect(screen.queryByRole('tab', { name: 'Instruments' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Radios' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Flight data' })).toBeNull();
     const lastOne = screen.getByRole('switch', { name: 'Show Heading in the switcher' });
     expect(lastOne).toBeDisabled();
