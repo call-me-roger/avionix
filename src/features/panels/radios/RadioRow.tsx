@@ -2,9 +2,9 @@ import React from 'react';
 import { Text, View } from 'react-native';
 
 import { featureOf } from '@/application/compatibility';
-import { formatDistance } from '@/domain/flight-data/format';
 import { controlAvailability } from '@/domain/panels/control-availability';
 import { decodeDataRefString } from '@/domain/simulator/dataref-string';
+import { type DistanceUnit, UNIT_LABEL, convertDistance } from '@/domain/units/units';
 import { firstNumber } from '@/features/panels/instruments/useInstrumentValues';
 import { ControlButton, OperationNotice } from '@/features/panels/primitives/ControlButton';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
@@ -54,6 +54,12 @@ function courseText(course: number): string {
   return `CRS ${String(whole === 0 ? 360 : whole).padStart(3, '0')}°`;
 }
 
+/** A DME arc is flown by tenths at any range, so unlike `formatDistance` (tuned for the GPS
+ * distance-to-go, which rounds whole from 10) this always shows one decimal. */
+function dmeText(nm: number, unit: DistanceUnit): string {
+  return `${convertDistance(nm, unit).toFixed(1)} ${UNIT_LABEL.distance[unit]}`;
+}
+
 /**
  * One radio (F-21): X-Plane's active and standby values, a swap, and the standby as the button that
  * opens the keypad. Its controls are quiet, so the feature's reason and the swap's failure are
@@ -90,7 +96,7 @@ export function RadioRow({
   }
   const dme = read(radio.dme);
   if (read(radio.hasDme) === 1 && dme !== null) {
-    details.push(formatDistance(dme, units.distance));
+    details.push(dmeText(dme, units.distance));
   }
   const course = read(radio.course);
   if (course !== null) {

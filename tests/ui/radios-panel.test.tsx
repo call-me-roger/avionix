@@ -2,7 +2,8 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
-import { createMemorySettingsStorage } from '@/application/settings-store';
+import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
+import { UNITS_STORAGE_KEY } from '@/application/unit-preferences';
 import {
   GENERIC_COMMANDS as C,
   GENERIC_DATAREFS as D,
@@ -62,8 +63,11 @@ const actions: PanelActions = {
   activate: jest.fn(async () => undefined),
 };
 
-function tree(snapshot: SessionSnapshot, now = NOW) {
-  const storage = createMemorySettingsStorage();
+function tree(
+  snapshot: SessionSnapshot,
+  now = NOW,
+  storage: SettingsStorage = createMemorySettingsStorage(),
+) {
   return (
     <ThemeProvider storage={storage} systemSchemeOverride="light">
       <UnitsProvider storage={storage}>
@@ -90,9 +94,7 @@ describe('Radios panel', () => {
 
   it('shows the NAV identifier, DME and course only when present', async () => {
     await render(tree(live()));
-    // The codebase's formatDistance rounds to a whole number at or above 10 nm (it is written for
-    // the GPS distance-to-go, not the DME readout), so 12.4 nm reads "12 nm" here.
-    expect(screen.getByText('IBOS · 12 nm · CRS 247°')).toBeTruthy();
+    expect(screen.getByText('IBOS · 12.4 nm · CRS 247°')).toBeTruthy();
     // NAV2 has no identifier, no DME and no course in this snapshot: no details line.
     expect(screen.queryByText(/CRS 090°/)).toBeNull();
   });
@@ -100,6 +102,13 @@ describe('Radios panel', () => {
   it('hides DME distance while there is no DME signal', async () => {
     await render(tree(live({ telemetry: telemetry({ ...VALUES, [D.nav1HasDme]: 0 }) })));
     expect(screen.getByText('IBOS · CRS 247°')).toBeTruthy();
+  });
+
+  it('shows DME in kilometres, to one decimal, when that is the distance unit', async () => {
+    const storage = createMemorySettingsStorage();
+    await storage.setItem(UNITS_STORAGE_KEY, JSON.stringify({ distance: 'km' }));
+    await render(tree(live(), NOW, storage));
+    expect(await screen.findByText('IBOS · 23.0 km · CRS 247°')).toBeTruthy();
   });
 
   it('swaps with the radio’s own command', async () => {
