@@ -5,7 +5,7 @@
 | ID | `F-03` |
 | Stage | `1` |
 | Category | Platform |
-| Status | Proposed |
+| Status | Done |
 | Depends on | `F-01` |
 | Competitor prevalence | Matrix count 3 of 12 representative products (`research/competitors.md`). Wider set: 8 of 13 remote-control and panel products researched ship per-aircraft profiles or aircraft-specific packs (Air Manager, XP Remote, XpRemotePanel, AirFMC, WebFMC, XPlaneCDU, Flight Deck ONE, Stream Deck profile packs); none documents automatic aircraft detection with a visible compatibility report, and AirFMC is explicitly criticised for having no per-aircraft auto-detection |
 
@@ -165,3 +165,4 @@ community-sourced and version-fragile.
 8. https://www.planetcoops.com/apps/xp-remote
 9. https://www.x-plained.com/utility-review-haversine-airfmc/
 10. https://apps.apple.com/us/app/flight-deck-one/id6742143273
+11. docs/superpowers/specs/2026-09-23-aircraft-compatibility-design.md

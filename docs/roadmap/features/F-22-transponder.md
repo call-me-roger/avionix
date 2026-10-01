@@ -5,7 +5,7 @@
 | ID | `F-22` |
 | Stage | `1` |
 | Category | Control |
-| Status | Proposed |
+| Status | Done |
 | Depends on | `F-03`, `F-04` |
 | Competitor prevalence | Matrix count 1 of 12 representative products (`research/competitors.md`). Wider set: 2 of 15 products researched offer it (Comsquawk XP, Flight Deck ONE) |
 
@@ -149,3 +149,4 @@ Avionix supports 12.1.4 as its minimum.
 3. https://developer.x-plane.com/article/x-plane-web-api/
 4. `docs/xplane.md`
 5. `docs/roadmap/research/remote-control-apps.md`
+6. docs/superpowers/specs/2026-09-30-radios-transponder-design.md

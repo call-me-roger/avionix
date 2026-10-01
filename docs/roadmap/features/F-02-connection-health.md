@@ -5,7 +5,7 @@
 | ID | `F-02` |
 | Stage | `1` |
 | Category | Platform |
-| Status | Proposed |
+| Status | Done |
 | Depends on | `F-01` |
 | Competitor prevalence | Matrix count 1 of 12 representative products (`research/competitors.md`). Wider set: 1 of 13 remote-control and panel products researched ships a visible connection-status view (Remote X-Plane Avionics' operator console); the rest expose no link health, and silent stale data is a named complaint against ForeFlight, Air Manager and the X-Plane Control Pad |
 
@@ -157,3 +157,4 @@ re-resolution reported in `F-03`.
 7. https://www.x-plained.com/utility-review-laminar-x-plane-control-pad/
 8. https://forums.x-plane.org/files/file/101030-remote-x-plane-avionics-a330-mcdufcuefis-737-cdu-for-tablet-browser/
 9. https://siminnovations.com/wiki/index.php?title=Xplane_commandrefs
+10. docs/superpowers/specs/2026-09-23-connection-health-design.md
