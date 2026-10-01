@@ -174,14 +174,14 @@ that one control, never the other two.
 
 | Name | Type | Units | Writable | Source |
 |---|---|---|---|---|
-| `sim/cockpit2/radios/actuators/com1_frequency_hz_833` | int | Hz, whole kHz (Avionix assumption, see below) | yes | Verified against `DataRefs.txt` |
-| `sim/cockpit2/radios/actuators/com1_standby_frequency_hz_833` | int | Hz, whole kHz | yes | Verified against `DataRefs.txt` |
-| `sim/cockpit2/radios/actuators/com2_frequency_hz_833` | int | Hz, whole kHz | yes | Verified against `DataRefs.txt` |
-| `sim/cockpit2/radios/actuators/com2_standby_frequency_hz_833` | int | Hz, whole kHz | yes | Verified against `DataRefs.txt` |
-| `sim/cockpit2/radios/actuators/nav1_frequency_hz` | int | Hz | yes | Verified against `DataRefs.txt` |
-| `sim/cockpit2/radios/actuators/nav1_standby_frequency_hz` | int | Hz | yes | Verified against `DataRefs.txt` |
-| `sim/cockpit2/radios/actuators/nav2_frequency_hz` | int | Hz | yes | Verified against `DataRefs.txt` |
-| `sim/cockpit2/radios/actuators/nav2_standby_frequency_hz` | int | Hz | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/com1_frequency_hz_833` | int | documented as hz; Avionix reads whole kHz (assumption, device row 74) | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/com1_standby_frequency_hz_833` | int | documented as hz; Avionix reads whole kHz | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/com2_frequency_hz_833` | int | documented as hz; Avionix reads whole kHz | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/com2_standby_frequency_hz_833` | int | documented as hz; Avionix reads whole kHz | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/nav1_frequency_hz` | int | 10 kHz units (110.30 = 11030) | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/nav1_standby_frequency_hz` | int | 10 kHz units (110.30 = 11030) | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/nav2_frequency_hz` | int | 10 kHz units (110.30 = 11030) | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/nav2_standby_frequency_hz` | int | 10 kHz units (110.30 = 11030) | yes | Verified against `DataRefs.txt` |
 | `sim/cockpit2/radios/actuators/nav1_course_deg_mag_pilot` | float | degrees magnetic | yes | Verified against `DataRefs.txt` |
 | `sim/cockpit2/radios/actuators/nav2_course_deg_mag_pilot` | float | degrees magnetic | yes | Verified against `DataRefs.txt` |
 | `sim/cockpit2/radios/indicators/nav1_nav_id` | data (base64, NUL-padded) | identifier text | no | Verified against `DataRefs.txt` |

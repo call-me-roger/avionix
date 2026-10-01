@@ -205,9 +205,13 @@ Transponder  [7000]  ALT  Identing
 │ (Cancel)          (Set)     │
 └─────────────────────────────┘
 ```
+Narrow, the entry sketched above opens directly under the transponder because that is the target
+being edited (the squawk code); tapping a radio's standby instead opens it under that radio's row.
 
-- **Layout.** Portrait: rows, then the transponder, then the entry (when open). Content width
-  ≥ 720 dp (tablets, landscape phones): two columns, stack left, entry right.
+- **Layout.** Portrait (content width < 720 dp): rows, then the transponder; the entry, when open,
+  opens directly under the row or the transponder line being edited, not after everything — a
+  phone screen cannot otherwise show it at all. Content width ≥ 720 dp (tablets, landscape phones):
+  two columns, stack left, entry right.
 - **Row.** Name, active (large, tabular), swap `⇄` (`Swap COM1 active and standby`), standby
   button. NAV adds, when present: identifier, DME distance (only while `has_dme` is 1, in the
   shared distance unit), `CRS 247°`. Missing values say so in words; the whole radio unavailable

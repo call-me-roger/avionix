@@ -294,8 +294,8 @@ optional identifier, DME and course; and the transponder's squawk code, mode and
 radio or one transponder control disables only that control, the rest keep working, by the same
 probe described under Aircraft compatibility. `src/domain/radios/` holds every calculation as pure
 functions with no React and no simulator types: `channels.ts` (the COM `_833` channel table and the
-NAV 10 kHz grid, validation, formatting and the 8.33 kHz assumption, confirmed against a real
-install by the device check), `squawk.ts` (octal validation, formatting and the three named
+NAV 10 kHz grid, validation, formatting and the 8.33 kHz assumption, unverified pending the device
+check, row 74), `squawk.ts` (octal validation, formatting and the three named
 emergency codes), `transponder-mode.ts` (the four positions the panel offers against Laminar's
 eight-value enum) and `entry.ts` (the keypad's digit-by-digit draft, shared by COM, NAV and squawk
 entry). NAV DME is shown to one decimal at every range, in the shared distance unit — a DME arc is
