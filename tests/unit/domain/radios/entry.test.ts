@@ -5,6 +5,8 @@ import {
   keyAccepted,
   parseEntry,
   pushDigit,
+  shouldExplain,
+  typedValue,
 } from '@/domain/radios/entry';
 
 describe('digit entry', () => {
@@ -107,5 +109,33 @@ describe('parsing an entry', () => {
       message: 'Squawk codes use the digits 0 to 7.',
     });
     expect(parseEntry('com', '12a500')).toEqual({ status: 'incomplete', message: null });
+  });
+});
+
+describe('typedValue', () => {
+  it('shows only what was typed, with the point once reached, never trailing', () => {
+    expect(typedValue('com', '')).toBe('');
+    expect(typedValue('com', '1')).toBe('1');
+    expect(typedValue('com', '121')).toBe('121');
+    expect(typedValue('com', '1215')).toBe('121.5');
+    expect(typedValue('nav', '1103')).toBe('110.3');
+    expect(typedValue('squawk', '77')).toBe('77');
+  });
+});
+
+describe('shouldExplain', () => {
+  it('holds the "not a channel" rejection until the draft is full length', () => {
+    expect(shouldExplain('com', '11802', parseEntry('com', '11802'))).toBe(false);
+    expect(shouldExplain('com', '118020', parseEntry('com', '118020'))).toBe(true);
+  });
+
+  it('shows the band message as soon as the first three digits are out of band', () => {
+    expect(shouldExplain('com', '200', parseEntry('com', '200'))).toBe(true);
+    expect(shouldExplain('nav', '11032', parseEntry('nav', '11032'))).toBe(true);
+  });
+
+  it('never explains an incomplete or valid draft', () => {
+    expect(shouldExplain('nav', '1103', parseEntry('nav', '1103'))).toBe(false);
+    expect(shouldExplain('com', '12', parseEntry('com', '12'))).toBe(false);
   });
 });

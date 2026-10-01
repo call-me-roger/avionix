@@ -1,4 +1,11 @@
-import { comRejection, formatCom, formatNav, navRejection } from '@/domain/radios/channels';
+import {
+  COM_BAND_MESSAGE,
+  NAV_BAND_MESSAGE,
+  comRejection,
+  formatCom,
+  formatNav,
+  navRejection,
+} from '@/domain/radios/channels';
 import { formatSquawk, isSquawk, squawkMeaning } from '@/domain/radios/squawk';
 
 export type EntryKind = 'com' | 'nav' | 'squawk';
@@ -42,6 +49,18 @@ export function entryText(kind: EntryKind, draft: string): string {
 }
 
 /**
+ * The draft as typed, with the point once a digit past it exists — never a blank-padded value and
+ * never a trailing point ("1215" → "121.5", "12" → "12", not "12."). Used only for the
+ * accessibility label; the visual box always shows the blanks via `entryText`.
+ */
+export function typedValue(kind: EntryKind, draft: string): string {
+  if (kind === 'squawk' || draft.length <= MHZ_DIGITS) {
+    return draft;
+  }
+  return `${draft.slice(0, MHZ_DIGITS)}.${draft.slice(MHZ_DIGITS)}`;
+}
+
+/**
  * What Set would send, or why it cannot. A short frequency is padded with zeros ("1215" is
  * 121.500, as a pilot reads it aloud); an invalid one is explained, never snapped.
  */
@@ -80,4 +99,22 @@ export function parseEntry(kind: EntryKind, draft: string): ParsedEntry {
       };
     }
   }
+}
+
+/**
+ * Whether an invalid draft's message should show yet. A short COM/NAV draft is padded with zeros to
+ * parse (so "11802" parses as 118.020, an invalid ending), but more digits could still complete it
+ * into a valid channel (118.025) — so the "not a channel" rejection waits for the full length. The
+ * band message is different: once the first three (MHz) digits already place the value outside
+ * COM/NAV limits, no later digit can rescue it, so it shows as soon as that is known (C3, T3).
+ */
+export function shouldExplain(kind: EntryKind, draft: string, parsed: ParsedEntry): boolean {
+  if (parsed.status !== 'invalid') {
+    return false;
+  }
+  if (kind === 'squawk' || draft.length >= MAX_DIGITS[kind]) {
+    return true;
+  }
+  const bandMessage = kind === 'com' ? COM_BAND_MESSAGE : NAV_BAND_MESSAGE;
+  return parsed.message === bandMessage;
 }
