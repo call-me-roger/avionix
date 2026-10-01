@@ -1866,12 +1866,12 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 it('stages an entry without writing, and shows it apart from X-Plane’s value', async () => {
   await render(tree(live()));
   await fireEvent.press(screen.getByLabelText('Enter COM1 standby'));
-  for (const key of ['1', '1', '8', '0', '0', '5']) {
+  for (const key of ['1', '3', '2', '0', '0', '5']) {
     await fireEvent.press(screen.getByLabelText(key));
   }
   expect(actions.write).not.toHaveBeenCalled();
   expect(screen.getByText('New')).toBeTruthy();
-  expect(screen.getByText('118.005')).toBeTruthy();
+  expect(screen.getByText('132.005')).toBeTruthy();
   expect(screen.getByLabelText('COM1: active 121.500, standby 118.005')).toBeTruthy();
 });
 
