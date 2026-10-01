@@ -108,7 +108,7 @@ Record results at the bottom.
 | 79 | Enter 7700 | The panel names it "emergency" and needs a second tap | |
 | 80 | X-Plane 12.4.4+: request a clearance from X-Plane ATC | "ATC assigned NNNN" appears; it shows "— not set" until the code matches; note what the DataRef reports before any assignment | |
 | 81 | Disconnect the network with an entry open | The entry disappears; values are muted "not live"; reconnecting sends nothing | |
-| 82 | Smallest phone, portrait and landscape; a tablet in landscape | Rows fit without clipping; the keypad keys are easy to hit; on the tablet the keypad sits beside the stack | |
+| 82 | Smallest phone, portrait and landscape; a tablet in landscape | Rows fit without clipping; the keypad keys are easy to hit; on the phone, tapping a standby value or the squawk opens the keypad right under that row, in view; on the tablet the keypad sits beside the stack | |
 
 Rows 44 and 45 verify the keep-awake hold, and row 53 the safe areas: behaviour no automated test
 can observe.
