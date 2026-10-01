@@ -69,10 +69,13 @@ export function RadioRow({
   radio,
   readBack,
   onEnterStandby,
+  entry = null,
 }: {
   radio: RadioSpec;
   readBack: ReadBack;
   onEnterStandby: () => void;
+  /** The narrow layout's keypad, rendered right under this row's first line (I1). */
+  entry?: React.ReactNode;
 }) {
   const { snapshot, link, activate } = usePanel();
   const { units } = useUnits();
@@ -82,8 +85,10 @@ export function RadioRow({
     noFlight || name === undefined ? null : firstNumber(snapshot.telemetry[name]?.value);
   const active = read(radio.active);
   const standby = read(radio.standby);
+  // A frequency that is not a positive number is no value at all (I3): 0 and negative readings
+  // (an uninitialised DataRef, or an add-on that reports -1) show as "—", never as a number.
   const text = (value: number | null) =>
-    value === null ? '—' : formatFrequency(radio.kind, value);
+    value === null || value <= 0 ? '—' : formatFrequency(radio.kind, value);
   const notLive = !link.valuesCurrent && (active !== null || standby !== null);
 
   const details: string[] = [];
@@ -119,7 +124,7 @@ export function RadioRow({
   };
 
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} testID={`radio-row-${radio.key}`}>
       <View style={styles.row}>
         <View
           style={styles.summary}
@@ -149,6 +154,7 @@ export function RadioRow({
           onPress={onEnterStandby}
         />
       </View>
+      {entry}
       {details.length === 0 ? null : <BodyText muted>{details.join(' · ')}</BodyText>}
       {availability.reason === null ? null : <BodyText muted>{availability.reason}</BodyText>}
       <OperationNotice target={radio.flip} />

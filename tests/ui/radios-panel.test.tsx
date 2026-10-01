@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import React from 'react';
 import { Dimensions, StyleSheet } from 'react-native';
 
@@ -187,6 +187,16 @@ describe('Radios panel', () => {
     expect(screen.getByLabelText('COM1: active —, standby 118.005')).toBeTruthy();
   });
 
+  it('shows a dash for a frequency that is zero or negative (I3)', async () => {
+    const first = await render(
+      tree(live({ telemetry: telemetry({ ...VALUES, [D.com1Active]: 0 }) })),
+    );
+    expect(screen.getByLabelText('COM1: active —, standby 118.005')).toBeTruthy();
+    await first.unmount();
+    await render(tree(live({ telemetry: telemetry({ ...VALUES, [D.nav1Standby]: -1 }) })));
+    expect(screen.getByLabelText('NAV1: active 110.30, standby —')).toBeTruthy();
+  });
+
   it('puts the entry beside the stack on a wide screen, and under it on a narrow one', async () => {
     const original = Dimensions.get('window');
     Dimensions.set({ window: { width: 1024, height: 768, scale: 1, fontScale: 1 } });
@@ -203,6 +213,52 @@ describe('Radios panel', () => {
       expect(
         StyleSheet.flatten(screen.getByTestId('radios-columns').props.style).flexDirection,
       ).toBe('column');
+    } finally {
+      await act(async () => {
+        Dimensions.set({ window: original });
+      });
+    }
+  });
+
+  it('on a narrow screen, opens the entry under the row being edited (I1)', async () => {
+    const original = Dimensions.get('window');
+    await act(async () => {
+      Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
+    });
+    try {
+      await render(tree(live()));
+      await fireEvent.press(screen.getByLabelText('Enter COM2 standby'));
+      expect(
+        within(screen.getByTestId('radio-row-com2')).getByLabelText('Set COM2 standby'),
+      ).toBeTruthy();
+      expect(
+        within(screen.getByTestId('radio-row-com1')).queryByLabelText('Set COM2 standby'),
+      ).toBeNull();
+
+      await fireEvent.press(screen.getByLabelText('Enter squawk code'));
+      expect(
+        within(screen.getByTestId('transponder-section')).getByLabelText('Set Squawk code'),
+      ).toBeTruthy();
+      expect(
+        within(screen.getByTestId('radio-row-com2')).queryByLabelText('Set Squawk code'),
+      ).toBeNull();
+    } finally {
+      await act(async () => {
+        Dimensions.set({ window: original });
+      });
+    }
+  });
+
+  it('on a wide screen, keeps the entry in the right column, not inside a row (I1)', async () => {
+    const original = Dimensions.get('window');
+    Dimensions.set({ window: { width: 1024, height: 768, scale: 1, fontScale: 1 } });
+    try {
+      await render(tree(live()));
+      await fireEvent.press(screen.getByLabelText('Enter COM1 standby'));
+      expect(
+        within(screen.getByTestId('radio-row-com1')).queryByLabelText('Set COM1 standby'),
+      ).toBeNull();
+      expect(screen.getByLabelText('Set COM1 standby')).toBeTruthy();
     } finally {
       await act(async () => {
         Dimensions.set({ window: original });

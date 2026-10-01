@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
+import { StyleSheet } from 'react-native';
 
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
@@ -135,6 +136,13 @@ describe('Radios transponder', () => {
     expect(actions.write).toHaveBeenCalledWith('transponder-code', D.transponderCode, 400);
   });
 
+  it('never lets a lone key (Clear) stretch wider than one column (M4)', async () => {
+    await render(tree(live()));
+    await fireEvent.press(screen.getByLabelText('Enter squawk code'));
+    const style = StyleSheet.flatten(screen.getByLabelText('Clear').props.style);
+    expect(style.flexGrow).toBeFalsy();
+  });
+
   it('says when X-Plane did not take the squawk code', async () => {
     const view = await render(tree(live()));
     await fireEvent.press(screen.getByLabelText('Enter squawk code'));
@@ -147,6 +155,25 @@ describe('Radios transponder', () => {
     };
     await view.rerender(tree(live({ operations: ok }), NOW + 4000));
     expect(screen.getByText('X-Plane did not take squawk 0400.')).toBeTruthy();
+  });
+
+  it('prints a failed squawk Set once, not twice, while the entry is open (M2)', async () => {
+    const view = await render(tree(live()));
+    await fireEvent.press(screen.getByLabelText('Enter squawk code'));
+    for (const key of ['0', '4', '0', '0']) {
+      await fireEvent.press(screen.getByLabelText(key));
+    }
+    await fireEvent.press(screen.getByLabelText('Set Squawk code'));
+    const failed = {
+      [D.transponderCode]: {
+        status: 'failed' as const,
+        failure: null,
+        refusal: 'notConnected' as const,
+        at: NOW,
+      },
+    };
+    await view.rerender(tree(live({ operations: failed })));
+    expect(screen.getAllByText('Not sent: Avionix is not connected to X-Plane.')).toHaveLength(1);
   });
 
   it('asks for four digits', async () => {

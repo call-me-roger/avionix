@@ -58,9 +58,18 @@ const makeStyles = (theme: Theme) => ({
 export function TransponderSection({
   readBack,
   onEnterCode,
+  entry = null,
+  squawkEntryOpen = false,
 }: {
   readBack: ReadBack;
   onEnterCode: () => void;
+  /** The narrow layout's keypad, rendered right under this section's first line (I1). */
+  entry?: React.ReactNode;
+  /**
+   * The squawk entry is open: its own Set button already shows the code's failure (M2), so this
+   * section does not print it a second time.
+   */
+  squawkEntryOpen?: boolean;
 }) {
   const { snapshot, link, now, write, activate } = usePanel();
   const styles = useThemedStyles(makeStyles);
@@ -111,7 +120,7 @@ export function TransponderSection({
   const modeMessage = readBack.messageFor('mode');
 
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} testID="transponder-section">
       <View style={styles.row}>
         <View
           style={styles.summary}
@@ -132,10 +141,11 @@ export function TransponderSection({
           onPress={onEnterCode}
         />
       </View>
+      {entry}
       {codeAvailability.reason === null ? null : (
         <BodyText muted>{codeAvailability.reason}</BodyText>
       )}
-      <OperationNotice target={D.transponderCode} />
+      {squawkEntryOpen ? null : <OperationNotice target={D.transponderCode} />}
       {squawkMessage === null ? null : <BodyText tone="danger">{squawkMessage}</BodyText>}
       {assigned === null ? null : assigned === code ? (
         <BodyText>{`ATC assigned ${formatSquawk(assigned)} ✓`}</BodyText>

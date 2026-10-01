@@ -39,6 +39,10 @@ function RadiosContent() {
   const [measured, setMeasured] = useState<number | null>(null);
   const contentWidth = measured ?? window.width - theme.spacing.lg * 2;
   const wide = contentWidth >= TWO_COLUMN_MIN_WIDTH;
+  const pad = entry.target === null ? null : <EntryPad entry={entry} readBack={readBack} />;
+  // Wide: the keypad sits beside the stack, where a pilot can see the radio while typing. Narrow
+  // (a phone): it opens directly under the row being edited, never after all four rows and the
+  // transponder where it would land off-screen (I1).
   return (
     <View
       testID="radios-columns"
@@ -56,15 +60,17 @@ function RadiosContent() {
             radio={radio}
             readBack={readBack}
             onEnterStandby={() => entry.open(radio.key)}
+            entry={!wide && entry.target?.id === radio.key ? pad : null}
           />
         ))}
-        <TransponderSection readBack={readBack} onEnterCode={() => entry.open('squawk')} />
+        <TransponderSection
+          readBack={readBack}
+          onEnterCode={() => entry.open('squawk')}
+          entry={!wide && entry.target?.id === 'squawk' ? pad : null}
+          squawkEntryOpen={entry.target?.id === 'squawk'}
+        />
       </View>
-      {entry.target === null ? null : (
-        <View style={wide ? { flex: 1 } : { alignSelf: 'stretch' }}>
-          <EntryPad entry={entry} readBack={readBack} />
-        </View>
-      )}
+      {wide && pad !== null ? <View style={{ flex: 1 }}>{pad}</View> : null}
     </View>
   );
 }
