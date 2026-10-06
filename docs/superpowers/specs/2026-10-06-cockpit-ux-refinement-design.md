@@ -111,7 +111,7 @@ own set.
 | `keyFace` | `#2c3138` | `#14100b` | Key cap |
 | `keyFacePressed` | `#181b20` | `#060504` | Key cap while pressed |
 | `legend` | `#e8eaed` | `#a88a60` | Key legend, unit labels, plain values |
-| `legendDim` | `#8b949e` | `#5e4c35` | Disabled legend, secondary text in windows |
+| `legendDim` | `#8b949e` | `#917752` | Disabled legend, secondary text in windows |
 | `engaged` | `#36d35a` | `#4f9a3a` | Engaged mode, lit light bar, active frequency |
 | `armed` | `#e8eaed` | `#a88a60` | Armed mode (outlined light bar, FMA armed row) |
 | `selected` | `#2fd0f0` | `#3f8f9a` | Selected targets and standby being tuned (cyan) |
@@ -134,6 +134,8 @@ own set.
   - `legend` on `keyFace`;
   - `instrument.selected` on `instrument.tape`.
 - `legendDim` on `keyFace` reaches 3:1 or more.
+- `legend`, `legendDim`, `warning` and `engaged` on `bezel` reach 4.5:1, because notices are printed
+  inside units.
 - `engaged`, `selected`, `caution` and `warning` are four distinct values in every theme.
 - The existing rule that every mode shares one typography object holds. `fonts` is part of
   typography and changes only with `fontsLoaded`, never with the mode.
@@ -145,6 +147,11 @@ and padding 12. An optional `label` is engraved at the top left: `captionSize`, 
 font, `legendDim`, letter-spacing 1, and capital letters as given (for example "COM1", "XPDR",
 "AUTOPILOT"). It replaces the bordered rows and sections that radios, transponder and autopilot
 use today.
+
+**Text on a bezel.** `AvionicsUnit` provides an on-bezel context. Inside it, `BodyText` uses
+avionics colours: plain is `legend`, muted is `legendDim`, danger is `warning` and success is
+`engaged`. Notices, availability reasons, read-back sentences and `FailureNotice` therefore stay
+readable inside a dark unit in the light theme too, with no per-call-site styling.
 
 **`DisplayWindow`** is the glass window that shows one value.
 
