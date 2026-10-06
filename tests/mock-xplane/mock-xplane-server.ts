@@ -304,6 +304,65 @@ export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
   },
   { id: 1057, name: 'sim/cockpit2/radios/indicators/transponder_id', valueType: 'int', value: 0 },
   { id: 1058, name: 'sim/atc/transponder_assigned', valueType: 'int', value: 4521 },
+  { id: 1059, name: 'sim/cockpit2/autopilot/servos_on', valueType: 'int', value: 0 },
+  {
+    id: 1060,
+    name: 'sim/operation/override/override_autopilot',
+    valueType: 'int',
+    value: 0,
+    writable: true,
+  },
+  { id: 1061, name: 'sim/cockpit2/autopilot/roll_status', valueType: 'int', value: 0 },
+  { id: 1062, name: 'sim/cockpit2/autopilot/pitch_status', valueType: 'int', value: 0 },
+  {
+    id: 1063,
+    name: 'sim/cockpit2/autopilot/flight_director_command_bars_pilot',
+    valueType: 'int',
+    value: 0,
+    writable: true,
+  },
+  {
+    id: 1064,
+    name: 'sim/cockpit2/autopilot/autothrottle_enabled',
+    valueType: 'int',
+    value: 0,
+    writable: true,
+  },
+  {
+    id: 1065,
+    name: 'sim/cockpit2/autopilot/altitude_dial_ft',
+    valueType: 'float',
+    value: 5000,
+    writable: true,
+  },
+  {
+    id: 1066,
+    name: 'sim/cockpit2/autopilot/vvi_dial_fpm',
+    valueType: 'float',
+    value: 0,
+    writable: true,
+  },
+  {
+    id: 1067,
+    name: 'sim/cockpit2/autopilot/airspeed_dial_kts_mach',
+    valueType: 'float',
+    value: 120,
+    writable: true,
+  },
+  {
+    id: 1068,
+    name: 'sim/cockpit2/autopilot/airspeed_is_mach',
+    valueType: 'int',
+    value: 0,
+    writable: true,
+  },
+  { id: 1069, name: 'sim/cockpit2/autopilot/heading_status', valueType: 'int', value: 0 },
+  { id: 1070, name: 'sim/cockpit2/autopilot/nav_status', valueType: 'int', value: 0 },
+  { id: 1071, name: 'sim/cockpit2/autopilot/approach_status', valueType: 'int', value: 0 },
+  { id: 1072, name: 'sim/cockpit2/autopilot/glideslope_status', valueType: 'int', value: 0 },
+  { id: 1073, name: 'sim/cockpit2/autopilot/altitude_hold_status', valueType: 'int', value: 0 },
+  { id: 1074, name: 'sim/cockpit2/autopilot/vvi_status', valueType: 'int', value: 0 },
+  { id: 1075, name: 'sim/cockpit2/autopilot/speed_status', valueType: 'int', value: 0 },
 ];
 
 export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [
@@ -314,6 +373,21 @@ export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [
   { id: 2005, name: 'sim/radios/nav1_standy_flip', description: 'NAV 1 flip standby.' },
   { id: 2006, name: 'sim/radios/nav2_standy_flip', description: 'NAV 2 flip standby.' },
   { id: 2007, name: 'sim/transponder/transponder_ident', description: 'Transponder ID.' },
+  { id: 2008, name: 'sim/autopilot/servos_on', description: 'Servos on.' },
+  { id: 2009, name: 'sim/autopilot/servos_off_any', description: 'Disco servos, any side.' },
+  { id: 2010, name: 'sim/autopilot/fdir_command_bars_on', description: 'FD bars on.' },
+  { id: 2011, name: 'sim/autopilot/fdir_command_bars_off', description: 'FD bars off.' },
+  { id: 2012, name: 'sim/autopilot/autothrottle_on', description: 'A/T speed on.' },
+  { id: 2013, name: 'sim/autopilot/autothrottle_off', description: 'A/T off, armed.' },
+  { id: 2014, name: 'sim/autopilot/autothrottle_arm', description: 'A/T arm.' },
+  { id: 2015, name: 'sim/autopilot/autothrottle_hard_off', description: 'A/T off, disarmed.' },
+  { id: 2016, name: 'sim/autopilot/knots_mach_toggle', description: 'Knots/Mach toggle.' },
+  { id: 2017, name: 'sim/autopilot/heading', description: 'Heading select.' },
+  { id: 2018, name: 'sim/autopilot/NAV', description: 'VOR/LOC arm.' },
+  { id: 2019, name: 'sim/autopilot/approach', description: 'Approach.' },
+  { id: 2020, name: 'sim/autopilot/altitude_hold', description: 'Altitude hold.' },
+  { id: 2021, name: 'sim/autopilot/vertical_speed', description: 'Vertical speed.' },
+  { id: 2022, name: 'sim/autopilot/level_change', description: 'Level change.' },
 ];
 
 interface JsonError {
@@ -807,6 +881,86 @@ export class MockXPlaneServer {
       if (identing !== undefined) {
         identing.value = 1;
       }
+    }
+    const set = (name: string, value: number) => {
+      const dataRef = this.getDataRefByName(name);
+      if (dataRef !== undefined) {
+        dataRef.value = value;
+      }
+    };
+    const read = (name: string): number => {
+      const value = this.getDataRefByName(name)?.value;
+      return typeof value === 'number' ? value : 0;
+    };
+    const AP = 'sim/cockpit2/autopilot/';
+    // The mock's autopilot: idempotent pairs set their state; modes toggle, and the vertical
+    // modes exclude each other as X-Plane's do.
+    const vertical = [`${AP}altitude_hold_status`, `${AP}vvi_status`, `${AP}speed_status`];
+    const toggle = (status: string, on: number) => {
+      const next = read(status) === 0 ? on : 0;
+      if (vertical.includes(status) && next !== 0) {
+        vertical.forEach((other) => set(other, 0));
+      }
+      set(status, next);
+    };
+    switch (command?.name) {
+      case 'sim/autopilot/servos_on':
+        set(`${AP}servos_on`, 1);
+        break;
+      case 'sim/autopilot/servos_off_any':
+        set(`${AP}servos_on`, 0);
+        break;
+      case 'sim/autopilot/fdir_command_bars_on':
+        set(`${AP}flight_director_command_bars_pilot`, 1);
+        break;
+      case 'sim/autopilot/fdir_command_bars_off':
+        set(`${AP}flight_director_command_bars_pilot`, 0);
+        break;
+      case 'sim/autopilot/autothrottle_on':
+        set(`${AP}autothrottle_enabled`, 1);
+        break;
+      case 'sim/autopilot/autothrottle_off':
+        set(`${AP}autothrottle_enabled`, 0);
+        break;
+      case 'sim/autopilot/autothrottle_arm':
+        if (read(`${AP}autothrottle_enabled`) < 0) {
+          set(`${AP}autothrottle_enabled`, 0);
+        }
+        break;
+      case 'sim/autopilot/autothrottle_hard_off':
+        set(`${AP}autothrottle_enabled`, -1);
+        break;
+      case 'sim/autopilot/knots_mach_toggle': {
+        const isMach = read(`${AP}airspeed_is_mach`) === 1;
+        const speed = read(`${AP}airspeed_dial_kts_mach`);
+        // A rough conversion is enough for a mock: X-Plane converts at the current altitude.
+        set(
+          `${AP}airspeed_dial_kts_mach`,
+          isMach ? Math.round(speed * 600) : Math.round((speed / 600) * 100) / 100,
+        );
+        set(`${AP}airspeed_is_mach`, isMach ? 0 : 1);
+        break;
+      }
+      case 'sim/autopilot/heading':
+        toggle(`${AP}heading_status`, 2);
+        break;
+      case 'sim/autopilot/NAV':
+        toggle(`${AP}nav_status`, 1);
+        break;
+      case 'sim/autopilot/approach':
+        toggle(`${AP}approach_status`, 1);
+        break;
+      case 'sim/autopilot/altitude_hold':
+        toggle(`${AP}altitude_hold_status`, 2);
+        break;
+      case 'sim/autopilot/vertical_speed':
+        toggle(`${AP}vvi_status`, 2);
+        break;
+      case 'sim/autopilot/level_change':
+        toggle(`${AP}speed_status`, 2);
+        break;
+      default:
+        break;
     }
   }
 

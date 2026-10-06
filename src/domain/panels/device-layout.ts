@@ -19,6 +19,12 @@ export function deviceLayout(width: number, height: number): DeviceLayout {
   };
 }
 
+/**
+ * Below this content width a panel stacks its sections; at or above it (tablets, landscape
+ * phones) it lays them out in two columns. Shared by Radios and Autopilot.
+ */
+export const TWO_COLUMN_MIN_WIDTH = 720;
+
 export type PanelFit = 'fits' | 'rotate' | 'unsupported';
 
 /** R1: the shell never shows a panel on a combination the panel did not declare. */

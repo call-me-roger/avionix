@@ -15,11 +15,13 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
 - Detect the X-Plane version and the supported Web API versions; use the highest of v2/v3.
 - Resolve DataRefs and commands by name (ids are session-specific and never stored).
 - Panels reachable from a switcher (a bottom bar in portrait, a side rail in landscape) alongside
-  Setup: Instruments (below), Flight data (ground speed, true airspeed, track, wind, OAT/TAT, fuel
-  remaining, sim zulu and local time, paused/replay, the GPS destination) and Heading (write the
-  autopilot heading bug, activate `sim/autopilot/heading_up`). Radios (COM1, COM2, NAV1 and NAV2
-  with keypad standby entry and swap, plus the transponder's squawk code, mode and IDENT) rounds out
-  the switcher. A compact strip with ground speed, wind, fuel and sim zulu docks under the status bar
+  Setup: Instruments (below), Radios (COM1, COM2, NAV1 and NAV2 with keypad standby entry and swap,
+  plus the transponder's squawk code, mode and IDENT), Autopilot (AP, FD and autothrottle
+  engagement; HDG, NAV, APR, ALT, VS and FLC shown off, armed or engaged; heading, altitude,
+  vertical speed and airspeed in knots or Mach set with steppers or the keypad, each change checked
+  against what X-Plane reports) and Flight data (ground speed, true airspeed, track, wind, OAT/TAT,
+  fuel remaining, sim zulu and local time, paused/replay, the GPS destination) round out the
+  switcher. A compact strip with ground speed, wind, fuel and sim zulu docks under the status bar
   on every other panel and opens Flight data when tapped; a Setup toggle turns it off. The WebSocket
   subscribes only the visible panel's DataRefs (plus the strip's, while shown), identification and
   connection health, and follows a panel switch within one update cycle.

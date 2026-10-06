@@ -1,7 +1,6 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import { type EntryKind, entryDigits } from '@/domain/radios/entry';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
@@ -32,16 +31,18 @@ const makeStyles = (theme: Theme) => ({
 });
 
 interface Props {
-  kind: EntryKind;
+  /** The digit keys in keypad order; the last is shown between Delete and Clear. */
+  digits: readonly number[];
   onDigit: (digit: number) => void;
   onErase: () => void;
   onClear: () => void;
+  /** A sign key (vertical speed): shown after Clear when given. */
+  onSign?: () => void;
 }
 
-/** Digits in phone order, then delete, 0 and clear. A squawk keypad has no 8 or 9 at all. */
-export function Keypad({ kind, onDigit, onErase, onClear }: Props) {
+/** Digits in phone order, then delete, the last digit (0) and clear; a sign key when asked for. */
+export function Keypad({ digits, onDigit, onErase, onClear, onSign }: Props) {
   const styles = useThemedStyles(makeStyles);
-  const digits = entryDigits(kind);
   const zero = digits[digits.length - 1];
   const key = (label: string, accessibilityLabel: string, onPress: () => void) => (
     <Pressable
@@ -60,6 +61,7 @@ export function Keypad({ kind, onDigit, onErase, onClear }: Props) {
       {key('⌫', 'Delete', onErase)}
       {zero === undefined ? null : key(String(zero), String(zero), () => onDigit(zero))}
       {key('Clear', 'Clear', onClear)}
+      {onSign === undefined ? null : key('±', 'Change sign', onSign)}
     </View>
   );
 }

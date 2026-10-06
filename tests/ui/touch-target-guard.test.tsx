@@ -161,3 +161,27 @@ describe('touch targets on the Radios panel with an entry open', () => {
     }
   });
 });
+
+describe('touch targets on the Autopilot panel with an entry open', () => {
+  it('every control, including the keypad and the steppers, is at least 48 dp', async () => {
+    mockLayout = { deviceClass: 'phone', orientation: 'portrait' };
+    const { services } = makeServices(liveSnapshot(), await seeded('autopilot'));
+    await render(tree(services));
+    await screen.findByTestId('panel-autopilot');
+    await fireEvent.press(screen.getByLabelText('Enter vertical speed'));
+    const targets = PANEL_ROLES.flatMap((role) => screen.queryAllByRole(role));
+    expect(targets.length).toBeGreaterThan(0);
+    for (const target of targets) {
+      const style = StyleSheet.flatten(target.props.style) ?? {};
+      const label = String(target.props.accessibilityLabel ?? target.props.testID ?? 'unlabelled');
+      expect({ label, minHeight: Number(style.minHeight ?? style.height ?? 0) >= 48 }).toEqual({
+        label,
+        minHeight: true,
+      });
+      expect({ label, minWidth: Number(style.minWidth ?? style.width ?? 0) >= 48 }).toEqual({
+        label,
+        minWidth: true,
+      });
+    }
+  });
+});

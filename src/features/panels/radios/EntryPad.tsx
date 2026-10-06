@@ -4,6 +4,7 @@ import { Pressable, Text, View } from 'react-native';
 import { isEightThirtyThreeOnly } from '@/domain/radios/channels';
 import {
   MAX_DIGITS,
+  entryDigits,
   entryText,
   parseEntry,
   shouldExplain,
@@ -12,16 +13,17 @@ import {
 import { isEmergencySquawk } from '@/domain/radios/squawk';
 import { firstNumber } from '@/features/panels/instruments/useInstrumentValues';
 import { ControlButton } from '@/features/panels/primitives/ControlButton';
+import { Keypad } from '@/features/panels/primitives/Keypad';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
-import { Keypad } from '@/features/panels/radios/Keypad';
 import { type EntryTarget, formatFrequency } from '@/features/panels/radios/radios';
 import type { RadioEntry } from '@/features/panels/radios/useRadioEntry';
 import { BodyText } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
-const makeStyles = (theme: Theme) => ({
+/** Shared with `SelectorPad.tsx` so the dashed "New" box looks the same across panels. */
+export const entryPadStyles = (theme: Theme) => ({
   wrap: {
     gap: theme.spacing.sm,
     padding: theme.spacing.md,
@@ -90,7 +92,7 @@ function notTakenSentence(
  * and keeps Set disabled (C3, T3). An emergency squawk takes a second tap.
  */
 export function EntryPad({ entry, readBack }: { entry: RadioEntry; readBack: ReadBack }) {
-  const styles = useThemedStyles(makeStyles);
+  const styles = useThemedStyles(entryPadStyles);
   const { write } = usePanel();
   const target = entry.target;
   if (target === null) {
@@ -147,7 +149,7 @@ export function EntryPad({ entry, readBack }: { entry: RadioEntry; readBack: Rea
         <BodyText tone="danger">{parsed.message}</BodyText>
       ) : null}
       <Keypad
-        kind={target.kind}
+        digits={entryDigits(target.kind)}
         onDigit={entry.digit}
         onErase={entry.erase}
         onClear={entry.clear}

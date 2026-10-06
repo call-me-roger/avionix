@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, useWindowDimensions } from 'react-native';
 
+import { TWO_COLUMN_MIN_WIDTH } from '@/domain/panels/device-layout';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import { useReadBack } from '@/features/panels/primitives/useReadBack';
 import { EntryPad } from '@/features/panels/radios/EntryPad';
@@ -11,14 +12,7 @@ import { useRadioEntry } from '@/features/panels/radios/useRadioEntry';
 import { useTheme } from '@/theme/theme-context';
 
 export { RADIOS_PANEL } from '@/features/panels/radios/radios';
-
-/**
- * Below this content width, the keypad goes under the radio stack instead of beside it: a phone,
- * even landscape, cannot fit both a readable frequency and a thumb-sized keypad in one column.
- * Tablets and landscape phones keep the keypad beside the stack, so a pilot sees the radio they
- * are tuning while typing.
- */
-export const TWO_COLUMN_MIN_WIDTH = 720;
+export { TWO_COLUMN_MIN_WIDTH };
 
 /**
  * F-21/F-22. Keyed by the aircraft, so a change of aircraft drops every draft and read-back

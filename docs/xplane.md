@@ -209,3 +209,52 @@ and writes as `121500`). This differs from the legacy (non-`_833`) COM DataRefs,
 `DataRefs.txt` documents as `10hertz` — the same 10 kHz units as the NAV DataRefs above, not whole
 kHz; the device check in `docs/testing/xplane-smoke-test.md` confirms the `_833` assumption against
 a real X-Plane install before the Radios panel ships.
+
+## Autopilot (F-20)
+
+Twelve features in `GENERIC_PROFILE` 1.4.0: `autopilot-engage`, `flight-director`, `autothrottle`,
+`altitude-select`, `vertical-speed-select`, `airspeed-select`, and the six mode features
+`ap-mode-hdg`, `ap-mode-nav`, `ap-mode-apr`, `ap-mode-alt`, `ap-mode-vs` and `ap-mode-flc`. Each is
+one feature per control, so a name an aircraft lacks costs only that control.
+
+Engagement and disconnection use separate commands, as Laminar recommends, rather than a single
+toggle; mode state is read from each mode's own `*_status` DataRef (`0` off, `1` armed, `2`
+captured), never from the bit-field `sim/cockpit/autopilot/autopilot_state`, which Avionix does not
+use. `sim/operation/override/override_autopilot` reports whether another program (for example a
+flight-management add-on) is flying the autopilot; Avionix reads it to show that state but never
+writes it, since doing so would fight whatever is already in control.
+
+| Name | Type | Units | Writable | Source |
+|---|---|---|---|---|
+| `sim/cockpit2/autopilot/servos_on` | int | 0 or 1, engaged | no | Verified against `DataRefs.txt` |
+| `sim/operation/override/override_autopilot` | int | 0 or 1 | no (read only, by design) | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/roll_status` | int | mode enum | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/pitch_status` | int | mode enum | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/flight_director_command_bars_pilot` | int | 0 or 1 | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/autothrottle_enabled` | int | -1 disarmed, 0 armed, 1 engaged, 2 N1, 3 retard | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/altitude_dial_ft` | float | feet | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/vvi_dial_fpm` | float | ft/min | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/airspeed_dial_kts_mach` | float | knots or Mach, per `airspeed_is_mach` | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/airspeed_is_mach` | int | 0 knots, 1 Mach | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/heading_status` | int | 0 off, 2 captured | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/nav_status` | int | 0 off, 1 armed, 2 captured | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/approach_status` | int | 0 off, 1 armed, 2 captured | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/glideslope_status` | int | mode enum | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/altitude_hold_status` | int | 0 off, 2 captured | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/vvi_status` | int | 0 off, 2 captured | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/speed_status` | int | 0 off, 2 captured | no | Verified against `DataRefs.txt` |
+| `sim/autopilot/servos_on` | command | — | — | Verified against `Commands.txt` |
+| `sim/autopilot/servos_off_any` | command | — | — | Verified against `Commands.txt` |
+| `sim/autopilot/fdir_command_bars_on` | command | — | — | Verified against `Commands.txt` |
+| `sim/autopilot/fdir_command_bars_off` | command | — | — | Verified against `Commands.txt` |
+| `sim/autopilot/autothrottle_on` | command | — | — | Verified against `Commands.txt` |
+| `sim/autopilot/autothrottle_off` | command | — | — | Verified against `Commands.txt` |
+| `sim/autopilot/autothrottle_arm` | command | — | — | Verified against `Commands.txt` |
+| `sim/autopilot/autothrottle_hard_off` | command | — | — | Verified against `Commands.txt` |
+| `sim/autopilot/knots_mach_toggle` | command | — | — | Verified against `Commands.txt` |
+| `sim/autopilot/heading` | command | — | — | Verified against `Commands.txt` |
+| `sim/autopilot/NAV` | command | — | — | Verified against `Commands.txt` |
+| `sim/autopilot/approach` | command | — | — | Verified against `Commands.txt` |
+| `sim/autopilot/altitude_hold` | command | — | — | Verified against `Commands.txt` |
+| `sim/autopilot/vertical_speed` | command | — | — | Verified against `Commands.txt` |
+| `sim/autopilot/level_change` | command | — | — | Verified against `Commands.txt` |

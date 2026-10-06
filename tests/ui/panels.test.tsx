@@ -5,12 +5,12 @@ import { SETUP_ROUTE } from '@/application/panel-layout';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
 import {
-  FEATURE_HEADING_CONTROL,
+  FEATURE_AUTOPILOT,
+  FEATURE_MODE_HDG,
   GENERIC_COMMANDS,
-  GENERIC_DATAREFS,
   GENERIC_PROFILE,
 } from '@/domain/aircraft/profiles/generic';
-import { HeadingPanel } from '@/features/panels/heading/HeadingPanel';
+import { AutopilotPanel } from '@/features/panels/autopilot/AutopilotPanel';
 import type { PanelActions } from '@/features/panels/primitives/PanelContext';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { PANELS, PANEL_IDS, findPanel } from '@/features/panels/registry';
@@ -55,7 +55,7 @@ async function renderPanel(
 
 describe('panel registry', () => {
   it('lists each panel once, in switcher order, never under the reserved Setup id', () => {
-    expect(PANEL_IDS).toEqual(['instruments', 'radios', 'flight-data', 'heading']);
+    expect(PANEL_IDS).toEqual(['instruments', 'radios', 'autopilot', 'flight-data']);
     expect(new Set(PANEL_IDS).size).toBe(PANEL_IDS.length);
     expect(PANEL_IDS).not.toContain(SETUP_ROUTE);
   });
@@ -70,65 +70,38 @@ describe('panel registry', () => {
   });
 
   it('finds a panel by id', () => {
-    expect(findPanel(PANELS, 'heading')?.descriptor.title).toBe('Heading');
+    expect(findPanel(PANELS, 'autopilot')?.descriptor.title).toBe('Autopilot');
     expect(findPanel(PANELS, 'nope')).toBeNull();
   });
 });
 
-describe('Heading panel', () => {
-  it('writes the heading bug through the heading feature', async () => {
+describe('Autopilot panel', () => {
+  it('engages the autopilot through its own feature', async () => {
     const actions = makeActions();
-    await renderPanel(HeadingPanel, live(), actions);
-    await fireEvent.changeText(screen.getByLabelText('New heading'), '95');
-    await fireEvent.press(screen.getByRole('button', { name: 'Set New heading' }));
-    expect(actions.write).toHaveBeenCalledWith(
-      FEATURE_HEADING_CONTROL,
-      GENERIC_DATAREFS.headingBug,
-      95,
-    );
-  });
-
-  it('refuses a heading outside 0 to 360 before anything is sent', async () => {
-    const actions = makeActions();
-    await renderPanel(HeadingPanel, live(), actions);
-    await fireEvent.changeText(screen.getByLabelText('New heading'), '400');
-    await fireEvent.press(screen.getByRole('button', { name: 'Set New heading' }));
-    expect(actions.write).not.toHaveBeenCalled();
-    expect(screen.getByText('Enter a number from 0 to 360.')).toBeTruthy();
-  });
-
-  it('activates heading up', async () => {
-    const actions = makeActions();
-    await renderPanel(HeadingPanel, live(), actions);
-    await fireEvent.press(screen.getByRole('button', { name: 'Heading up' }));
+    await renderPanel(AutopilotPanel, live(), actions);
+    await fireEvent.press(screen.getByLabelText('Engage autopilot'));
     expect(actions.activate).toHaveBeenCalledWith(
-      FEATURE_HEADING_CONTROL,
-      GENERIC_COMMANDS.headingUp,
+      FEATURE_AUTOPILOT,
+      GENERIC_COMMANDS.autopilotEngage,
     );
   });
 
-  it('shows the simulator’s heading, never the one it just wrote', async () => {
+  it('activates a mode through its own feature', async () => {
     const actions = makeActions();
-    await renderPanel(
-      HeadingPanel,
-      live({
-        telemetry: { [GENERIC_DATAREFS.headingBug]: { value: 90, receivedAt: NOW } },
-        operations: {
-          [GENERIC_DATAREFS.headingBug]: { status: 'ok', failure: null, refusal: null, at: NOW },
-        },
-      }),
-      actions,
-    );
-    await fireEvent.changeText(screen.getByLabelText('New heading'), '95');
-    await fireEvent.press(screen.getByRole('button', { name: 'Set New heading' }));
-    expect(screen.getByLabelText('Heading bug: 90°')).toBeTruthy();
-    expect(screen.queryByLabelText('Heading bug: 95°')).toBeNull();
+    await renderPanel(AutopilotPanel, live(), actions);
+    await fireEvent.press(screen.getByLabelText('HDG mode, off'));
+    expect(actions.activate).toHaveBeenCalledWith(FEATURE_MODE_HDG, GENERIC_COMMANDS.modeHeading);
   });
 
-  it('says heading control has not been checked yet before the first connect', async () => {
-    await renderPanel(HeadingPanel, base);
-    expect(screen.getAllByText('Heading control has not been checked yet.').length).toBeGreaterThan(
-      0,
-    );
+  it('shows the simulator’s mode state, never one just requested', async () => {
+    const actions = makeActions();
+    await renderPanel(AutopilotPanel, live(), actions);
+    await fireEvent.press(screen.getByLabelText('HDG mode, off'));
+    expect(screen.getByLabelText('HDG mode, off')).toBeTruthy();
+  });
+
+  it('says autopilot has not been checked yet before the first connect', async () => {
+    await renderPanel(AutopilotPanel, base);
+    expect(screen.getAllByText('Autopilot has not been checked yet.').length).toBeGreaterThan(0);
   });
 });

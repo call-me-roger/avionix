@@ -8,6 +8,11 @@ export type ReadBackVerdict = 'waiting' | 'adopted' | 'notAdopted' | 'abandoned'
 export interface ReadBackInput {
   current: DataRefValue | undefined;
   expected: number;
+  /**
+   * Decides adoption instead of `readsAs(current, expected)`: for values where half a unit is the
+   * whole range (Mach), that wrap (a heading of 0 read back as 359.9), or a change of state.
+   */
+  matches?: (value: DataRefValue | undefined) => boolean;
   /** The session's outcome for the binding that should cause the change (structurally typed). */
   operation: { status: 'pending' | 'ok' | 'failed'; at: number } | undefined;
   /** When the pilot pressed; an outcome recorded before this belongs to an earlier press. */
@@ -36,7 +41,11 @@ export function readBackVerdict(input: ReadBackInput): ReadBackVerdict {
   if (operation.status === 'failed') {
     return 'abandoned';
   }
-  if (readsAs(input.current, input.expected)) {
+  const adopted =
+    input.matches === undefined
+      ? readsAs(input.current, input.expected)
+      : input.matches(input.current);
+  if (adopted) {
     return 'adopted';
   }
   if (!input.valuesCurrent) {

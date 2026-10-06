@@ -152,13 +152,13 @@ describe('AppShell on react-native-web', () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    const tab = container.querySelector('[data-testid="switch-heading"]');
+    const tab = container.querySelector('[data-testid="switch-autopilot"]');
     expect(tab).not.toBeNull();
     await act(async () => {
       (tab as HTMLElement).click();
     });
-    expect(container.querySelector('[data-testid="panel-heading"]')).not.toBeNull();
-    expect(container.textContent ?? '').toContain('Heading up');
+    expect(container.querySelector('[data-testid="panel-autopilot"]')).not.toBeNull();
+    expect(container.textContent ?? '').toContain('No modes engaged');
   });
 
   it('draws the instruments as DOM, Instruments first in the switcher', async () => {
