@@ -131,10 +131,6 @@ describe('theme tokens', () => {
       expect(
         contrastRatio(theme.instrument.navNeedle, theme.instrument.face),
       ).toBeGreaterThanOrEqual(4.5);
-    }
-    // The day magenta (shared by light and dark) clears the guard; night's, kept within the
-    // ≤0.30 luminance cap checked above, does not also reach 4.5:1 against a pure black face.
-    for (const theme of [lightTheme, darkTheme]) {
       expect(
         contrastRatio(theme.instrument.gpsNeedle, theme.instrument.face),
       ).toBeGreaterThanOrEqual(4.5);

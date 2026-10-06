@@ -126,7 +126,7 @@ No new format or step code is needed.
 | Token | Day | Night |
 |---|---|---|
 | `navNeedle` (NAV source, green) | `#36d35a` | `#4f9a3a` |
-| `gpsNeedle` (GPS source, magenta) | `#e040c0` | `#9a3a86` |
+| `gpsNeedle` (GPS source, magenta) | `#e040c0` | `#b8579f` |
 
 The course pointer, the CDI bar and the source annunciation are drawn green for NAV1 and NAV2, and magenta for GPS, as on a G1000. The source is also spelled out in text, so colour is never the only cue (U2).
 

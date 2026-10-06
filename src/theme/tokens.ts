@@ -261,7 +261,7 @@ export const nightTheme: Theme = {
     selected: '#3f8f9a',
     bug: '#a0601e',
     navNeedle: '#4f9a3a',
-    gpsNeedle: '#9a3a86',
+    gpsNeedle: '#b8579f',
   },
   avionics: nightAvionics,
   spacing,
