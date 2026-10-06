@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { View } from 'react-native';
 
 import type { ConnectionState } from '@/domain/connection/connection-state';
+import { ConnectionSteps } from '@/features/connection/ConnectionSteps';
+import { PairingCodeBoxes } from '@/features/connection/PairingCodeBoxes';
 import { ActionButton } from '@/theme/ActionButton';
 import { BodyText, Section, SectionTitle, ThemedTextInput } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
@@ -11,6 +13,8 @@ interface Props {
   host: string;
   port: string;
   state: ConnectionState;
+  /** Whether live telemetry is flowing (SessionHealth.live): the fourth connection step. */
+  live: boolean;
   connectorName: string | null;
   onHostChange: (value: string) => void;
   onPortChange: (value: string) => void;
@@ -24,6 +28,16 @@ const CODE_LENGTH = 6;
 
 const makeStyles = (theme: Theme) => ({
   row: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: theme.spacing.sm },
+  codeContainer: { alignSelf: 'flex-start' as const, marginBottom: theme.spacing.sm },
+  codeInput: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    opacity: 0.02,
+    color: 'transparent',
+  },
 });
 
 /**
@@ -58,16 +72,21 @@ function PairingFields(props: {
         {props.connectorName ?? 'This connector'} needs pairing. Enter the code shown in the
         connector window.
       </BodyText>
-      <ThemedTextInput
-        testID="pairing-code"
-        accessibilityLabel="Pairing code"
-        value={code}
-        onChangeText={(value) => setCode(value.replace(/\D/g, '').slice(0, CODE_LENGTH))}
-        keyboardType="number-pad"
-        maxLength={CODE_LENGTH}
-        autoFocus
-        editable={!busy}
-      />
+      <View style={styles.codeContainer}>
+        <PairingCodeBoxes code={code} length={CODE_LENGTH} />
+        <ThemedTextInput
+          testID="pairing-code"
+          accessibilityLabel="Pairing code"
+          value={code}
+          onChangeText={(value) => setCode(value.replace(/\D/g, '').slice(0, CODE_LENGTH))}
+          keyboardType="number-pad"
+          maxLength={CODE_LENGTH}
+          autoFocus
+          editable={!busy}
+          caretHidden
+          style={styles.codeInput}
+        />
+      </View>
       <View style={styles.row}>
         <ActionButton
           title="Pair"
@@ -87,9 +106,13 @@ export function ConnectionForm(props: Props) {
   const busy = props.state === 'connecting' || props.state === 'reconnecting' || isPairingState;
   const connected = props.state === 'connected' || busy;
 
+  const hasHost = props.host.trim() !== '';
+
   return (
     <Section>
       <SectionTitle>Connection</SectionTitle>
+      <ConnectionSteps state={props.state} live={props.live} hasHost={hasHost} />
+      <BodyText muted>Or enter the address of the X-Plane PC</BodyText>
       <BodyText>X-Plane host (IP or hostname on your LAN)</BodyText>
       <ThemedTextInput
         accessibilityLabel="X-Plane host"

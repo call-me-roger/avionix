@@ -94,6 +94,7 @@ export function SetupScreen(props: {
         host={settings.host}
         port={settings.port}
         state={snapshot.state}
+        live={snapshot.health.live}
         connectorName={snapshot.connector?.name ?? null}
         onHostChange={settings.setHost}
         onPortChange={settings.setPort}

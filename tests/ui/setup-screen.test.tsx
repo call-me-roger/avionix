@@ -85,6 +85,16 @@ describe('SetupScreen', () => {
     await waitFor(() => expect(session.connect).toHaveBeenCalledWith('192.168.1.100', '8080'));
   });
 
+  it('reads the connection steps label on a fresh screen with no host', async () => {
+    const { services } = makeServices();
+    await renderScreen(services);
+    await waitFor(() =>
+      expect(screen.getByTestId('connection-steps').props.accessibilityLabel).toBe(
+        'Step 1 of 4, Find: Not connected',
+      ),
+    );
+  });
+
   it('renders connected status, versions and diagnostics from the snapshot', async () => {
     const { services } = makeServices({
       state: 'connected',
@@ -309,6 +319,16 @@ describe('SetupScreen pairing mode', () => {
     await fireEvent.changeText(input, '123456');
     await fireEvent.press(screen.getByText('Pair'));
     await waitFor(() => expect(session.pair).toHaveBeenCalledWith('123456'));
+  });
+
+  it('fills the pairing-code boxes as digits are typed', async () => {
+    const { services } = makeServices({ state: 'pairing', connector });
+    await renderScreen(services);
+    const input = screen.getByTestId('pairing-code');
+    await fireEvent.changeText(input, '123');
+    expect(screen.getByText('1')).toBeTruthy();
+    expect(screen.getByText('2')).toBeTruthy();
+    expect(screen.getByText('3')).toBeTruthy();
   });
 
   it('falls back to a generic name when the connector is unknown', async () => {
