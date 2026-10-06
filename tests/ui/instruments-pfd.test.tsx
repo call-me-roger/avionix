@@ -348,6 +348,13 @@ describe('PFD autopilot targets', () => {
     expect(screen.getByLabelText(ALTITUDE)).toBeTruthy();
   });
 
+  it('fades the compact FMA with the link, as it does the boxes', async () => {
+    const view = await render(tree(withAp()));
+    expect(screen.getByTestId('pfd-fma')).toHaveStyle({ opacity: 1 });
+    await view.rerender(tree({ ...withAp(), state: 'reconnecting' }));
+    expect(screen.getByTestId('pfd-fma')).toHaveStyle({ opacity: NOT_LIVE_OPACITY });
+  });
+
   it('keeps the FMA on one line at the PFD compact size', async () => {
     await render(tree(withAp({ [D.verticalSpeedStatus]: 2, [D.verticalSpeedDial]: -1500 })));
     const fma = screen.getByTestId('autopilot-fma');

@@ -250,6 +250,18 @@ describe('Radios transponder', () => {
     expect(screen.getByTestId('xpdr-ident')).toHaveStyle({ color: lightTheme.avionics.engaged });
   });
 
+  it('dims a last-known IDENT annunciation once the values are not current', async () => {
+    await render(
+      tree(
+        live({
+          state: 'reconnecting',
+          telemetry: telemetry({ ...VALUES, [D.transponderIdenting]: 1 }),
+        }),
+      ),
+    );
+    expect(screen.getByTestId('xpdr-ident')).toHaveStyle({ color: lightTheme.avionics.legendDim });
+  });
+
   it('shows the ATC-assigned code, and offers to squawk it when it differs', async () => {
     await render(tree(live()));
     expect(screen.getByText('ATC assigned 4521 — not set')).toBeTruthy();

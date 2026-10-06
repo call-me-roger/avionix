@@ -1,6 +1,6 @@
 import type { TextStyle } from 'react-native';
 
-import { AVIONICS_FAMILIES } from '@/theme/fonts';
+import { AVIONICS_FAMILIES } from '@/theme/font-families';
 import type { Theme } from '@/theme/tokens';
 
 /** Every live number: tabular digits so a changing value never jitters, in B612 Mono once loaded. */

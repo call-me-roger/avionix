@@ -61,7 +61,11 @@ export function PfdView({ width }: { width: number }) {
   return (
     <View testID="pfd" style={{ width, backgroundColor: ink.face }}>
       {targets.fmaShown ? (
-        <View style={{ width }}>
+        // Faded with the link like the boxes below: the compact FMA prints no "not live" of its own.
+        <View
+          testID="pfd-fma"
+          style={{ width, opacity: link.valuesCurrent ? 1 : NOT_LIVE_OPACITY }}
+        >
           <Fma compact />
         </View>
       ) : null}

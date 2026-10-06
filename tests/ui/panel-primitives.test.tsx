@@ -464,6 +464,44 @@ describe('ControlButton', () => {
       ).toBeTruthy();
     });
 
+    it('dims a lit bar to legendDim on a stale link, keeping its shape', async () => {
+      const stale = { ...live(), state: 'reconnecting' as const };
+      const inStale = (node: React.ReactNode) => (
+        <ThemeProvider storage={createMemorySettingsStorage()} systemSchemeOverride="light">
+          <PanelFrame title="Test panel" snapshot={stale} now={NOW} actions={actions}>
+            {node}
+          </PanelFrame>
+        </ThemeProvider>
+      );
+      const view = await render(inStale(button('engaged')));
+      expect(screen.getByTestId('light-bar-engaged', HIDDEN)).toHaveStyle({
+        backgroundColor: lightTheme.avionics.legendDim,
+      });
+      await view.rerender(inStale(button('armed')));
+      expect(screen.getByTestId('light-bar-armed', HIDDEN)).toHaveStyle({
+        borderColor: lightTheme.avionics.legendDim,
+        backgroundColor: 'transparent',
+      });
+    });
+
+    it('keeps a pending key’s engaged bar lit while the link is live', async () => {
+      const pending = live({
+        operations: { t: { status: 'pending', failure: null, refusal: null, at: NOW } },
+      });
+      await render(
+        <ThemeProvider storage={createMemorySettingsStorage()} systemSchemeOverride="light">
+          <PanelFrame title="Test panel" snapshot={pending} now={NOW} actions={actions}>
+            {button('engaged')}
+          </PanelFrame>
+        </ThemeProvider>,
+      );
+      const key = screen.getByRole('button', { name: 'HDG' });
+      expect(key.props.accessibilityState.disabled).toBe(true);
+      expect(within(key).getByTestId('light-bar-engaged', HIDDEN)).toHaveStyle({
+        backgroundColor: lightTheme.avionics.engaged,
+      });
+    });
+
     it('draws no bar at all with no annunciation and no selected', async () => {
       await render(wrap(button(undefined)));
       const found = within(screen.getByRole('button', { name: 'HDG' }));
@@ -659,6 +697,24 @@ describe('Keypad', () => {
     expect(haptics.press).toHaveBeenCalledTimes(1);
     expect(onDigit).toHaveBeenCalledWith(5);
   });
+
+  it('prints word and symbol keys at the legend size, digits at the display size', async () => {
+    await renderInFrame(
+      live(),
+      <Keypad
+        digits={[1, 2, 3, 4, 5, 6, 7, 8, 9, 0]}
+        onDigit={() => undefined}
+        onErase={() => undefined}
+        onClear={() => undefined}
+        onSign={() => undefined}
+      />,
+    );
+    const { legendSize, displaySize } = lightTheme.typography;
+    for (const word of ['Clear', '⌫', '±']) {
+      expect(screen.getByText(word)).toHaveStyle({ fontSize: legendSize });
+    }
+    expect(screen.getByText('5')).toHaveStyle({ fontSize: displaySize });
+  });
 });
 
 describe('DisplayWindow', () => {
@@ -692,6 +748,15 @@ describe('DisplayWindow', () => {
   it('overrides the role colour with warning for an emergency squawk', async () => {
     await renderInFrame(live(), <DisplayWindow text="7700" role="active" tone="warning" />);
     expect(screen.getByText('7700')).toHaveStyle({ color: lightTheme.avionics.warning });
+  });
+
+  it('dims a stale emergency squawk, keeping its EMERG caption', async () => {
+    await renderInFrame(
+      live(),
+      <DisplayWindow text="7700" role="plain" caption="ALT · EMERG" tone="warning" stale />,
+    );
+    expect(screen.getByText('7700')).toHaveStyle({ color: lightTheme.avionics.legendDim });
+    expect(screen.getByText('ALT · EMERG')).toBeTruthy();
   });
 });
 

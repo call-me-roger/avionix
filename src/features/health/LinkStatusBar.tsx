@@ -96,7 +96,8 @@ function lineText(snapshot: SessionSnapshot): string {
 /**
  * Always on screen, pinned above whatever panel or Setup is in front (AppShell). One compact row
  * (R-01): a status lamp, one text line and, only while not live, the age — a live bar needs no
- * age, which is the dark-cockpit principle of staying quiet while normal.
+ * age, which is the dark-cockpit principle of staying quiet while normal. Never connected, there
+ * is no age at all.
  */
 export function LinkStatusBar({
   snapshot,
@@ -113,7 +114,10 @@ export function LinkStatusBar({
   const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
   const { health, state } = snapshot;
-  const age = formatAge(ageMs(health.lastHeartbeatAt, now));
+  // Never connected, there is no age to give: "updated no data yet" says nothing the lamp does not.
+  const age =
+    health.lastHeartbeatAt === null ? null : formatAge(ageMs(health.lastHeartbeatAt, now));
+  const ageLabel = age === null ? '' : `, updated ${age}`;
   const liveness = health.live ? 'Live' : 'Not live';
   const activity = ACTIVITY_LABEL[health.activity];
   const retry =
@@ -130,7 +134,7 @@ export function LinkStatusBar({
     <Pressable
       testID="link-status-bar"
       accessibilityRole="button"
-      accessibilityLabel={`${LINK_LABEL[state]}. ${activity}. Values ${liveness.toLowerCase()}, updated ${age}.${retryLabelSuffix} Open diagnostics.`}
+      accessibilityLabel={`${LINK_LABEL[state]}. ${activity}. Values ${liveness.toLowerCase()}${ageLabel}.${retryLabelSuffix} Open diagnostics.`}
       onPress={onOpenDiagnostics}
       style={[
         styles.bar,
@@ -144,7 +148,7 @@ export function LinkStatusBar({
       <View style={styles.text}>
         <BodyText>{lineText(snapshot)}</BodyText>
       </View>
-      {lamp === 'live' ? null : (
+      {lamp === 'live' || age === null ? null : (
         <BodyText muted style={numeric(theme)}>{`updated ${age}`}</BodyText>
       )}
     </Pressable>

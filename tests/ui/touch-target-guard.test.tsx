@@ -109,15 +109,31 @@ const LAYOUTS: DeviceLayout[] = [
 const PANEL_ROLES = ['button', 'switch', 'radio', 'tab'] as const;
 const SETUP_ROLES = ['switch', 'radio', 'tab'] as const;
 
+/**
+ * The FMA is pressable (a tap acknowledges an autopilot disconnect) but its role is "text", so the
+ * role sweep alone never sees it. Wherever it is drawn, it is a target too.
+ */
+function panelTargets() {
+  return [
+    ...PANEL_ROLES.flatMap((role) => screen.queryAllByRole(role)),
+    ...screen.queryAllByTestId('autopilot-fma'),
+  ];
+}
+
 describe.each(LAYOUTS)('touch targets on a $deviceClass in $orientation', (layout) => {
   it.each([...PANEL_IDS, SETUP_ROUTE])('every control on %s is at least 48 dp', async (route) => {
     mockLayout = layout;
     const { services } = makeServices(liveSnapshot(), await seeded(route));
     await render(tree(services));
     await screen.findByTestId(route === SETUP_ROUTE ? 'setup-screen' : `panel-${route}`);
-    const roles = route === SETUP_ROUTE ? SETUP_ROLES : PANEL_ROLES;
-    const targets = roles.flatMap((role) => screen.queryAllByRole(role));
+    const targets =
+      route === SETUP_ROUTE
+        ? SETUP_ROLES.flatMap((role) => screen.queryAllByRole(role))
+        : panelTargets();
     expect(targets.length).toBeGreaterThan(0);
+    if (route === 'autopilot') {
+      expect(screen.getByTestId('autopilot-fma')).toBeTruthy();
+    }
     for (const target of targets) {
       const style = StyleSheet.flatten(target.props.style) ?? {};
       const label = String(target.props.accessibilityLabel ?? target.props.testID ?? 'unlabelled');
@@ -145,7 +161,7 @@ describe('touch targets on the Radios panel with an entry open', () => {
     await render(tree(services));
     await screen.findByTestId('panel-radios');
     await fireEvent.press(screen.getByLabelText('Enter COM1 standby'));
-    const targets = PANEL_ROLES.flatMap((role) => screen.queryAllByRole(role));
+    const targets = panelTargets();
     expect(targets.length).toBeGreaterThan(0);
     for (const target of targets) {
       const style = StyleSheet.flatten(target.props.style) ?? {};
@@ -169,7 +185,7 @@ describe('touch targets on the Autopilot panel with an entry open', () => {
     await render(tree(services));
     await screen.findByTestId('panel-autopilot');
     await fireEvent.press(screen.getByLabelText('Enter vertical speed'));
-    const targets = PANEL_ROLES.flatMap((role) => screen.queryAllByRole(role));
+    const targets = panelTargets();
     expect(targets.length).toBeGreaterThan(0);
     for (const target of targets) {
       const style = StyleSheet.flatten(target.props.style) ?? {};
@@ -201,7 +217,7 @@ describe('touch targets on the Autopilot panel in a wide layout', () => {
       await render(tree(services));
       await screen.findByTestId('panel-autopilot');
       expect(screen.getByTestId('ap-controller-wide')).toBeTruthy();
-      const targets = PANEL_ROLES.flatMap((role) => screen.queryAllByRole(role));
+      const targets = panelTargets();
       expect(targets.length).toBeGreaterThan(0);
       for (const target of targets) {
         const style = StyleSheet.flatten(target.props.style) ?? {};

@@ -39,6 +39,8 @@ const makeStyles = (theme: Theme) => ({
     fontSize: theme.typography.legendSize,
     color: theme.avionics.engaged,
   },
+  // A last-known IDENT is not lit as if X-Plane had just reported it.
+  stale: { color: theme.avionics.legendDim },
 });
 
 /**
@@ -122,7 +124,10 @@ export function TransponderSection({
           accessibilityLabel={`Transponder: squawk ${codeText}, mode ${modeText}${identing ? ', identing' : ''}${notLive ? ', not live' : ''}`}
         >
           {identing ? (
-            <Text style={styles.identAnnunciation} testID="xpdr-ident">
+            <Text
+              style={[styles.identAnnunciation, link.valuesCurrent ? null : styles.stale]}
+              testID="xpdr-ident"
+            >
               IDENT
             </Text>
           ) : null}

@@ -40,6 +40,7 @@ const makeStyles = (theme: Theme) => ({
     flex: 1,
     flexDirection: 'row' as const,
     minHeight: FMA_HEIGHT,
+    minWidth: theme.touch.minTarget,
     backgroundColor: theme.avionics.glass,
     borderWidth: 1,
     borderColor: theme.avionics.glassEdge,
@@ -92,7 +93,8 @@ const makeStyles = (theme: Theme) => ({
  * vertical, engaged (green) over armed (white). A new mode is boxed for 10 s; an autopilot
  * disconnect flashes a reverse-video amber AP for 5 s, steady under reduced motion, and a tap
  * acknowledges it. "—" marks the columns only while there is no mode data at all.
- * `compact` is the PFD's: smaller text, and no "not live" of its own, as the PFD fades as a whole.
+ * `compact` is the PFD's: smaller text, and no "not live" of its own, as `PfdView` fades it with
+ * the link.
  */
 export function Fma({ compact = false }: { compact?: boolean }) {
   const { link } = usePanel();

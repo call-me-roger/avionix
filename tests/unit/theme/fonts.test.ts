@@ -1,5 +1,34 @@
 import type { loadAvionicsFonts as LoadAvionicsFonts } from '@/platform/fonts';
 
+describe('typography', () => {
+  afterEach(() => {
+    jest.dontMock('@expo-google-fonts/b612');
+    jest.dontMock('@expo-google-fonts/b612-mono');
+    jest.resetModules();
+  });
+
+  it('names the B612 families without loading the font packages', () => {
+    jest.isolateModules(() => {
+      // Importing either package would pull in expo-font eagerly, outside loadAvionicsFonts's catch.
+      jest.doMock('@expo-google-fonts/b612', () => {
+        throw new Error('font package imported eagerly');
+      });
+      jest.doMock('@expo-google-fonts/b612-mono', () => {
+        throw new Error('font package imported eagerly');
+      });
+      const { withAvionicsFonts } =
+        require('@/theme/typography') as typeof import('@/theme/typography');
+      const { lightTheme } = require('@/theme/tokens') as typeof import('@/theme/tokens');
+      expect(withAvionicsFonts(lightTheme).typography.fonts).toEqual({
+        avionics: 'B612_400Regular',
+        avionicsBold: 'B612_700Bold',
+        mono: 'B612Mono_400Regular',
+        monoBold: 'B612Mono_700Bold',
+      });
+    });
+  });
+});
+
 describe('loadAvionicsFonts', () => {
   afterEach(() => {
     jest.resetModules();

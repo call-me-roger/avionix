@@ -138,7 +138,11 @@ export function ControlButton(props: Props) {
           armed ? styles.armed : null,
         ]}
       >
-        {annunciation === undefined ? null : <LightBar state={annunciation} />}
+        {/* Dimmed on stale values, not on `enabled`: a pending or override-disabled key still
+            shows X-Plane's current state at full brightness. */}
+        {annunciation === undefined ? null : (
+          <LightBar state={annunciation} dim={!link.valuesCurrent} />
+        )}
         <KeyEnabledContext.Provider value={enabled}>
           {showLegend ? (
             <Text style={[styles.legend, enabled ? null : styles.legendDisabled]}>{shown}</Text>

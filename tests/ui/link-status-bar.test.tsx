@@ -56,6 +56,16 @@ describe('LinkStatusBar', () => {
     expect(screen.getByText('updated 8 s ago')).toBeTruthy();
   });
 
+  it('shows no age at all before the first heartbeat', async () => {
+    await renderBar({ state: 'connecting' });
+    expect(screen.getByTestId('status-lamp-notLive')).toBeTruthy();
+    expect(screen.queryByText(/updated/)).toBeNull();
+    expect(screen.queryByText(/no data yet/)).toBeNull();
+    expect(screen.getByTestId('link-status-bar').props.accessibilityLabel).not.toMatch(
+      /updated|no data yet/,
+    );
+  });
+
   it('names the paused simulator rather than blaming the link', async () => {
     await renderBar(connected({ activity: 'paused', live: false, lastHeartbeatAt: 2_000 }));
     expect(screen.getByText('Connected · X-Plane is paused')).toBeTruthy();

@@ -54,7 +54,7 @@ interface Props {
   stale?: boolean;
   /** The Garmin tuning box: a 2 dp `selected` frame inset by 2. */
   tuning?: boolean;
-  /** Overrides the role colour with `avionics.warning` (an emergency squawk). */
+  /** Overrides the role colour with `avionics.warning` (an emergency squawk), unless dimmed. */
   tone?: 'warning';
   testID?: string;
 }
@@ -85,8 +85,9 @@ export function DisplayWindow({
         style={[
           size === 'large' ? styles.large : styles.small,
           styles[role],
-          dimmed ? styles.stale : null,
           tone === 'warning' ? styles.warning : null,
+          // After the warning tone: a stale 7700 dims too; its "EMERG" caption still says why.
+          dimmed ? styles.stale : null,
         ]}
       >
         {text}

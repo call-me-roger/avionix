@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { readBackVerdict } from '@/domain/panels/read-back';
 import type { DataRefValue } from '@/domain/simulator/types';
@@ -86,8 +86,12 @@ export function useReadBack(): ReadBack {
     }));
   }
 
+  // Once per new failure, never again for one already buzzed: a new `failure` (the haptics
+  // preference toggled) re-runs this effect with the same count.
+  const buzzedFor = useRef(0);
   useEffect(() => {
-    if (state.failures > 0) {
+    if (state.failures > buzzedFor.current) {
+      buzzedFor.current = state.failures;
       failure();
     }
   }, [state.failures, failure]);

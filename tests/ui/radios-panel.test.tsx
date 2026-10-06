@@ -211,6 +211,17 @@ describe('Radios panel', () => {
     ).toMatchObject({ disabled: true });
   });
 
+  it('dims the ident, DME and course line once the values are not current', async () => {
+    const view = await render(tree(live()));
+    expect(screen.getByText('IBOS · 12.4 nm · CRS 247°')).toHaveStyle({
+      color: lightTheme.avionics.selected,
+    });
+    await view.rerender(tree(live({ state: 'reconnecting' })));
+    expect(screen.getByText('IBOS · 12.4 nm · CRS 247°')).toHaveStyle({
+      color: lightTheme.avionics.legendDim,
+    });
+  });
+
   it('shows no values with no flight loaded', async () => {
     const snapshot = live();
     await render(tree({ ...snapshot, health: { ...snapshot.health, activity: 'noFlight' } }));

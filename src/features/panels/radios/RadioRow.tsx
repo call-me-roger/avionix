@@ -37,6 +37,7 @@ const makeStyles = (theme: Theme) => ({
     fontSize: theme.typography.titleSize,
     color: theme.avionics.selected,
   },
+  stale: { color: theme.avionics.legendDim },
 });
 
 function courseText(course: number): string {
@@ -162,7 +163,11 @@ export function RadioRow({
       </View>
       {notLive ? <BodyText muted>not live</BodyText> : null}
       {entry}
-      {details.length === 0 ? null : <Text style={styles.details}>{details.join(' · ')}</Text>}
+      {details.length === 0 ? null : (
+        <Text style={[styles.details, link.valuesCurrent ? null : styles.stale]}>
+          {details.join(' · ')}
+        </Text>
+      )}
       {availability.reason === null ? null : <BodyText muted>{availability.reason}</BodyText>}
       <OperationNotice target={radio.flip} />
       {message === null ? null : <BodyText tone="danger">{message}</BodyText>}
