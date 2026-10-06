@@ -5,11 +5,9 @@ import { headingText, headingTickLabel, polar, scaleTicks } from '@/domain/instr
 import { withStatus } from '@/domain/instruments/labels';
 import { type Marker, sourceKind, sourceLabel } from '@/domain/navigation/hsi';
 import { cardAngle, deviationOffset } from '@/domain/navigation/hsi-geometry';
-import type { DistanceUnit } from '@/domain/units/units';
 import { InstrumentFace } from '@/features/panels/instruments/InstrumentFace';
 import { cardLabelFont, useSvgFonts } from '@/features/panels/instruments/svg-parts';
 import { type NavValues, useNavValues } from '@/features/panels/navigation/useNavValues';
-import { useUnits } from '@/features/units/UnitsProvider';
 import { useTheme } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
@@ -40,11 +38,6 @@ const LINE_STEP = 14;
  * card's tick at the selected heading reads between its two prongs. Rotated to its bearing.
  */
 const BUG_POINTS = `${C - 8},${C - CARD_R} ${C + 8},${C - CARD_R} ${C + 8},${C - CARD_R + 9} ${C},${C - CARD_R + 4} ${C - 8},${C - CARD_R + 9}`;
-
-const DISTANCE_WORDS: Record<DistanceUnit, string> = {
-  nm: 'nautical miles',
-  km: 'kilometres',
-};
 
 const MARKER_LETTER: Record<Marker, string> = { outer: 'O', middle: 'M', inner: 'I' };
 
@@ -86,15 +79,12 @@ function deviationWords(
 }
 
 /** One sentence, in the order the eye reads the face; a flagged part says so (U5). */
-function describeHsi(v: NavValues, unit: DistanceUnit): string {
+function describeHsi(v: NavValues): string {
   const parts = ['HSI'];
   if (v.heading !== null) {
     parts.push(`heading ${headingText(v.heading)}`);
   }
-  const source = sourceLabel(v.source);
-  if (source !== null) {
-    parts.push(source);
-  }
+  parts.push(sourceLabel(v.source) ?? 'source not available');
   if (v.ident !== null) {
     parts.push(v.ident);
   }
@@ -107,17 +97,20 @@ function describeHsi(v: NavValues, unit: DistanceUnit): string {
       parts.push(v.toFrom);
     }
   }
-  if (!v.lateral.valid) {
+  if (v.lateral.unavailable) {
+    parts.push('course deviation not available on this aircraft');
+  } else if (!v.lateral.valid) {
     parts.push('no NAV signal');
   }
-  if (v.glideslope.state === 'flagged') {
+  if (v.glideslope.state === 'unavailable') {
+    parts.push('glideslope not available on this aircraft');
+  } else if (v.glideslope.state === 'flagged') {
     parts.push('glideslope flagged');
   } else if (v.glideslope.dots !== null) {
     parts.push(`glideslope ${deviationWords(v.glideslope.dots, 'up', 'down')}`);
   }
-  if (v.dme !== null) {
-    // dmeText is "<number> <unit label>"; the label is spoken in full.
-    parts.push(`DME ${v.dme.split(' ')[0]} ${DISTANCE_WORDS[unit]}`);
+  if (v.dmeSpoken !== null) {
+    parts.push(`DME ${v.dmeSpoken}`);
   }
   if (v.marker !== null) {
     parts.push(`${v.marker} marker`);
@@ -215,10 +208,10 @@ export function Hsi({ size }: { size: number }) {
   const theme = useTheme();
   const ink = theme.instrument;
   const fonts = useSvgFonts();
-  const { units } = useUnits();
   const needle = needleColour(v.source, theme);
-  const source = sourceLabel(v.source);
-  const label = withStatus('HSI', v.status, () => describeHsi(v, units.distance));
+  // An unknown or missing source still says so in words, in the colour that claims no source.
+  const source = sourceLabel(v.source) ?? 'SRC ?';
+  const label = withStatus('HSI', v.status, () => describeHsi(v));
   const heading = v.heading;
   // TO or FROM is said of the course, so without one neither the arrow nor the word is shown.
   const toFrom = v.course === null ? null : v.toFrom;
@@ -384,9 +377,16 @@ export function Hsi({ size }: { size: number }) {
             </G>
           )}
 
-          {v.lateral.valid ? null : <Flag testID="hsi-nav-flag" x={C} y={C - 32} word="NAV" />}
+          {v.lateral.valid ? null : (
+            <Flag
+              testID="hsi-nav-flag"
+              x={C}
+              y={C - 32}
+              word={v.lateral.unavailable ? 'NAV N/A' : 'NAV'}
+            />
+          )}
 
-          {v.glideslope.state === 'none' ? null : (
+          {v.glideslope.state === 'valid' || v.glideslope.state === 'flagged' ? (
             <G testID="hsi-gs-scale">
               <Line
                 x1={GS_X - 6}
@@ -418,7 +418,7 @@ export function Hsi({ size }: { size: number }) {
                 <Flag testID="hsi-gs-flag" x={GS_X - 1} y={C} word="GS" />
               ) : null}
             </G>
-          )}
+          ) : null}
 
           <Polygon
             points={`${C},${C - CARD_R + 1} ${C - 6},${C - CARD_R + 13} ${C + 6},${C - CARD_R + 13}`}
@@ -442,19 +442,17 @@ export function Hsi({ size }: { size: number }) {
             strokeWidth={3}
           />
 
-          {source === null ? null : (
-            <SvgText
-              testID="hsi-source"
-              x={CORNER_INSET}
-              y={16}
-              fontSize={CORNER_SIZE}
-              fontWeight="bold"
-              fill={needle}
-              {...fonts.letters}
-            >
-              {source}
-            </SvgText>
-          )}
+          <SvgText
+            testID="hsi-source"
+            x={CORNER_INSET}
+            y={16}
+            fontSize={CORNER_SIZE}
+            fontWeight="bold"
+            fill={needle}
+            {...fonts.letters}
+          >
+            {source}
+          </SvgText>
           {v.ident === null ? null : (
             <SvgText
               testID="hsi-ident"

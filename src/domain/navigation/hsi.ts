@@ -24,12 +24,15 @@ export function lateralValid(fromTo: number | null, horizontal: number | null): 
 
 export type GlideslopeState = 'valid' | 'flagged' | 'none';
 
-/** R4: X-Plane's EFIS flag shows when a glideslope is expected but not received. */
+/**
+ * R4: X-Plane's EFIS flag shows when a glideslope is expected but not received. Valid needs the
+ * flag received and clear, so a flag that has not arrived yet can never let a diamond through.
+ */
 export function glideslopeState(vertical: number | null, gsFlag: number | null): GlideslopeState {
   if (gsFlag === 1) {
     return 'flagged';
   }
-  return vertical === 1 ? 'valid' : 'none';
+  return vertical === 1 && gsFlag === 0 ? 'valid' : 'none';
 }
 
 export function toFromWord(value: number | null): 'TO' | 'FROM' | null {
@@ -73,16 +76,34 @@ export function formatDme(nm: number, unit: DistanceUnit): string {
   return `${convertDistance(nm, unit).toFixed(1)} ${UNIT_LABEL.distance[unit]}`;
 }
 
+function dmeShown(hasDme: number | null, distanceNm: number | null): distanceNm is number {
+  return hasDme === 1 && distanceNm !== null && Number.isFinite(distanceNm) && distanceNm >= 0;
+}
+
 /** R8: distance only while X-Plane says a DME signal is present. */
 export function dmeText(
   hasDme: number | null,
   distanceNm: number | null,
   unit: DistanceUnit,
 ): string | null {
-  if (hasDme !== 1 || distanceNm === null || !Number.isFinite(distanceNm) || distanceNm < 0) {
+  return dmeShown(hasDme, distanceNm) ? formatDme(distanceNm, unit) : null;
+}
+
+const DISTANCE_WORDS: Record<DistanceUnit, string> = {
+  nm: 'nautical miles',
+  km: 'kilometres',
+};
+
+/** The same distance as `dmeText`, its unit spoken in full for the accessible label. */
+export function dmeWords(
+  hasDme: number | null,
+  distanceNm: number | null,
+  unit: DistanceUnit,
+): string | null {
+  if (!dmeShown(hasDme, distanceNm)) {
     return null;
   }
-  return formatDme(distanceNm, unit);
+  return `${convertDistance(distanceNm, unit).toFixed(1)} ${DISTANCE_WORDS[unit]}`;
 }
 
 export function dmeTimeText(minutes: number | null): string | null {

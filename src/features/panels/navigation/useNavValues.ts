@@ -7,6 +7,7 @@ import {
   deviationDots,
   dmeText,
   dmeTimeText,
+  dmeWords,
   glideslopeState,
   lateralValid,
   markerLit,
@@ -19,31 +20,46 @@ import { useUnits } from '@/features/units/UnitsProvider';
 
 type Deviation = { dots: number; pegged: boolean } | null;
 
+/** X-Plane's glideslope state, or `unavailable` when the aircraft lacks one of its DataRefs. */
+export type GlideslopeDisplay = GlideslopeState | 'unavailable';
+
 export interface NavValues {
   status: InstrumentStatus;
   heading: number | null;
   source: number | null;
   course: number | null;
-  lateral: { valid: boolean; dots: Deviation };
+  /** `unavailable`: a course-deviation DataRef is missing on the aircraft, not merely flagged. */
+  lateral: { valid: boolean; unavailable: boolean; dots: Deviation };
   toFrom: 'TO' | 'FROM' | null;
-  glideslope: { state: GlideslopeState; dots: Deviation };
+  glideslope: { state: GlideslopeDisplay; dots: Deviation };
   bearing1: number | null;
   bearing2: number | null;
   dme: string | null;
+  /** The same distance with its unit in words, for the accessible label. */
+  dmeSpoken: string | null;
   dmeTime: string | null;
   ident: string | null;
   marker: Marker | null;
   headingBug: number | null;
 }
 
-/** The face stands on the card and the course deviation: without them there is no HSI. */
-const FACE_NAMES = [D.heading, D.hsiHdef, D.hsiFromTo, D.hsiHorizontal] as const;
+const LATERAL_NAMES = [D.hsiHdef, D.hsiFromTo, D.hsiHorizontal] as const;
+const GLIDESLOPE_NAMES = [D.hsiVdef, D.hsiVertical, D.hsiGsFlag] as const;
+
+/** NAV1 and NAV2 name their station; a GPS source has no navaid identifier (R9: blank). */
+function identDataRef(source: number | null): string | null {
+  if (source === 0) {
+    return D.nav1Id;
+  }
+  return source === 1 ? D.nav2Id : null;
+}
 
 /**
  * Every value the HSI and the PFD's deviation scales draw, read as `useInstrumentValues` reads its
- * own: a missing binding or no flight loaded is no value (R8), and freshness is the link's. Each
- * validity rule is applied here, once, so no face can draw a needle X-Plane has flagged (R3, R4,
- * R7, R8): a deviation without its value is invalid, never centred.
+ * own: a missing binding or no flight loaded is no value (R8), and freshness is the link's. The face
+ * stands on the heading alone (R11): a missing deviation or glideslope DataRef marks only its own
+ * part unavailable. Each validity rule is applied here, once, so no face can draw a needle X-Plane
+ * has flagged (R3, R4, R7, R8): a deviation without its value is invalid, never centred.
  */
 export function useNavValues(): NavValues {
   const { snapshot, link } = usePanel();
@@ -59,39 +75,45 @@ export function useNavValues(): NavValues {
   };
 
   const heading = read(D.heading);
-  const hdef = read(D.hsiHdef);
-  const fromTo = read(D.hsiFromTo);
-  const horizontal = read(D.hsiHorizontal);
-  const status = instrumentStatus(
-    FACE_NAMES.some(missing),
-    [heading, hdef, fromTo, horizontal].every((value) => value !== null),
-    link.valuesCurrent,
-  );
+  const status = instrumentStatus(missing(D.heading), heading !== null, link.valuesCurrent);
 
   const source = read(D.hsiSource);
-  const lateralDots = deviationDots(hdef);
-  const valid = lateralValid(fromTo, horizontal) && lateralDots !== null;
+  // Not yet sampled stays invalid through `lateralValid`, and so shows the NAV flag.
+  const lateralUnavailable = LATERAL_NAMES.some(missing);
+  const lateralDots = deviationDots(read(D.hsiHdef));
+  const fromTo = read(D.hsiFromTo);
+  const valid =
+    !lateralUnavailable && lateralValid(fromTo, read(D.hsiHorizontal)) && lateralDots !== null;
 
   // A glideslope X-Plane says is received but whose deflection never arrived is flagged, so the
   // pilot sees why there is no diamond on an ILS rather than a scale that looks like a VOR's.
   const vdefDots = deviationDots(read(D.hsiVdef));
   const reported = glideslopeState(read(D.hsiVertical), read(D.hsiGsFlag));
-  const gsState: GlideslopeState = reported === 'valid' && vdefDots === null ? 'flagged' : reported;
+  let gsState: GlideslopeDisplay = reported;
+  if (GLIDESLOPE_NAMES.some(missing)) {
+    gsState = 'unavailable';
+  } else if (reported === 'valid' && vdefDots === null) {
+    gsState = 'flagged';
+  }
 
-  const dme = dmeText(read(D.hsiHasDme), read(D.hsiDmeDistance), units.distance);
-  const identName = source === 0 ? D.nav1Id : source === 1 ? D.nav2Id : null;
+  const hasDme = read(D.hsiHasDme);
+  const distance = read(D.hsiDmeDistance);
+  const dme = dmeText(hasDme, distance, units.distance);
+  // Only with a received course: a stale ident must never read as a station being received.
+  const identName = valid ? identDataRef(source) : null;
 
   return {
     status,
     heading,
     source,
     course: read(D.hsiCourse),
-    lateral: { valid, dots: valid ? lateralDots : null },
+    lateral: { valid, unavailable: lateralUnavailable, dots: valid ? lateralDots : null },
     toFrom: valid ? toFromWord(fromTo) : null,
     glideslope: { state: gsState, dots: gsState === 'valid' ? vdefDots : null },
     bearing1: bearingPointer(read(D.nav1Bearing), read(D.nav1Signal)),
     bearing2: bearingPointer(read(D.nav2Bearing), read(D.nav2Signal)),
     dme,
+    dmeSpoken: dme === null ? null : dmeWords(hasDme, distance, units.distance),
     dmeTime: dme === null ? null : dmeTimeText(read(D.hsiDmeTime)),
     ident: identName === null ? null : text(identName),
     marker: markerLit(read(D.outerMarker), read(D.middleMarker), read(D.innerMarker)),

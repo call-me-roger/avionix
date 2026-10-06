@@ -269,12 +269,21 @@ describe('HSI NAV flag', () => {
     expect(screen.queryByTestId('hsi-to-from')).toBeNull();
   });
 
-  it('shows no value, never a centred needle, until the course deviation arrives', async () => {
+  it('flags NAV, never a centred needle, until the course deviation arrives', async () => {
     const snapshot = live();
     const { [D.hsiHdef]: _dropped, ...rest } = snapshot.telemetry;
     await render(tree({ ...snapshot, telemetry: rest }));
-    expect(label()).toBe('HSI: no value');
+    expect(screen.getByTestId('hsi-card')).toBeTruthy();
     expect(screen.queryByTestId('hsi-cdi')).toBeNull();
+    expect(svgText('hsi-nav-flag')).toBe('NAV');
+    expect(label()).toContain('no NAV signal');
+  });
+
+  it('hides the navaid ident while the course is flagged, so it never reads as received', async () => {
+    await render(tree(live({ [D.hsiFromTo]: 0 })));
+    expect(screen.queryByTestId('hsi-ident')).toBeNull();
+    expect(label()).not.toContain('IKSO');
+    expect(svgText('hsi-source')).toBe('NAV1');
   });
 });
 
@@ -311,6 +320,29 @@ describe('HSI glideslope', () => {
     await render(tree({ ...snapshot, telemetry: rest }));
     expect(screen.queryByTestId('hsi-gs-diamond')).toBeNull();
     expect(svgText('hsi-gs-flag')).toBe('GS');
+  });
+
+  it('never draws a diamond before the GS flag itself is received', async () => {
+    const snapshot = live({ [D.hsiVertical]: 1, [D.hsiVdef]: -0.5 });
+    const { [D.hsiGsFlag]: _dropped, ...rest } = snapshot.telemetry;
+    await render(tree({ ...snapshot, telemetry: rest }));
+    expect(screen.queryByTestId('hsi-gs-diamond')).toBeNull();
+    expect(screen.queryByTestId('hsi-gs-scale')).toBeNull();
+  });
+
+  it('says the glideslope is not available when its flag is missing on the aircraft', async () => {
+    await render(tree(withMissing(live({ [D.hsiVertical]: 1, [D.hsiVdef]: -0.5 }), D.hsiGsFlag)));
+    expect(screen.queryByTestId('hsi-gs-diamond')).toBeNull();
+    expect(screen.queryByTestId('hsi-gs-scale')).toBeNull();
+    expect(label()).toContain('glideslope not available on this aircraft');
+  });
+
+  it('says the glideslope is not available when its signal is missing on the aircraft', async () => {
+    await render(tree(withMissing(live({ [D.hsiVdef]: -0.5 }), D.hsiVertical)));
+    expect(screen.queryByTestId('hsi-gs-scale')).toBeNull();
+    expect(screen.queryByTestId('hsi-gs-flag')).toBeNull();
+    expect(label()).toContain('glideslope not available on this aircraft');
+    expect(screen.getByTestId('hsi-cdi')).toBeTruthy();
   });
 
   it('draws no scale at all when no glideslope is expected', async () => {
@@ -370,9 +402,19 @@ describe('HSI GPS source', () => {
 
   it('claims no source colour for a source it does not know', async () => {
     await render(tree(live({ [D.hsiSource]: 7 })));
-    expect(screen.queryByTestId('hsi-source')).toBeNull();
+    expect(svgText('hsi-source')).toBe('SRC ?');
+    expect(paint('hsi-source', 'fill')).toBe(processColor(ink.marking));
     expect(screen.queryByTestId('hsi-ident')).toBeNull();
     expect(paint('hsi-cdi', 'stroke')).toBe(processColor(ink.marking));
+    expect(label()).toContain('source not available, course 270');
+  });
+
+  it('says the source is not available when its DataRef is missing on the aircraft', async () => {
+    await render(tree(withMissing(live(), D.hsiSource)));
+    expect(svgText('hsi-source')).toBe('SRC ?');
+    expect(paint('hsi-source', 'fill')).toBe(processColor(ink.marking));
+    expect(paint('hsi-cdi', 'stroke')).toBe(processColor(ink.marking));
+    expect(label()).toContain('source not available');
   });
 });
 
@@ -430,10 +472,26 @@ describe('HSI states', () => {
     expect(label()).toBe('HSI: not available on this aircraft');
   });
 
-  it('is not available when the course deviation is missing on the aircraft', async () => {
-    await render(tree(withMissing(live(), D.hsiHdef)));
-    expect(label()).toBe('HSI: not available on this aircraft');
-  });
+  it.each([D.hsiHdef, D.hsiFromTo, D.hsiHorizontal])(
+    'keeps the card and pointers and flags NAV N/A when %s is missing on the aircraft',
+    async (name) => {
+      await render(tree(withMissing(live({ [D.nav1Signal]: 1, [D.nav2Signal]: 1 }), name)));
+      expect(screen.getByTestId('hsi-card')).toBeTruthy();
+      expect(screen.getByTestId('hsi-brg1')).toBeTruthy();
+      expect(screen.getByTestId('hsi-brg2')).toBeTruthy();
+      expect(screen.getByTestId('hsi-heading-bug')).toBeTruthy();
+      expect(screen.getByTestId('hsi-course-pointer')).toBeTruthy();
+      expect(svgText('hsi-dme')).toBe('12.4 nm');
+      expect(screen.queryByTestId('hsi-cdi')).toBeNull();
+      expect(screen.queryByTestId('hsi-to-from')).toBeNull();
+      expect(screen.queryByTestId('hsi-ident')).toBeNull();
+      expect(svgText('hsi-nav-flag')).toBe('NAV N/A');
+      expect(paint('hsi-nav-flag-box', 'fill')).toBe(processColor(ink.flag));
+      expect(label()).toMatch(/^HSI, heading 270, /);
+      expect(label()).toContain('course deviation not available on this aircraft');
+      expect(label()).not.toContain('no NAV signal');
+    },
+  );
 
   it('draws no course pointer or CDI without a course', async () => {
     await render(tree(withMissing(live(), D.hsiCourse)));

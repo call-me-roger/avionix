@@ -4,6 +4,7 @@ import {
   deviationDots,
   dmeText,
   dmeTimeText,
+  dmeWords,
   formatDme,
   glideslopeState,
   lateralValid,
@@ -45,9 +46,11 @@ describe('lateralValid', () => {
 });
 
 describe('glideslopeState', () => {
-  it('is valid with a vertical signal and no flag', () => {
+  it('is valid with a vertical signal and the flag received clear', () => {
     expect(glideslopeState(1, 0)).toBe('valid');
-    expect(glideslopeState(1, null)).toBe('valid');
+  });
+  it('is never valid before the flag itself is received', () => {
+    expect(glideslopeState(1, null)).toBe('none');
   });
   it('is flagged when a glideslope is expected but not received', () => {
     expect(glideslopeState(0, 1)).toBe('flagged');
@@ -98,6 +101,14 @@ describe('DME', () => {
     expect(dmeText(0, 12.4, 'nm')).toBeNull();
     expect(dmeText(1, null, 'nm')).toBeNull();
     expect(dmeText(1, -1, 'nm')).toBeNull();
+  });
+  it('speaks the same distance with its unit in words', () => {
+    expect(dmeWords(1, 12.44, 'nm')).toBe('12.4 nautical miles');
+    expect(dmeWords(1, 12.4, 'km')).toBe('23.0 kilometres');
+    expect(dmeWords(0, 12.4, 'nm')).toBeNull();
+    expect(dmeWords(1, null, 'nm')).toBeNull();
+    expect(dmeWords(1, -1, 'nm')).toBeNull();
+    expect(dmeWords(1, Number.NaN, 'nm')).toBeNull();
   });
   it('rounds the time to whole minutes', () => {
     expect(dmeTimeText(6.6)).toBe('7 MIN');
