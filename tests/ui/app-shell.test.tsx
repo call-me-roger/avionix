@@ -122,6 +122,7 @@ describe('AppShell', () => {
       'Radios',
       'Autopilot',
       'Navigation',
+      'CDU',
       'Flight data',
       'Setup',
     ]);
@@ -231,10 +232,12 @@ describe('AppShell', () => {
     );
     await fireEvent.press(screen.getByRole('switch', { name: 'Show Radios in the switcher' }));
     await fireEvent.press(screen.getByRole('switch', { name: 'Show Navigation in the switcher' }));
+    await fireEvent.press(screen.getByRole('switch', { name: 'Show CDU in the switcher' }));
     await fireEvent.press(screen.getByRole('switch', { name: 'Show Flight data in the switcher' }));
     expect(screen.queryByRole('tab', { name: 'Instruments' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Radios' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Navigation' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'CDU' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Flight data' })).toBeNull();
     const lastOne = screen.getByRole('switch', { name: 'Show Autopilot in the switcher' });
     expect(lastOne).toBeDisabled();

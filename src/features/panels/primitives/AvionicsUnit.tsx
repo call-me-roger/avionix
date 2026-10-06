@@ -6,13 +6,16 @@ import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 import { avionicsText } from '@/theme/typography';
 
+/** The bezel's inner padding: a panel that sizes its contents to the unit's width subtracts it. */
+export const AVIONICS_UNIT_PADDING = 12;
+
 const makeStyles = (theme: Theme) => ({
   unit: {
     backgroundColor: theme.avionics.bezel,
     borderWidth: 1,
     borderColor: theme.avionics.bezelEdge,
     borderRadius: 12,
-    padding: 12,
+    padding: AVIONICS_UNIT_PADDING,
     gap: theme.spacing.sm,
   },
   label: {

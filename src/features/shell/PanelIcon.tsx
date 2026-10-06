@@ -26,6 +26,10 @@ function gearOutline(
 
 const GEAR_OUTLINE = gearOutline(12, 12, 10, 7.2, 8);
 
+/** The CDU glyph's keys: four small squares to a row, three rows, centred under the glass. */
+const CDU_KEY_COLUMNS = [4.75, 8.75, 12.75, 16.75];
+const CDU_KEY_ROWS = [13.5, 17, 20.5];
+
 /**
  * The switcher's 22 dp icons (R-01, spec section 4), each a plain glyph that still reads once
  * the full blue fill is gone: `color` alone (plus shape) tells unselected from selected. An
@@ -89,6 +93,27 @@ function renderGlyph(id: string, color: string): React.ReactNode {
           {/* A course arrow through the centre, pointing north. */}
           <Polygon points="12,5 9.5,12 12,10 14.5,12" fill={color} />
           <Line x1={12} y1={10} x2={12} y2={18} stroke={color} strokeWidth={2} />
+        </>
+      );
+    case 'cdu':
+      return (
+        <>
+          {/* The glass, then three rows of keys beneath it. */}
+          <Rect
+            x={4}
+            y={2}
+            width={16}
+            height={9}
+            rx={2}
+            stroke={color}
+            strokeWidth={2}
+            fill="none"
+          />
+          {CDU_KEY_ROWS.map((y) =>
+            CDU_KEY_COLUMNS.map((x) => (
+              <Rect key={`${x},${y}`} x={x} y={y} width={2.5} height={2.5} rx={0.5} fill={color} />
+            )),
+          )}
         </>
       );
     case 'flight-data':
