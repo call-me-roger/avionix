@@ -20,7 +20,9 @@ import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
 const makeStyles = (theme: Theme) => ({
-  row: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: theme.spacing.sm },
+  rowPhone: { flexDirection: 'row' as const, gap: theme.touch.spacing },
+  rowWide: { flexDirection: 'row' as const, gap: theme.spacing.sm },
+  flex1: { flex: 1 },
 });
 
 const KEYS = ['ap', 'fd', 'at-arm', 'at'] as const;
@@ -38,8 +40,19 @@ interface Press {
 /**
  * AP, FD, A/T ARM and A/T. Every press sends the command for the state it asks for, never a
  * toggle, so a stale display can never flip the wrong way; the disconnect is one tap.
+ *
+ * `layout` 'phone' (the default) stretches each key to fill the row equally; 'wide' sizes keys to
+ * their content, for the GMC-507 layout's centre group.
  */
-export function EngageRow({ readBack, blocked }: { readBack: ReadBack; blocked: boolean }) {
+export function EngageRow({
+  readBack,
+  blocked,
+  layout = 'phone',
+}: {
+  readBack: ReadBack;
+  blocked: boolean;
+  layout?: 'phone' | 'wide';
+}) {
   const { snapshot, activate } = usePanel();
   const styles = useThemedStyles(makeStyles);
   const read = (name: string) => autopilotNumber(snapshot, name);
@@ -143,7 +156,7 @@ export function EngageRow({ readBack, blocked }: { readBack: ReadBack; blocked: 
 
   return (
     <View>
-      <View style={styles.row}>
+      <View testID="ap-row-engage" style={layout === 'phone' ? styles.rowPhone : styles.rowWide}>
         {buttons.map((button) => (
           <ControlButton
             key={button.label}
@@ -155,6 +168,7 @@ export function EngageRow({ readBack, blocked }: { readBack: ReadBack; blocked: 
             annunciation={button.selected ? 'engaged' : 'off'}
             quiet={'quiet' in button}
             invalid={blocked}
+            style={layout === 'phone' ? styles.flex1 : undefined}
             onPress={() => press(button.spec)}
           />
         ))}

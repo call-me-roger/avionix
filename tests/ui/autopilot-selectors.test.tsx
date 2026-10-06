@@ -108,6 +108,28 @@ describe('autopilot selectors', () => {
     expect(screen.getByLabelText('Airspeed selector: 120 kt')).toBeTruthy();
   });
 
+  it('shows the selector value in a cyan display window, captioned by the selector', async () => {
+    await render(tree(live()));
+    const enter = screen.getByLabelText('Enter heading');
+    expect(within(enter).getByText('HDG')).toBeTruthy();
+    const value = within(enter).getByText('270°');
+    const style = StyleSheet.flatten(value.props.style);
+    expect(style.color).toBe(lightTheme.avionics.selected);
+  });
+
+  it('captions airspeed IAS in knots and MACH in Mach', async () => {
+    const view = await render(tree(live()));
+    expect(within(screen.getByLabelText('Enter airspeed')).getByText('IAS')).toBeTruthy();
+    const mach = telemetry({ ...VALUES, [D.airspeedIsMach]: 1, [D.airspeedDial]: 0.78 });
+    await view.rerender(tree(live({ telemetry: mach })));
+    expect(within(screen.getByLabelText('Enter airspeed')).getByText('MACH')).toBeTruthy();
+  });
+
+  it('shows the unit-switch key as IAS⇄M, keeping its spoken label', async () => {
+    await render(tree(live()));
+    expect(within(screen.getByLabelText('Use Mach')).getByText('IAS⇄M')).toBeTruthy();
+  });
+
   it('sends one write per stepper press', async () => {
     await render(tree(live()));
     await fireEvent.press(screen.getByLabelText('Altitude plus 100 feet'));

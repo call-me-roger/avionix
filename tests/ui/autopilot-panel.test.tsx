@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import React from 'react';
-import { AccessibilityInfo, Animated, Pressable, StyleSheet } from 'react-native';
+import { AccessibilityInfo, Animated, Dimensions, Pressable, StyleSheet } from 'react-native';
 
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
@@ -110,6 +110,57 @@ const withValues = (values: Record<string, number>, overrides: Partial<SessionSn
   live({ telemetry: telemetry({ ...VALUES, ...values }), ...overrides });
 
 describe('Autopilot panel', () => {
+  it('shows the controller and selectors unit headers', async () => {
+    await render(tree(live()));
+    expect(screen.getByText('AUTOPILOT')).toBeTruthy();
+    expect(screen.getByText('SELECTORS')).toBeTruthy();
+  });
+
+  it('lays out the controller keys as engage, lateral, vertical rows on a phone', async () => {
+    await render(tree(live()));
+    const engage = screen.getByTestId('ap-row-engage');
+    expect(within(engage).getByText('AP')).toBeTruthy();
+    expect(within(engage).getByText('FD')).toBeTruthy();
+    expect(within(engage).getByText('A/T ARM')).toBeTruthy();
+    expect(within(engage).getByText('A/T')).toBeTruthy();
+    const lateral = screen.getByTestId('ap-row-lateral');
+    expect(within(lateral).getByText('HDG')).toBeTruthy();
+    expect(within(lateral).getByText('NAV')).toBeTruthy();
+    expect(within(lateral).getByText('APR')).toBeTruthy();
+    const vertical = screen.getByTestId('ap-row-vertical');
+    expect(within(vertical).getByText('ALT')).toBeTruthy();
+    expect(within(vertical).getByText('VS')).toBeTruthy();
+    expect(within(vertical).getByText('FLC')).toBeTruthy();
+  });
+
+  it('groups the controller keys lateral, engage, vertical in one row on a wide screen', async () => {
+    const original = Dimensions.get('window');
+    Dimensions.set({ window: { width: 1024, height: 768, scale: 1, fontScale: 1 } });
+    try {
+      await render(tree(live()));
+      const wideRow = screen.getByTestId('ap-controller-wide');
+      const labels = within(wideRow)
+        .getAllByRole('button')
+        .map((button) => button.props.accessibilityLabel as string);
+      expect(labels).toEqual([
+        'HDG mode, engaged',
+        'NAV mode, armed',
+        'APR mode, off',
+        'Engage autopilot',
+        'Turn flight director on',
+        'Disarm autothrottle',
+        'Engage autothrottle',
+        'ALT mode, engaged',
+        'VS mode, off',
+        'FLC mode, off',
+      ]);
+    } finally {
+      await act(async () => {
+        Dimensions.set({ window: original });
+      });
+    }
+  });
+
   it('reads the modes like an annunciator', async () => {
     await render(tree(live()));
     expect(screen.getByLabelText('Autopilot modes: HDG · ALT · Armed NAV')).toBeTruthy();

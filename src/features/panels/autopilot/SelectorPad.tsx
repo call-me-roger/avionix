@@ -13,6 +13,7 @@ import { readBackKey } from '@/features/panels/autopilot/autopilot';
 import type { SelectorEntry } from '@/features/panels/autopilot/useSelectorEntry';
 import { firstNumber } from '@/features/panels/instruments/useInstrumentValues';
 import { ControlButton } from '@/features/panels/primitives/ControlButton';
+import { DisplayWindow } from '@/features/panels/primitives/DisplayWindow';
 import { Keypad } from '@/features/panels/primitives/Keypad';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
@@ -72,8 +73,7 @@ export function SelectorPad({
           shown === '' ? `${title}, nothing typed yet` : `${title}, new value ${shown}`
         }
       >
-        <BodyText>New</BodyText>
-        <Text style={styles.draft}>{shown === '' ? '—' : shown}</Text>
+        <DisplayWindow text={shown === '' ? '—' : shown} role="selected" caption="NEW" />
       </View>
       {parsed.status === 'valid' ? <BodyText muted>{`Sets ${parsed.text}`}</BodyText> : null}
       {parsed.status === 'invalid' && explainSelector(kind, entry.draft, parsed) ? (

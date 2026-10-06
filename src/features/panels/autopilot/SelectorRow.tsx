@@ -5,6 +5,7 @@ import { featureOf } from '@/application/compatibility';
 import { GENERIC_COMMANDS as C, GENERIC_DATAREFS as D } from '@/domain/aircraft/profiles/generic';
 import {
   SELECTOR_STEPS,
+  type SelectorKind,
   formatSelector,
   selectorMatches,
   selectorNotTaken,
@@ -21,6 +22,7 @@ import {
 } from '@/features/panels/autopilot/autopilot';
 import { firstNumber } from '@/features/panels/instruments/useInstrumentValues';
 import { ControlButton, OperationNotice } from '@/features/panels/primitives/ControlButton';
+import { DisplayWindow } from '@/features/panels/primitives/DisplayWindow';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
 import { BodyText } from '@/theme/primitives';
@@ -42,12 +44,28 @@ const makeStyles = (theme: Theme) => ({
     flexGrow: 1,
   },
   name: {
-    color: theme.colors.text,
+    // On the "SELECTORS" bezel (R-01): the avionics legend colour, not the app's body text.
+    color: theme.avionics.legend,
     fontSize: theme.typography.titleSize,
     fontWeight: 'bold' as const,
   },
   steppers: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: theme.spacing.sm },
+  flex1: { flex: 1 },
 });
+
+/** The selector's display-window caption: HDG, ALT, VS, or IAS/MACH by X-Plane's own unit flag. */
+const CAPTION: Readonly<Record<'heading' | 'altitude' | 'verticalSpeed', string>> = {
+  heading: 'HDG',
+  altitude: 'ALT',
+  verticalSpeed: 'VS',
+};
+
+function selectorCaption(spec: SelectorSpec, kind: SelectorKind): string {
+  if (spec.id === 'speed') {
+    return kind === 'mach' ? 'MACH' : 'IAS';
+  }
+  return CAPTION[spec.id];
+}
 
 /**
  * One selector: X-Plane's value (the button that opens the keypad), four steppers, and for the
@@ -117,8 +135,6 @@ export function SelectorRow({
           <Text style={styles.name}>{spec.label}</Text>
           {notLive ? <BodyText muted>not live</BodyText> : null}
         </View>
-        {/* The value mutes through this button's own disabled styling: the link disables every
-            control whenever values are not current, so no separate stale style is needed here. */}
         <ControlButton
           label={text}
           accessibilityLabel={`Enter ${spec.label.toLowerCase()}`}
@@ -126,11 +142,20 @@ export function SelectorRow({
           target={spec.name}
           quiet
           invalid={blocked}
+          style={styles.flex1}
           onPress={onEnter}
-        />
+        >
+          <DisplayWindow
+            text={text}
+            role="selected"
+            caption={selectorCaption(spec, kind)}
+            stale={!link.valuesCurrent}
+          />
+        </ControlButton>
         {showUnitSwitch ? (
           <ControlButton
-            label={isMach ? 'Use knots' : 'Use Mach'}
+            label="IAS⇄M"
+            accessibilityLabel={isMach ? 'Use knots' : 'Use Mach'}
             featureId={spec.featureId}
             target={C.knotsMachToggle}
             quiet
