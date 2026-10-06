@@ -120,9 +120,21 @@ function Probe({ unit }: { unit: CduUnit }) {
       <Text testID="cdu-state">{values.state}</Text>
       <Text testID="cdu-exec-lit">{values.execLit ? 'lit' : 'dark'}</Text>
       <Text testID="cdu-aircraft-name">{values.aircraftName}</Text>
+      <Text testID="cdu-stale">{values.stale ? 'stale' : 'fresh'}</Text>
       <CduScreen rows={values.rows} geometry={geometry} stale={values.stale} />
     </>
   );
+}
+
+/**
+ * I1: deliberately does NOT memoise `geometry` — a fresh, value-equal object every render, which
+ * is exactly what Task 6's inline `cduGeometry(glassWidth)` call will hand `CduScreen`. Row
+ * memoisation (R4) must hold regardless.
+ */
+function ProbeFreshGeometry({ unit }: { unit: CduUnit }) {
+  const values = useCduScreen(unit);
+  const geometry = cduGeometry(312);
+  return <CduScreen rows={values.rows} geometry={geometry} stale={values.stale} />;
 }
 
 // Shared by default so a `rerender` with a fresh `tree()` call keeps the same ThemeProvider
@@ -140,6 +152,16 @@ function tree(snapshot: SessionSnapshot, unit: CduUnit = 1, storage = defaultSto
   );
 }
 
+function treeFreshGeometry(snapshot: SessionSnapshot, unit: CduUnit = 1, storage = defaultStorage) {
+  return (
+    <ThemeProvider storage={storage} systemSchemeOverride="dark">
+      <PanelScope snapshot={snapshot} now={NOW} actions={actions}>
+        <ProbeFreshGeometry unit={unit} />
+      </PanelScope>
+    </ThemeProvider>
+  );
+}
+
 function stateText(): string {
   return screen.getByTestId('cdu-state').props.children;
 }
@@ -150,6 +172,10 @@ function execText(): string {
 
 function aircraftNameText(): string {
   return screen.getByTestId('cdu-aircraft-name').props.children;
+}
+
+function staleText(): string {
+  return screen.getByTestId('cdu-stale').props.children;
 }
 
 beforeEach(() => {
@@ -199,6 +225,8 @@ describe('useCduScreen / CduScreen', () => {
         }),
       ),
     );
+    const geometry = cduGeometry(312);
+
     const amberCell = screen.getByTestId('cdu-cell-2-0');
     const amberText = within(amberCell).getByText('☐');
     expect(StyleSheet.flatten(amberText.props.style).color).toBe(cdu.amber);
@@ -210,8 +238,12 @@ describe('useCduScreen / CduScreen', () => {
 
     const smallCell = screen.getByTestId('cdu-cell-2-2');
     const smallText = within(smallCell).getByText('☐');
-    const geometry = cduGeometry(312);
     expect(StyleSheet.flatten(smallText.props.style).fontSize).toBe(geometry.smallFontSize);
+
+    // I2 / spec §4.3 "on the same baseline": the large and small glyph share a line height, so
+    // neither one's shorter line box centres it higher than the other.
+    expect(StyleSheet.flatten(amberText.props.style).lineHeight).toBe(geometry.rowHeight);
+    expect(StyleSheet.flatten(smallText.props.style).lineHeight).toBe(geometry.rowHeight);
 
     expect(screen.getByTestId('cdu-underline-2-3')).toBeTruthy();
 
@@ -229,18 +261,23 @@ describe('useCduScreen / CduScreen', () => {
     expect(StyleSheet.flatten(glyph.props.style).color).toBe(cdu.white);
   });
 
-  it('flashes a cell on the 1 Hz clock', async () => {
+  it('flashes a cell on the 1 Hz clock, without re-rendering any row on the tick (M2)', async () => {
     await render(tree(snapshotFor({ unit: 1, lines: { 6: 'F' }, styles: { 6: [0xa7] } })));
     const glyph = () => within(screen.getByTestId('cdu-cell-6-0')).getByText('F');
     expect(StyleSheet.flatten(glyph().props.style).opacity).toBe(1);
+    const beforeTick = __cduRowRenders.count;
     await act(async () => {
       jest.advanceTimersByTime(500);
     });
     expect(StyleSheet.flatten(glyph().props.style).opacity).toBe(0);
+    // M2: only the flashing glyph (`FlashGlyph`, the context consumer) updates on a tick; every
+    // `CduRow`, flashing cell's row included, stays memoised and is never invoked again.
+    expect(__cduRowRenders.count).toBe(beforeTick);
     await act(async () => {
       jest.advanceTimersByTime(500);
     });
     expect(StyleSheet.flatten(glyph().props.style).opacity).toBe(1);
+    expect(__cduRowRenders.count).toBe(beforeTick);
   });
 
   it('runs no timer with nothing on screen to flash', async () => {
@@ -252,6 +289,30 @@ describe('useCduScreen / CduScreen', () => {
     await render(tree(snapshotFor({ unit: 1, lines: { 6: 'F' } })));
     expect(setIntervalSpy).not.toHaveBeenCalled();
     setIntervalSpy.mockRestore();
+  });
+
+  it('runs no timer when a flash bit sits under a space (M1)', async () => {
+    const setIntervalSpy = jest.spyOn(global, 'setInterval');
+    // Line 7 is left blank (all spaces); only its style carries a flash bit, on a space.
+    await render(tree(snapshotFor({ unit: 1, styles: { 7: [0xa0] } })));
+    expect(setIntervalSpy).not.toHaveBeenCalled();
+    setIntervalSpy.mockRestore();
+  });
+
+  it('stops the blink clock once the last flashing cell leaves the screen (M2)', async () => {
+    const setIntervalSpy = jest.spyOn(global, 'setInterval');
+    const clearIntervalSpy = jest.spyOn(global, 'clearInterval');
+    const view = await render(
+      tree(snapshotFor({ unit: 1, lines: { 6: 'F' }, styles: { 6: [0xa7] } })),
+    );
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+    expect(clearIntervalSpy).not.toHaveBeenCalled();
+    // Same text, style no longer flashing (large white instead of large white + flash).
+    await view.rerender(tree(snapshotFor({ unit: 1, lines: { 6: 'F' }, styles: { 6: [0x87] } })));
+    expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+    setIntervalSpy.mockRestore();
+    clearIntervalSpy.mockRestore();
   });
 
   it('keeps a flashing cell steady under Reduce Motion', async () => {
@@ -282,6 +343,16 @@ describe('useCduScreen / CduScreen', () => {
     // render, re-rendering every row once more: counted here, not as part of the R4 delta below.
     const afterFirst = __cduRowRenders.count;
     await view.rerender(tree(snapshotFor({ unit: 1, lines: { ...lines, 13: 'TWO' } })));
+    expect(__cduRowRenders.count - afterFirst).toBe(1);
+  });
+
+  it('holds R4 even when the caller rebuilds a value-equal geometry object every render (I1)', async () => {
+    const lines = { 0: 'A', 1: 'B', 13: 'ONE' };
+    const view = await render(treeFreshGeometry(snapshotFor({ unit: 1, lines })));
+    const afterFirst = __cduRowRenders.count;
+    await view.rerender(
+      treeFreshGeometry(snapshotFor({ unit: 1, lines: { ...lines, 13: 'TWO' } })),
+    );
     expect(__cduRowRenders.count - afterFirst).toBe(1);
   });
 
@@ -353,6 +424,30 @@ describe('useCduScreen / CduScreen', () => {
     expect(stateText()).toBe('noFms');
   });
 
+  it('keeps unit 1\'s own "live" and rows-14-15 memory across a round trip through unit 2 (ruling)', async () => {
+    const identity: AircraftIdentity = {
+      icaoType: 'B738',
+      description: 'Boeing 737-800',
+      tailNumber: null,
+      addOnVersion: null,
+    };
+    const view = await render(
+      tree(snapshotFor({ unit: 1, identity, lines: { 0: 'ACTIVE', 14: 'EXTRA' } }), 1),
+    );
+    expect(stateText()).toBe('live');
+    expect(screen.getByTestId('cdu-row-15', { includeHiddenElements: true })).toBeTruthy();
+
+    // Switch to CDU 2: a different, never-seen unit on the same aircraft starts at noFms.
+    await view.rerender(tree(snapshotFor({ unit: 2, identity }), 2));
+    expect(stateText()).toBe('noFms');
+
+    // Switch back to CDU 1, now blank: the brief's key (unit + identity) would reset unit 1 here;
+    // the ruling keeps its memory per unit, so it stays live with rows 14-15 still drawn.
+    await view.rerender(tree(snapshotFor({ unit: 1, identity }), 1));
+    expect(stateText()).toBe('live');
+    expect(screen.getByTestId('cdu-row-15', { includeHiddenElements: true })).toBeTruthy();
+  });
+
   it('is unavailable when the screen feature is unavailable on this aircraft', async () => {
     const bindings: BindingResults = {
       [cduTextLine(1, 0)]: { name: cduTextLine(1, 0), kind: 'dataref', status: 'missing' },
@@ -361,18 +456,39 @@ describe('useCduScreen / CduScreen', () => {
     expect(stateText()).toBe('unavailable');
   });
 
+  it('is not unavailable merely because optional style bindings are missing (partial, M3)', async () => {
+    const bindings: BindingResults = {
+      [cduStyleLine(1, 0)]: { name: cduStyleLine(1, 0), kind: 'dataref', status: 'missing' },
+    };
+    const feature = compatibilityFor({ bindings }).features.find(
+      (candidate) => candidate.id === cduScreenFeatureId(1),
+    );
+    expect(feature?.status).toBe('partial');
+    await render(tree(snapshotFor({ unit: 1, bindings, lines: { 0: 'ACTIVE' } })));
+    expect(stateText()).toBe('live');
+  });
+
   it('is stale, and dims the screen, when values are not current', async () => {
     await render(tree(snapshotFor({ unit: 1, activity: 'stalled' })));
+    expect(staleText()).toBe('stale');
     const root = screen.getByTestId('cdu-screen');
     expect(StyleSheet.flatten(root.props.style).opacity).toBe(0.5);
   });
 
-  it("lights EXEC from each unit's own light", async () => {
+  it("lights EXEC from each unit's own light, ignoring the other unit's (M4)", async () => {
     await render(tree(snapshotFor({ unit: 1, execLight: 1 }), 1));
     expect(execText()).toBe('lit');
 
+    // Unit 1's light is set; reading unit 2 must ignore the pilot's light.
+    await render(tree(snapshotFor({ unit: 1, execLight: 1 }), 2));
+    expect(execText()).toBe('dark');
+
     await render(tree(snapshotFor({ unit: 2, execLight: 1 }), 2));
     expect(execText()).toBe('lit');
+
+    // Unit 2's light is set; reading unit 1 must ignore the copilot's light.
+    await render(tree(snapshotFor({ unit: 2, execLight: 1 }), 1));
+    expect(execText()).toBe('dark');
 
     await render(tree(snapshotFor({ unit: 1 }), 1));
     expect(execText()).toBe('dark');

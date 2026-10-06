@@ -32,26 +32,40 @@ export interface CduScreenValues {
 
 const BLANK_LINE = Array.from({ length: CDU_COLUMNS }, () => ' ');
 
-/**
- * "Has text appeared since identification", and "have rows 14–15 ever been used": both reset when
- * the aircraft changes (a new `key`), and are otherwise sticky for the session (spec §4.4, §4.3).
- */
-interface ScreenMemory {
-  key: string;
+interface UnitMemory {
   seen: boolean;
   extraRows: boolean;
 }
 
-function identityKey(
-  unit: CduUnit,
-  identity: { description: string | null; icaoType: string | null; tailNumber: string | null },
-): string {
-  return `${unit}|${identity.description}|${identity.icaoType}|${identity.tailNumber}`;
+const EMPTY_UNIT_MEMORY: UnitMemory = { seen: false, extraRows: false };
+
+/**
+ * "Has text appeared since identification" and "have rows 14–15 ever been used", kept per unit so
+ * switching CDU 1 → CDU 2 → CDU 1 never resets unit 1's own memory (spec §4.4: "every text line of
+ * the selected unit has been blank since the aircraft was identified" — the memory belongs to the
+ * unit, not to whichever unit happened to be selected when it last changed). Only an aircraft
+ * change (a new `identity`) resets both units' memory.
+ */
+interface ScreenMemory {
+  identity: string;
+  units: Record<CduUnit, UnitMemory>;
+}
+
+function aircraftKey(identity: {
+  description: string | null;
+  icaoType: string | null;
+  tailNumber: string | null;
+}): string {
+  return `${identity.description}|${identity.icaoType}|${identity.tailNumber}`;
+}
+
+function initialMemory(identity: string): ScreenMemory {
+  return { identity, units: { 1: EMPTY_UNIT_MEMORY, 2: EMPTY_UNIT_MEMORY } };
 }
 
 /**
  * Reads the default FMS's 16 text and style lines for one unit and reduces them to what the panel
- * draws. "Seen since identification" is kept as state adjusted during render (React's documented
+ * draws. The per-unit memory above is kept as state adjusted during render (React's documented
  * pattern for resetting derived state on a prop change, as ControlButton does for `armed`): the
  * next value is a pure function of the current one and this render's lines, and setting it is a
  * no-op once it already matches, so this never loops.
@@ -59,13 +73,18 @@ function identityKey(
 export function useCduScreen(unit: CduUnit): CduScreenValues {
   const { snapshot, link } = usePanel();
   const { identity } = snapshot.compatibility;
-  const key = identityKey(unit, identity);
+  const identityNow = aircraftKey(identity);
 
   const textLines: (string[] | null)[] = [];
-  const styleLines: number[][] = [];
+  const rows: { text: string; style: string }[] = [];
   for (let line = 0; line < CDU_LINE_COUNT; line += 1) {
-    textLines.push(decodeTextLine(snapshot.telemetry[cduTextLine(unit, line)]?.value));
-    styleLines.push(decodeStyleLine(snapshot.telemetry[cduStyleLine(unit, line)]?.value));
+    const textLine = decodeTextLine(snapshot.telemetry[cduTextLine(unit, line)]?.value);
+    const styleLine = decodeStyleLine(snapshot.telemetry[cduStyleLine(unit, line)]?.value);
+    textLines.push(textLine);
+    rows.push({
+      text: (textLine ?? BLANK_LINE).join(''),
+      style: String.fromCharCode(...styleLine),
+    });
   }
 
   const waiting = textLines.some((line) => line === null);
@@ -75,16 +94,19 @@ export function useCduScreen(unit: CduUnit): CduScreenValues {
     return line !== null && !isBlankLine(line);
   });
 
-  const [memory, setMemory] = useState<ScreenMemory>(() => ({
-    key,
-    seen: false,
-    extraRows: false,
-  }));
-  const keyChanged = memory.key !== key;
-  const nextSeen = (keyChanged ? false : memory.seen) || nonBlankNow;
-  const nextExtraRows = (keyChanged ? false : memory.extraRows) || extraNow;
-  if (keyChanged || nextSeen !== memory.seen || nextExtraRows !== memory.extraRows) {
-    setMemory({ key, seen: nextSeen, extraRows: nextExtraRows });
+  const [memory, setMemory] = useState<ScreenMemory>(() => initialMemory(identityNow));
+  const identityChanged = memory.identity !== identityNow;
+  const baseUnits: Record<CduUnit, UnitMemory> = identityChanged
+    ? { 1: EMPTY_UNIT_MEMORY, 2: EMPTY_UNIT_MEMORY }
+    : memory.units;
+  const currentUnit = baseUnits[unit];
+  const nextSeen = currentUnit.seen || nonBlankNow;
+  const nextExtraRows = currentUnit.extraRows || extraNow;
+  if (identityChanged || nextSeen !== currentUnit.seen || nextExtraRows !== currentUnit.extraRows) {
+    setMemory({
+      identity: identityNow,
+      units: { ...baseUnits, [unit]: { seen: nextSeen, extraRows: nextExtraRows } },
+    });
   }
 
   const feature = featureOf(snapshot.compatibility, cduScreenFeatureId(unit));
@@ -98,14 +120,10 @@ export function useCduScreen(unit: CduUnit): CduScreenValues {
           : 'noFms';
 
   const rowCount = CDU_BASE_ROWS + (nextExtraRows ? 2 : 0);
-  const rows = Array.from({ length: rowCount }, (_, index) => ({
-    text: (textLines[index] ?? BLANK_LINE).join(''),
-    style: String.fromCharCode(...(styleLines[index] ?? [])),
-  }));
 
   return {
     state,
-    rows,
+    rows: rows.slice(0, rowCount),
     execLit: (firstNumber(snapshot.telemetry[cduExecLight(unit)]?.value) ?? 0) !== 0,
     aircraftName: identity.description ?? identity.icaoType ?? 'This aircraft',
     stale: !link.valuesCurrent,
