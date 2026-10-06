@@ -491,6 +491,22 @@ describe('ControlButton', () => {
     expect(screen.getByRole('button', { name: 'Enter COM1 active' })).toBeTruthy();
   });
 
+  it('dims a DisplayWindow child through KeyEnabledContext when the key is disabled', async () => {
+    await renderInFrame(
+      { ...base, state: 'disconnected' },
+      <ControlButton
+        label="COM1 active"
+        accessibilityLabel="Enter COM1 active"
+        featureId={FEATURE_HEADING_CONTROL}
+        target="t"
+        onPress={() => undefined}
+      >
+        <DisplayWindow text="118.000" role="selected" />
+      </ControlButton>,
+    );
+    expect(screen.getByText('118.000')).toHaveStyle({ color: lightTheme.avionics.legendDim });
+  });
+
   describe('haptics', () => {
     it('fires a press on tap, then onPress', async () => {
       const onPress = jest.fn();
@@ -652,6 +668,13 @@ describe('DisplayWindow', () => {
   });
 
   it('colours a selected value with the selected colour', async () => {
+    await renderInFrame(live(), <DisplayWindow text="121.500" role="selected" />);
+    expect(screen.getByText('121.500')).toHaveStyle({ color: lightTheme.avionics.selected });
+  });
+
+  it('is unaffected by key state outside any ControlButton', async () => {
+    // No ControlButton wraps this window, so KeyEnabledContext's default (true) applies: it
+    // never dims on account of a key it is not inside.
     await renderInFrame(live(), <DisplayWindow text="121.500" role="selected" />);
     expect(screen.getByText('121.500')).toHaveStyle({ color: lightTheme.avionics.selected });
   });

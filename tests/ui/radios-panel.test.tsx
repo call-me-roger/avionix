@@ -171,6 +171,38 @@ describe('Radios panel', () => {
     });
   });
 
+  it('dims the standby display window when its radio’s feature is unavailable', async () => {
+    const snapshot = live();
+    await render(
+      tree({
+        ...snapshot,
+        compatibility: {
+          ...snapshot.compatibility,
+          features: snapshot.compatibility.features.map((feature) =>
+            feature.id === 'nav2'
+              ? {
+                  ...feature,
+                  status: 'unavailable' as const,
+                  missing: [
+                    {
+                      name: D.nav2Standby,
+                      kind: 'dataref' as const,
+                      purpose: 'NAV2 standby frequency, written when you set one',
+                      status: 'missing' as const,
+                    },
+                  ],
+                }
+              : feature,
+          ),
+        },
+      }),
+    );
+    const standby = screen.getByLabelText('Enter NAV2 standby');
+    expect(standby.props.accessibilityState.disabled).toBe(true);
+    const value = within(standby).getByText('117.20');
+    expect(StyleSheet.flatten(value.props.style).color).toBe(lightTheme.avionics.legendDim);
+  });
+
   it('marks values not live and disables every control while the link is down', async () => {
     await render(tree(live({ state: 'reconnecting' })));
     expect(screen.getByLabelText('COM1: active 121.500, standby 118.005, not live')).toBeTruthy();

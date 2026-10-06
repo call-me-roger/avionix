@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 
+import { useKeyEnabled } from '@/features/panels/primitives/KeyEnabledContext';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 import { numeric } from '@/theme/typography';
@@ -73,6 +74,10 @@ export function DisplayWindow({
   testID,
 }: Props) {
   const styles = useThemedStyles(makeStyles);
+  // Dims exactly as `stale` does when the `ControlButton` this window sits inside (if any) is
+  // disabled, so a pressable value never stays full-brightness once its key cannot be pressed.
+  const keyEnabled = useKeyEnabled();
+  const dimmed = stale || !keyEnabled;
   return (
     <View style={styles.window} testID={testID} accessible={false}>
       {caption === undefined ? null : <Text style={styles.caption}>{caption}</Text>}
@@ -80,7 +85,7 @@ export function DisplayWindow({
         style={[
           size === 'large' ? styles.large : styles.small,
           styles[role],
-          stale ? styles.stale : null,
+          dimmed ? styles.stale : null,
           tone === 'warning' ? styles.warning : null,
         ]}
       >

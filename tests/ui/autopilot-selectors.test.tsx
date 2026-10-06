@@ -319,6 +319,17 @@ describe('autopilot selectors', () => {
     );
   });
 
+  it('dims the selector value while the override is active, even though the link is live', async () => {
+    const view = await render(tree(live()));
+    await view.rerender(
+      tree(live({ telemetry: telemetry({ ...VALUES, [D.autopilotOverride]: 1 }) })),
+    );
+    const button = screen.getByLabelText('Enter altitude');
+    expect(button.props.accessibilityState.disabled).toBe(true);
+    const value = within(button).getByText('5,000 ft');
+    expect(StyleSheet.flatten(value.props.style).color).toBe(lightTheme.avionics.legendDim);
+  });
+
   it('opens the keypad under the selector being edited on a phone', async () => {
     await render(tree(live()));
     await fireEvent.press(screen.getByLabelText('Enter altitude'));

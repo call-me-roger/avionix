@@ -6,6 +6,7 @@ import type { OperationRefusal } from '@/application/session-snapshot';
 import { controlAvailability } from '@/domain/panels/control-availability';
 import { useHaptics } from '@/features/haptics/HapticsProvider';
 import { FailureNotice } from '@/features/health/FailureNotice';
+import { KeyEnabledContext } from '@/features/panels/primitives/KeyEnabledContext';
 import { LightBar, type LightBarState } from '@/features/panels/primitives/LightBar';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import { BodyText } from '@/theme/primitives';
@@ -138,11 +139,13 @@ export function ControlButton(props: Props) {
         ]}
       >
         {annunciation === undefined ? null : <LightBar state={annunciation} />}
-        {showLegend ? (
-          <Text style={[styles.legend, enabled ? null : styles.legendDisabled]}>{shown}</Text>
-        ) : (
-          props.children
-        )}
+        <KeyEnabledContext.Provider value={enabled}>
+          {showLegend ? (
+            <Text style={[styles.legend, enabled ? null : styles.legendDisabled]}>{shown}</Text>
+          ) : (
+            props.children
+          )}
+        </KeyEnabledContext.Provider>
       </Pressable>
       {availability.reason === null || props.quiet === true ? null : (
         <BodyText muted>{availability.reason}</BodyText>
