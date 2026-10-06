@@ -86,17 +86,28 @@ speed. Writes use dataref writes and command activation.
 
 | Purpose | DataRef / command | Type, units | Read/Write | Source |
 |---|---|---|---|---|
-| Mode arm/engage annunciations | `sim/cockpit/autopilot/autopilot_state` | int bit-field (2 HDG sel, 16 V/S, 32 ALT arm, 64 FLC, 256/512 NAV, 1024/2048 GS, 16384 ALT hold) | Read | [1] |
+| Autopilot engaged | `sim/cockpit2/autopilot/servos_on` | int, boolean | Read | [7] |
+| Autopilot engage / disconnect | `sim/autopilot/servos_on`, `sim/autopilot/servos_off_any` | commands | Write | [7] |
+| Flight director bars | `sim/cockpit2/autopilot/flight_director_command_bars_pilot` | int, boolean | Read | [7] |
+| Flight director on / off | `sim/autopilot/fdir_command_bars_on`, `sim/autopilot/fdir_command_bars_off` | commands | Write | [7] |
+| Autothrottle state | `sim/cockpit2/autopilot/autothrottle_enabled` | int: −1 hard off, 0 armed, 1 speed, 2 N1, 3 retard | Read | [7] |
+| Autothrottle engage / off (stays armed) | `sim/autopilot/autothrottle_on`, `sim/autopilot/autothrottle_off` | commands | Write | [7] |
+| Autothrottle arm / disarm | `sim/autopilot/autothrottle_arm`, `sim/autopilot/autothrottle_hard_off` | commands | Write | [7] |
 | Heading selector | `sim/cockpit2/autopilot/heading_dial_deg_mag_pilot` | float, degrees magnetic | Read/Write | [1], [4] |
-| Heading increment | `sim/autopilot/heading_up` | command | Write | [4] |
-| Flight director mode | `sim/cockpit2/autopilot/flight_director_mode`, `flight_director2_mode` | int: 0 off, 1 cues, 2 AP active | Read/Write | [2] |
-| Autothrottle arm | `sim/cockpit2/autopilot/autothrottle_arm` | int: 0 disarmed, 1 armed | Read/Write | [2] |
-| Autothrottle engaged | `sim/cockpit2/autopilot/autothrottle_enabled` | int, -1 disarmed | Read | [1], [2] |
-| Plugin autopilot override | `sim/operation/override/override_autopilot` | boolean | Read only | [1] |
+| Heading-control compatibility probe (a required binding only; the panel's heading steppers and typed entry write the selector dataref above directly, never this command) | `sim/autopilot/heading_up` | command | Write | [4] |
 | Altitude selector | `sim/cockpit2/autopilot/altitude_dial_ft` | float, feet | Read/Write | [7] |
 | Vertical speed selector | `sim/cockpit2/autopilot/vvi_dial_fpm` | float, ft/min | Read/Write | [7] |
 | Airspeed selector, knots/Mach flag | `sim/cockpit2/autopilot/airspeed_dial_kts_mach`, `sim/cockpit2/autopilot/airspeed_is_mach` | float, knots or Mach; int, boolean (read only) | Read/Write | [7] |
-| Mode engage commands beyond `heading_up` | `sim/autopilot/heading`, `sim/autopilot/NAV`, `sim/autopilot/approach`, `sim/autopilot/altitude_hold`, `sim/autopilot/vertical_speed`, `sim/autopilot/level_change` | commands | Write | [7] |
+| Knots/Mach toggle | `sim/autopilot/knots_mach_toggle` | command | Write | [7] |
+| HDG mode | `sim/cockpit2/autopilot/heading_status`; `sim/autopilot/heading` | int: 0 off, 2 captured; command | Read/Write | [7] |
+| NAV mode | `sim/cockpit2/autopilot/nav_status`; `sim/autopilot/NAV` | int: 0 off, 1 armed, 2 captured; command | Read/Write | [7] |
+| APR mode | `sim/cockpit2/autopilot/approach_status`; `sim/autopilot/approach` | int: 0 off, 1 armed, 2 captured; command | Read/Write | [7] |
+| Glideslope status | `sim/cockpit2/autopilot/glideslope_status` | int: 0 off, 1 armed, 2 captured | Read | [7] |
+| ALT mode | `sim/cockpit2/autopilot/altitude_hold_status`; `sim/autopilot/altitude_hold` | int: 0 off, 1 armed, 2 captured; command | Read/Write | [7] |
+| VS mode | `sim/cockpit2/autopilot/vvi_status`; `sim/autopilot/vertical_speed` | int: 0 off, 2 captured; command | Read/Write | [7] |
+| FLC mode | `sim/cockpit2/autopilot/speed_status`; `sim/autopilot/level_change` | int: 0 off, 2 captured; command | Read/Write | [7] |
+| Roll / pitch hold status | `sim/cockpit2/autopilot/roll_status`, `sim/cockpit2/autopilot/pitch_status` | int: 0 off, 2 captured | Read | [7] |
+| Plugin autopilot override | `sim/operation/override/override_autopilot` | int, boolean | Read only | [1] |
 
 The `mode_hnav`, `airspeed_mode`, `heading_mode`, `altitude_mode` and `altitude_gls` datarefs under
 `sim/cockpit/autopilot/` are documented as deprecated and must not be used [1].
@@ -137,10 +148,16 @@ resolve are offered.
 
 - The altitude, vertical speed and airspeed selector names, and the per-mode engage commands, were
   not found in any Laminar article in this research. Read them from the in-sim `DataRefs.txt` and
-  `Commands.txt` and confirm with a live query before implementation.
+  `Commands.txt` and confirm with a live query before implementation. **Resolved:** the design
+  spec's Verified names table confirmed every name against `DataRefs.txt` and `Commands.txt`; see
+  the mapping table above.
 - Open questions: write on every increment or only when adjustment stops; pilot side only or pilot
-  and copilot flight director separately; direct value entry as well as increments.
+  and copilot flight director separately; direct value entry as well as increments. **Resolved:**
+  one write per pilot action; pilot side only, with copilot selectors and flight director left out
+  of scope; both steppers and typed entry were built.
 - `autopilot_state` bits may differ on add-ons that drive the dataref; verify per aircraft.
+  **Resolved:** the panel never reads or writes `autopilot_state`; it uses the per-mode `*_status`
+  DataRefs instead, so this risk does not apply.
 - The rate is "currently 10 Hz" (`docs/roadmap/research/xplane-web-api.md`, risk 1); do not promise
   smoother. Ids are session-scoped and must never be persisted (risk 4).
 
