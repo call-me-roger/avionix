@@ -291,8 +291,12 @@ describe('AppShell', () => {
       await screen.findByTestId('setup-screen');
       const statusBarWrap = StyleSheet.flatten(screen.getByTestId('status-bar-wrap').props.style);
       expect(statusBarWrap.paddingTop).toBe(insets.top + lightTheme.spacing.sm);
-      expect(statusBarWrap.paddingLeft).toBe(insets.left + lightTheme.spacing.lg);
-      expect(statusBarWrap.paddingRight).toBe(insets.right + lightTheme.spacing.lg);
+      // The bar itself spans full width now (no card margin); it carries the side insets instead.
+      expect(statusBarWrap.paddingLeft ?? 0).toBe(0);
+      expect(statusBarWrap.paddingRight ?? 0).toBe(0);
+      const statusBar = StyleSheet.flatten(screen.getByTestId('link-status-bar').props.style);
+      expect(statusBar.paddingLeft).toBe(insets.left + lightTheme.spacing.lg);
+      expect(statusBar.paddingRight).toBe(insets.right + lightTheme.spacing.lg);
       const switcher = StyleSheet.flatten(screen.getByTestId('panel-switcher').props.style);
       expect(switcher.paddingBottom).toBe(insets.bottom);
       expect(switcher.paddingLeft ?? 0).toBe(0);

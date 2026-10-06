@@ -8,6 +8,7 @@ import { Store } from '@/application/store';
 import { type AppServices, ServicesProvider } from '@/app/services-context';
 import { GENERIC_DATAREFS, GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import { AvionixError } from '@/domain/errors/avionix-error';
+import { ACTIVITY_LABEL } from '@/domain/health/simulator-activity';
 import { LINK_LABEL } from '@/features/health/LinkStatusBar';
 import { AppShell } from '@/features/shell/AppShell';
 import { silentLogger } from '@/infrastructure/logging/logger';
@@ -109,7 +110,10 @@ describe('SetupScreen', () => {
       },
     });
     await renderScreen(services);
-    await waitFor(() => expect(screen.getByText(LINK_LABEL.connected)).toBeTruthy());
+    // The status bar's line combines the link label with the simulator's activity (R-01).
+    await waitFor(() =>
+      expect(screen.getByText(`${LINK_LABEL.connected} · ${ACTIVITY_LABEL.unknown}`)).toBeTruthy(),
+    );
     expect(screen.getByText('Disconnect')).toBeTruthy();
     await fireEvent.press(screen.getByTestId('link-status-bar'));
     expect(screen.getByText('X-Plane: 12.4.0')).toBeTruthy();
@@ -231,7 +235,11 @@ describe('SetupScreen', () => {
     it('hides the section while connected and shows it again after disconnect', async () => {
       const { services, store, browser } = makeServices({ state: 'connected' });
       await renderScreen(services);
-      await waitFor(() => expect(screen.getByText(LINK_LABEL.connected)).toBeTruthy());
+      await waitFor(() =>
+        expect(
+          screen.getByText(`${LINK_LABEL.connected} · ${ACTIVITY_LABEL.unknown}`),
+        ).toBeTruthy(),
+      );
       expect(screen.queryByText('Connectors on this network')).toBeNull();
       expect(browser.browseCalls).toHaveLength(0);
       await act(async () => {

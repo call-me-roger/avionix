@@ -133,15 +133,13 @@ export function AppShell({ panels = PANELS }: { panels?: readonly RegisteredPane
       <HapticsProvider storage={settingsStorage}>
         <InstrumentPreferencesProvider storage={settingsStorage}>
           <View testID="app-shell" style={styles.root}>
-            <View
-              testID="status-bar-wrap"
-              style={{
-                paddingTop: insets.top + theme.spacing.sm,
-                paddingLeft: insets.left + theme.spacing.lg,
-                paddingRight: insets.right + theme.spacing.lg,
-              }}
-            >
-              <LinkStatusBar snapshot={snapshot} now={now} onOpenDiagnostics={onStatusBarPress} />
+            <View testID="status-bar-wrap" style={{ paddingTop: insets.top + theme.spacing.sm }}>
+              <LinkStatusBar
+                snapshot={snapshot}
+                now={now}
+                onOpenDiagnostics={onStatusBarPress}
+                safeArea={{ left: insets.left, right: insets.right }}
+              />
               {stripVisible ? (
                 <FlightDataStrip snapshot={snapshot} now={now} onOpen={onOpenFlightData} />
               ) : null}

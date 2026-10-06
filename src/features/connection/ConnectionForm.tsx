@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Button, View } from 'react-native';
+import { View } from 'react-native';
 
 import type { ConnectionState } from '@/domain/connection/connection-state';
+import { ActionButton } from '@/theme/ActionButton';
 import { BodyText, Section, SectionTitle, ThemedTextInput } from '@/theme/primitives';
-import { useTheme, useThemedStyles } from '@/theme/theme-context';
+import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
 interface Props {
@@ -22,7 +23,7 @@ interface Props {
 const CODE_LENGTH = 6;
 
 const makeStyles = (theme: Theme) => ({
-  row: { flexDirection: 'row' as const, gap: theme.spacing.md },
+  row: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: theme.spacing.sm },
 });
 
 /**
@@ -36,7 +37,6 @@ function PairingFields(props: {
   onPair: (code: string) => Promise<void>;
   onCancel: () => void;
 }) {
-  const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -69,20 +69,19 @@ function PairingFields(props: {
         editable={!busy}
       />
       <View style={styles.row}>
-        <Button
+        <ActionButton
           title="Pair"
           onPress={submit}
-          disabled={busy || code.length !== CODE_LENGTH}
-          color={theme.colors.primary}
+          disabled={code.length !== CODE_LENGTH}
+          busy={busy}
         />
-        <Button title="Cancel" onPress={props.onCancel} color={theme.colors.primary} />
+        <ActionButton title="Cancel" onPress={props.onCancel} variant="secondary" />
       </View>
     </>
   );
 }
 
 export function ConnectionForm(props: Props) {
-  const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
   const isPairingState = props.state === 'pairing';
   const busy = props.state === 'connecting' || props.state === 'reconnecting' || isPairingState;
@@ -118,17 +117,12 @@ export function ConnectionForm(props: Props) {
         />
       ) : (
         <View style={styles.row}>
-          <Button
-            title="Connect"
-            onPress={props.onConnect}
-            disabled={connected}
-            color={theme.colors.primary}
-          />
-          <Button
+          <ActionButton title="Connect" onPress={props.onConnect} disabled={connected} />
+          <ActionButton
             title="Disconnect"
             onPress={props.onDisconnect}
             disabled={props.state === 'disconnected'}
-            color={theme.colors.primary}
+            variant="destructive"
           />
         </View>
       )}

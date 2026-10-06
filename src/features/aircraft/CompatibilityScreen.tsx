@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, View } from 'react-native';
+import { View } from 'react-native';
 
 import type { SessionSnapshot } from '@/application/session-snapshot';
 import { identityLabel } from '@/domain/aircraft/aircraft-identity';
@@ -12,8 +12,9 @@ import {
 import { SELECTION_LABEL } from '@/domain/aircraft/profile-selection';
 import { ageMs, formatAge } from '@/domain/health/freshness';
 import { UNIDENTIFIED_LABEL } from '@/features/aircraft/AircraftSummary';
+import { ActionButton } from '@/theme/ActionButton';
 import { BodyText, Section, SectionTitle } from '@/theme/primitives';
-import { useTheme, useThemedStyles } from '@/theme/theme-context';
+import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
 function statusTone(status: FeatureStatus): 'danger' | 'success' | undefined {
@@ -67,7 +68,6 @@ export function CompatibilityScreen({
   now: number;
   onRecheck: () => void;
 }) {
-  const theme = useTheme();
   const { compatibility, state } = snapshot;
   const connected = state === 'connected';
   // A connect that lands on X-Plane's main menu is `connected` while the session sits on the
@@ -115,12 +115,7 @@ export function CompatibilityScreen({
           be refused.
         </BodyText>
       )}
-      <Button
-        title="Check again"
-        onPress={onRecheck}
-        disabled={!canRecheck}
-        color={theme.colors.primary}
-      />
+      <ActionButton title="Check again" onPress={onRecheck} disabled={!canRecheck} />
     </Section>
   );
 }

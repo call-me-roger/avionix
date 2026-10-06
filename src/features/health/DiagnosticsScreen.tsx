@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Button, View } from 'react-native';
+import { View } from 'react-native';
 
 import {
   CONNECTOR_STEP_LABEL,
@@ -12,8 +12,9 @@ import { ageMs, formatAge } from '@/domain/health/freshness';
 import { ACTIVITY_LABEL } from '@/domain/health/simulator-activity';
 import { FailureNotice } from '@/features/health/FailureNotice';
 import { shareText } from '@/platform/share';
+import { ActionButton } from '@/theme/ActionButton';
 import { BodyText, Section, SectionTitle } from '@/theme/primitives';
-import { useTheme, useThemedStyles } from '@/theme/theme-context';
+import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
 function stepTone(status: StepStatus): 'danger' | 'success' | undefined {
@@ -28,7 +29,12 @@ function connectorStepTone(step: ConnectorStep): 'danger' | 'success' | undefine
 }
 
 const makeStyles = (theme: Theme) => ({
-  row: { flexDirection: 'row' as const, gap: theme.spacing.md, marginTop: theme.spacing.sm },
+  row: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.sm,
+  },
 });
 
 /**
@@ -47,7 +53,6 @@ export function DiagnosticsScreen({
   onRetry: () => void;
   onDisconnect: () => void;
 }) {
-  const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
   const { health, diagnostics, config, capabilities, connector, error } = snapshot;
   const summary = formatDiagnosticsSummary(snapshot, now);
@@ -122,9 +127,9 @@ export function DiagnosticsScreen({
       ) : null}
 
       <View style={styles.row}>
-        <Button title="Retry" onPress={onRetry} color={theme.colors.primary} />
-        <Button title="Disconnect" onPress={onDisconnect} color={theme.colors.primary} />
-        <Button title="Share diagnostics" onPress={onShare} color={theme.colors.primary} />
+        <ActionButton title="Retry" onPress={onRetry} />
+        <ActionButton title="Disconnect" onPress={onDisconnect} variant="destructive" />
+        <ActionButton title="Share diagnostics" onPress={onShare} />
       </View>
 
       {/*
@@ -132,10 +137,10 @@ export function DiagnosticsScreen({
        * origin), and this is also what makes the redaction directly inspectable: selectable
        * text the pilot can read and copy by hand, independent of the OS share sheet.
        */}
-      <Button
+      <ActionButton
         title={showText ? 'Hide diagnostics text' : 'Show diagnostics text'}
         onPress={onToggleText}
-        color={theme.colors.primary}
+        variant="secondary"
       />
       {showText ? <BodyText selectable>{summary}</BodyText> : null}
     </Section>
