@@ -5,7 +5,7 @@
 | ID | `F-11` |
 | Stage | `1` |
 | Category | Monitoring |
-| Status | Proposed |
+| Status | Done |
 | Depends on | `F-03`, `F-04` |
 | Competitor prevalence | Matrix count 3 of 12 representative products (`research/competitors.md`). Wider set: 3 of 28 products researched ship a comparable numeric flight-data readout (Flight Deck ONE "Black Box" telemetry, X-Plane Control Pad's dataref command console, Little Navmap); the EFBs show only a subset on the map instead |
 
@@ -170,3 +170,4 @@ unavailable, which R7 covers.
 6. https://questions.x-plane.com/20612/gps-lags-with-x-plane-11-and-foreflight
 7. `docs/xplane.md`; `docs/roadmap/research/` — `xplane-web-api.md`, `efb-moving-map.md`,
    `remote-control-apps.md`
+8. docs/superpowers/specs/2026-09-28-flight-data-strip-design.md

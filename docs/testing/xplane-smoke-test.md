@@ -99,6 +99,16 @@ Record results at the bottom.
 | 70 | On the PFD, stop X-Plane's network (or quit X-Plane) mid-flight | Every instrument keeps its last values; a red X over every instrument, NOT LIVE on the attitude (the narrower tapes and scales are too small for the words); the panel says why and how long ago | |
 | 71 | Return to the main menu (no flight) | No values on any instrument; the panel says no flight is loaded | |
 | 72 | 737 above FL250 and on short final | Mach appears from 0.40; radio altitude appears below 2,500 ft on both presentations | |
+| 73 | C172: open Radios | COM1/COM2/NAV1/NAV2 match the aircraft's radios; transponder code and mode match | |
+| 74 | Enter COM1 standby 118.005 on the keypad, Set | The aircraft's COM1 standby shows 118.005 (confirms the whole-kHz assumption for `_833`) | |
+| 75 | Enter 118.020 | The panel refuses it with the nearest channels; nothing changes in X-Plane | |
+| 76 | Swap COM1, then change COM1 with the mouse in X-Plane | The swap shows on both; the mouse change appears on the panel within a second | |
+| 77 | NAV1 to a nearby VOR with DME | Identifier, DME distance and course appear under NAV1 | |
+| 78 | Squawk 4521, then ALT, then IDENT | Code and mode change in X-Plane; "IDENT sent", then "Identing" for as long as X-Plane idents (note the duration) | |
+| 79 | Enter 7700 | The panel names it "emergency" and needs a second tap | |
+| 80 | X-Plane 12.4.4+: request a clearance from X-Plane ATC | "ATC assigned NNNN" appears; it shows "— not set" until the code matches; note what the DataRef reports before any assignment | |
+| 81 | Disconnect the network with an entry open | The entry disappears; values are muted "not live"; reconnecting sends nothing | |
+| 82 | Smallest phone, portrait and landscape; a tablet in landscape | Rows fit without clipping; the keypad keys are easy to hit; on the phone, tapping a standby value or the squawk opens the keypad right under that row, in view; on the tablet the keypad sits beside the stack | |
 
 Rows 44 and 45 verify the keep-awake hold, and row 53 the safe areas: behaviour no automated test
 can observe.

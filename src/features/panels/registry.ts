@@ -7,6 +7,7 @@ import {
   INSTRUMENTS_PANEL,
   InstrumentsPanel,
 } from '@/features/panels/instruments/InstrumentsPanel';
+import { RADIOS_PANEL, RadiosPanel } from '@/features/panels/radios/RadiosPanel';
 
 export interface RegisteredPanel {
   descriptor: PanelDescriptor;
@@ -16,6 +17,7 @@ export interface RegisteredPanel {
 /** Switcher order. A panel's id is persisted, so it is never reused for a different panel. */
 export const PANELS: readonly RegisteredPanel[] = [
   { descriptor: INSTRUMENTS_PANEL, Component: InstrumentsPanel },
+  { descriptor: RADIOS_PANEL, Component: RadiosPanel },
   { descriptor: FLIGHT_DATA_PANEL, Component: FlightDataPanel },
   { descriptor: HEADING_PANEL, Component: HeadingPanel },
 ];

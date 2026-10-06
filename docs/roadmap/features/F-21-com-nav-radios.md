@@ -5,7 +5,7 @@
 | ID | `F-21` |
 | Stage | `1` |
 | Category | Control |
-| Status | Proposed |
+| Status | Done |
 | Depends on | `F-03`, `F-04` |
 | Competitor prevalence | Matrix count 6 of 12 representative products (`research/competitors.md`). Wider set: 8 of 15 products researched offer it (XpRemotePanel, Flight Sim Remote Panel, XP Remote – Voice Commands, Comsquawk XP, RemoteFlight RADIO HD, Flight Deck ONE, Air Manager, Remote X-Plane Avionics) |
 
@@ -148,3 +148,4 @@ offer, and radios whose names do not resolve are shown as unavailable rather tha
 4. `docs/xplane.md`
 5. `docs/roadmap/research/xplane-web-api.md`, `remote-control-apps.md`, `panel-builders.md`
 6. https://appgrooves.com/android/org.baltazar.XPlaneRemotePlus/flight-sim-remote-panel/baltazar-studios-llc
+7. docs/superpowers/specs/2026-09-30-radios-transponder-design.md

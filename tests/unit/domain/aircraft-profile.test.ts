@@ -8,12 +8,19 @@ import {
 import { BUNDLED_PROFILES } from '@/domain/aircraft/profiles/catalog';
 import {
   FEATURE_ALTIMETER_SETTING,
+  FEATURE_COM1,
+  FEATURE_COM2,
   FEATURE_CONNECTION_HEALTH,
   FEATURE_FLIGHT_DATA,
   FEATURE_FLIGHT_INSTRUMENTS,
   FEATURE_FLIGHT_TELEMETRY,
   FEATURE_GPS_DESTINATION,
   FEATURE_HEADING_CONTROL,
+  FEATURE_NAV1,
+  FEATURE_NAV2,
+  FEATURE_TRANSPONDER_CODE,
+  FEATURE_TRANSPONDER_IDENT,
+  FEATURE_TRANSPONDER_MODE,
   GENERIC_COMMANDS,
   GENERIC_DATAREFS,
   GENERIC_PROFILE,
@@ -87,6 +94,31 @@ describe('profileBindings', () => {
       GENERIC_DATAREFS.vno,
       GENERIC_DATAREFS.vne,
       GENERIC_DATAREFS.barometer,
+      GENERIC_DATAREFS.com1Active,
+      GENERIC_DATAREFS.com1Standby,
+      GENERIC_COMMANDS.com1Flip,
+      GENERIC_DATAREFS.com2Active,
+      GENERIC_DATAREFS.com2Standby,
+      GENERIC_COMMANDS.com2Flip,
+      GENERIC_DATAREFS.nav1Active,
+      GENERIC_DATAREFS.nav1Standby,
+      GENERIC_COMMANDS.nav1Flip,
+      GENERIC_DATAREFS.nav1Id,
+      GENERIC_DATAREFS.nav1HasDme,
+      GENERIC_DATAREFS.nav1Dme,
+      GENERIC_DATAREFS.nav1Course,
+      GENERIC_DATAREFS.nav2Active,
+      GENERIC_DATAREFS.nav2Standby,
+      GENERIC_COMMANDS.nav2Flip,
+      GENERIC_DATAREFS.nav2Id,
+      GENERIC_DATAREFS.nav2HasDme,
+      GENERIC_DATAREFS.nav2Dme,
+      GENERIC_DATAREFS.nav2Course,
+      GENERIC_DATAREFS.transponderCode,
+      GENERIC_DATAREFS.atcAssignedCode,
+      GENERIC_DATAREFS.transponderMode,
+      GENERIC_COMMANDS.transponderIdent,
+      GENERIC_DATAREFS.transponderIdenting,
     ]);
   });
 });
@@ -124,6 +156,13 @@ describe('the generic profile', () => {
       FEATURE_GPS_DESTINATION,
       FEATURE_FLIGHT_INSTRUMENTS,
       FEATURE_ALTIMETER_SETTING,
+      FEATURE_COM1,
+      FEATURE_COM2,
+      FEATURE_NAV1,
+      FEATURE_NAV2,
+      FEATURE_TRANSPONDER_CODE,
+      FEATURE_TRANSPONDER_MODE,
+      FEATURE_TRANSPONDER_IDENT,
     ]);
   });
 
@@ -169,11 +208,11 @@ describe('the generic profile', () => {
   });
 
   it('bumps the profile version for the new bindings', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.2.0');
+    expect(GENERIC_PROFILE.version).toBe('1.3.0');
   });
 
   it('declares the flight instruments, every one optional, and the altimeter setting', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.2.0');
+    expect(GENERIC_PROFILE.version).toBe('1.3.0');
     const instruments = findFeature(GENERIC_PROFILE, FEATURE_FLIGHT_INSTRUMENTS);
     expect(instruments?.label).toBe('Flight instruments');
     expect(instruments?.bindings.map((binding) => binding.name)).toEqual([
@@ -206,5 +245,97 @@ describe('the generic profile', () => {
         write: true,
       }),
     ]);
+  });
+
+  it('declares one feature per radio, each with its standby written and its swap command', () => {
+    const radios = [
+      [
+        FEATURE_COM1,
+        'COM1',
+        GENERIC_DATAREFS.com1Active,
+        GENERIC_DATAREFS.com1Standby,
+        GENERIC_COMMANDS.com1Flip,
+      ],
+      [
+        FEATURE_COM2,
+        'COM2',
+        GENERIC_DATAREFS.com2Active,
+        GENERIC_DATAREFS.com2Standby,
+        GENERIC_COMMANDS.com2Flip,
+      ],
+      [
+        FEATURE_NAV1,
+        'NAV1',
+        GENERIC_DATAREFS.nav1Active,
+        GENERIC_DATAREFS.nav1Standby,
+        GENERIC_COMMANDS.nav1Flip,
+      ],
+      [
+        FEATURE_NAV2,
+        'NAV2',
+        GENERIC_DATAREFS.nav2Active,
+        GENERIC_DATAREFS.nav2Standby,
+        GENERIC_COMMANDS.nav2Flip,
+      ],
+    ] as const;
+    for (const [id, label, active, standby, flip] of radios) {
+      const feature = findFeature(GENERIC_PROFILE, id);
+      expect(feature?.label).toBe(label);
+      const required = feature?.bindings.filter((binding) => binding.required);
+      expect(
+        required?.map((binding) => [binding.kind, binding.name, binding.write === true]),
+      ).toEqual([
+        ['dataref', active, false],
+        ['dataref', standby, true],
+        ['command', flip, false],
+      ]);
+    }
+    expect(
+      findFeature(GENERIC_PROFILE, FEATURE_NAV1)
+        ?.bindings.filter((binding) => !binding.required)
+        .map((binding) => binding.name),
+    ).toEqual([
+      GENERIC_DATAREFS.nav1Id,
+      GENERIC_DATAREFS.nav1HasDme,
+      GENERIC_DATAREFS.nav1Dme,
+      GENERIC_DATAREFS.nav1Course,
+    ]);
+    expect(findFeature(GENERIC_PROFILE, FEATURE_COM1)?.bindings).toHaveLength(3);
+  });
+
+  it('declares the transponder as three features, the assigned code optional', () => {
+    expect(
+      findFeature(GENERIC_PROFILE, FEATURE_TRANSPONDER_CODE)?.bindings.map((binding) => [
+        binding.name,
+        binding.required,
+        binding.write === true,
+      ]),
+    ).toEqual([
+      [GENERIC_DATAREFS.transponderCode, true, true],
+      [GENERIC_DATAREFS.atcAssignedCode, false, false],
+    ]);
+    expect(
+      findFeature(GENERIC_PROFILE, FEATURE_TRANSPONDER_MODE)?.bindings.map((binding) => [
+        binding.name,
+        binding.required,
+        binding.write === true,
+      ]),
+    ).toEqual([[GENERIC_DATAREFS.transponderMode, true, true]]);
+    expect(
+      findFeature(GENERIC_PROFILE, FEATURE_TRANSPONDER_IDENT)?.bindings.map((binding) => [
+        binding.kind,
+        binding.name,
+        binding.required,
+      ]),
+    ).toEqual([
+      ['command', GENERIC_COMMANDS.transponderIdent, true],
+      ['dataref', GENERIC_DATAREFS.transponderIdenting, false],
+    ]);
+  });
+
+  it('uses Laminar’s spelling of the swap commands', () => {
+    expect(GENERIC_COMMANDS.com1Flip).toBe('sim/radios/com1_standy_flip');
+    expect(GENERIC_COMMANDS.nav2Flip).toBe('sim/radios/nav2_standy_flip');
+    expect(GENERIC_COMMANDS.transponderIdent).toBe('sim/transponder/transponder_ident');
   });
 });

@@ -79,6 +79,13 @@ describe('aircraft compatibility against the mock X-Plane', () => {
       'available',
       'available',
       'available',
+      'available',
+      'available',
+      'available',
+      'available',
+      'available',
+      'available',
+      'available',
     ]);
     session.disconnect();
   });

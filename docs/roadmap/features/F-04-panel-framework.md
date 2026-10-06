@@ -5,7 +5,7 @@
 | ID | `F-04` |
 | Stage | `1` |
 | Category | Platform |
-| Status | Proposed |
+| Status | Done |
 | Depends on | `F-01` |
 | Competitor prevalence | Matrix count 6 of 12 representative products (`research/competitors.md`). Wider set: 6 of 13 remote-control and panel products researched let the user switch between several panels or pages on one device (Air Manager, Flight Sim Remote Panel, RemoteFlight COCKPIT HD, XpRemotePanel, Flight Deck ONE, Touch Portal); small-screen usability is a named complaint against Flight Sim Remote Panel and Air Manager |
 
@@ -155,3 +155,4 @@ Aircraft-specific panels appear and disappear through the same mechanism as any 
 5. https://apps.apple.com/us/app/simionic-g1000-pfd/id501990787
 6. https://apps.apple.com/us/app/air-manager/id1052587916
 7. https://siminnovations.com/shop/zibo-mod-737-800-overhead-panel/
+8. docs/superpowers/specs/2026-09-26-panel-framework-design.md

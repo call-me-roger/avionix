@@ -55,7 +55,7 @@ async function renderPanel(
 
 describe('panel registry', () => {
   it('lists each panel once, in switcher order, never under the reserved Setup id', () => {
-    expect(PANEL_IDS).toEqual(['instruments', 'flight-data', 'heading']);
+    expect(PANEL_IDS).toEqual(['instruments', 'radios', 'flight-data', 'heading']);
     expect(new Set(PANEL_IDS).size).toBe(PANEL_IDS.length);
     expect(PANEL_IDS).not.toContain(SETUP_ROUTE);
   });

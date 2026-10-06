@@ -284,6 +284,46 @@ it so the same sentence is not repeated under every button.
 as received, never interpolated between samples or extrapolated past the last one, so a needle can
 never keep moving on a dead link (R2, R7).
 
+## Radios and transponder
+
+`src/features/panels/radios/` is the Radios panel (F-21, F-22): COM1, COM2, NAV1 and NAV2, each a
+`RadioSpec` (`radios.ts`) naming its active, standby and swap bindings, with NAV1 and NAV2 adding an
+optional identifier, DME and course; and the transponder's squawk code, mode and IDENT
+(`TransponderSection`). Seven profile features back them — `com1`, `com2`, `nav1`, `nav2`,
+`transponder-code`, `transponder-mode`, `transponder-ident` — so a name missing or read-only on one
+radio or one transponder control disables only that control, the rest keep working, by the same
+probe described under Aircraft compatibility. `src/domain/radios/` holds every calculation as pure
+functions with no React and no simulator types: `channels.ts` (the COM `_833` channel table and the
+NAV 10 kHz grid, validation, formatting and the 8.33 kHz assumption, unverified pending the device
+check, row 74), `squawk.ts` (octal validation, formatting and the three named
+emergency codes), `transponder-mode.ts` (the four positions the panel offers against Laminar's
+eight-value enum) and `entry.ts` (the keypad's digit-by-digit draft, shared by COM, NAV and squawk
+entry). NAV DME is shown to one decimal at every range, in the shared distance unit — a DME arc is
+flown by tenths, unlike `formatDistance`'s whole-number rounding, which is tuned for the GPS
+distance-to-go.
+
+**Staged entry.** A typed value lives only in the entry pad's draft (`useRadioEntry`), never written
+until Set; the draft is dropped, not carried, the instant controls disable (a dropped link, a
+disconnect), so a reconnect can never replay a stale intent with one tap. `RadiosPanel` keys its
+content on the aircraft's identity (ICAO type, description, tail number), so a changed aircraft
+drops every draft and read-back sentence instead of carrying them onto radios they were never meant
+for.
+
+**Read-back.** `src/domain/panels/read-back.ts` holds `readBackVerdict`, the pure decision behind
+every write this panel makes: did X-Plane adopt the value, not merely accept the write (some add-ons
+accept a write and ignore it). The window (`READ_BACK_MS`, 3 s) counts from `OperationOutcome.at`,
+the moment X-Plane accepted the write, not from the pilot's press, so a slow request never eats into
+it. `useReadBack` (`src/features/panels/primitives/`, shared with the autopilot panel to come,
+F-20) turns that into one watch per target key, evaluated during render on the panel's 1 s clock
+rather than a timer of its own, so a sentence can appear 3–4 s after acceptance; each watch settles
+exactly once, so a value the pilot later changes by hand in the simulator can never produce a late
+"did not take" sentence.
+
+The panel switches to two columns, the keypad beside the radio stack, once its measured content
+width reaches `TWO_COLUMN_MIN_WIDTH` (720 dp); narrower, the keypad sits below the stack, so a phone
+in portrait or landscape is never asked to fit a readable frequency and a thumb-sized keypad side by
+side.
+
 ## Error model
 
 Everything that crosses into the application layer is an `AvionixError` with a stable `code`

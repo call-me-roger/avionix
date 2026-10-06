@@ -106,6 +106,33 @@ const INSTRUMENT_FAKE_DATAREFS: Record<string, FakeDataRef> = {
   [GENERIC_DATAREFS.barometer]: { id: 55, valueType: 'float', isWritable: true },
 };
 
+/**
+ * The radios and transponder (F-21, F-22), absent from `DEFAULT_FAKE_DATAREFS` for the same
+ * reason as `FLIGHT_DATA_FAKE_DATAREFS` and `INSTRUMENT_FAKE_DATAREFS`.
+ */
+const RADIO_FAKE_DATAREFS: Record<string, FakeDataRef> = {
+  [GENERIC_DATAREFS.com1Active]: { id: 60, valueType: 'int' },
+  [GENERIC_DATAREFS.com1Standby]: { id: 61, valueType: 'int', isWritable: true },
+  [GENERIC_DATAREFS.com2Active]: { id: 62, valueType: 'int' },
+  [GENERIC_DATAREFS.com2Standby]: { id: 63, valueType: 'int', isWritable: true },
+  [GENERIC_DATAREFS.nav1Active]: { id: 64, valueType: 'int' },
+  [GENERIC_DATAREFS.nav1Standby]: { id: 65, valueType: 'int', isWritable: true },
+  [GENERIC_DATAREFS.nav2Active]: { id: 66, valueType: 'int' },
+  [GENERIC_DATAREFS.nav2Standby]: { id: 67, valueType: 'int', isWritable: true },
+  [GENERIC_DATAREFS.nav1Course]: { id: 68, valueType: 'float', isWritable: true },
+  [GENERIC_DATAREFS.nav2Course]: { id: 69, valueType: 'float', isWritable: true },
+  [GENERIC_DATAREFS.nav1Id]: { id: 70, valueType: 'data', value: base64('IBOS') },
+  [GENERIC_DATAREFS.nav2Id]: { id: 71, valueType: 'data', value: base64('') },
+  [GENERIC_DATAREFS.nav1HasDme]: { id: 72, valueType: 'int' },
+  [GENERIC_DATAREFS.nav2HasDme]: { id: 73, valueType: 'int' },
+  [GENERIC_DATAREFS.nav1Dme]: { id: 74, valueType: 'float' },
+  [GENERIC_DATAREFS.nav2Dme]: { id: 75, valueType: 'float' },
+  [GENERIC_DATAREFS.transponderCode]: { id: 76, valueType: 'int', isWritable: true },
+  [GENERIC_DATAREFS.transponderMode]: { id: 77, valueType: 'int', isWritable: true },
+  [GENERIC_DATAREFS.transponderIdenting]: { id: 78, valueType: 'int' },
+  [GENERIC_DATAREFS.atcAssignedCode]: { id: 79, valueType: 'int' },
+};
+
 class FakeClient implements SimulatorClient {
   updateListeners = new Set<(updates: DataRefUpdate[]) => void>();
   closeListeners = new Set<(info: SocketCloseInfo) => void>();
@@ -135,7 +162,7 @@ class FakeClient implements SimulatorClient {
   });
 
   findCommand = jest.fn(async (name: string) =>
-    name === GENERIC_COMMANDS.headingUp && name !== this.missingCommand
+    (Object.values(GENERIC_COMMANDS) as string[]).includes(name) && name !== this.missingCommand
       ? { id: 9, name, description: 'up' }
       : null,
   );
@@ -1703,6 +1730,7 @@ describe('aircraft compatibility', () => {
       ...client.dataRefs,
       ...FLIGHT_DATA_FAKE_DATAREFS,
       ...INSTRUMENT_FAKE_DATAREFS,
+      ...RADIO_FAKE_DATAREFS,
     };
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
@@ -2012,7 +2040,9 @@ describe('aircraft changes', () => {
     await flush();
     expect(scheduler.queue.filter((entry) => !entry.cancelled)).toHaveLength(1);
     await scheduler.runNext();
-    expect(client.findCommand.mock.calls.length).toBe(before + 1);
+    // One re-check pass probes every command binding in the profile: headingUp plus the five
+    // radio and transponder commands added in 1.3.0.
+    expect(client.findCommand.mock.calls.length).toBe(before + 6);
   });
 
   it('ignores an update that repeats the identification already on record', async () => {

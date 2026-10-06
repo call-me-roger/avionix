@@ -289,3 +289,70 @@ describe('MockXPlaneServer', () => {
     }
   });
 });
+
+async function activate(server: MockXPlaneServer, id: number): Promise<void> {
+  await fetch(`http://${server.host}:${server.port}/api/v3/command/${id}/activate`, {
+    method: 'POST',
+    body: JSON.stringify({ duration: 0 }),
+  });
+}
+
+async function writeValue(server: MockXPlaneServer, name: string, value: number): Promise<void> {
+  const id = server.getDataRefByName(name)?.id;
+  await fetch(`http://${server.host}:${server.port}/api/v3/datarefs/${id}/value`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data: value }),
+  });
+}
+
+describe('radios and transponder in the mock', () => {
+  it('swaps a radio’s active and standby on its flip command', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      const flip = server.commandIdByName('sim/radios/com1_standy_flip');
+      await activate(server, flip);
+      expect(
+        server.getDataRefByName('sim/cockpit2/radios/actuators/com1_frequency_hz_833')?.value,
+      ).toBe(118_005);
+      expect(
+        server.getDataRefByName('sim/cockpit2/radios/actuators/com1_standby_frequency_hz_833')
+          ?.value,
+      ).toBe(121_500);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('idents on the IDENT command', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      await activate(server, server.commandIdByName('sim/transponder/transponder_ident'));
+      expect(server.getDataRefByName('sim/cockpit2/radios/indicators/transponder_id')?.value).toBe(
+        1,
+      );
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('accepts and ignores a write to a name it was told to ignore', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      const name = 'sim/cockpit2/radios/actuators/transponder_code';
+      server.ignoreWritesTo(name);
+      await writeValue(server, name, 4521);
+      expect(server.getDataRefByName(name)?.value).toBe(1200);
+      expect(server.writes.length).toBe(1);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('forgets a removed command', async () => {
+    const server = await MockXPlaneServer.start();
+    server.removeCommand('sim/radios/nav2_standy_flip');
+    expect(() => server.commandIdByName('sim/radios/nav2_standy_flip')).toThrow();
+    await server.stop();
+  });
+});

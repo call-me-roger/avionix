@@ -14,7 +14,11 @@ import {
   GENERIC_PROFILE,
 } from '@/domain/aircraft/profiles/generic';
 import { explainFailure } from '@/domain/health/failure-explanation';
-import { ControlButton, REFUSAL_LABEL } from '@/features/panels/primitives/ControlButton';
+import {
+  ControlButton,
+  OperationNotice,
+  REFUSAL_LABEL,
+} from '@/features/panels/primitives/ControlButton';
 import type { PanelActions } from '@/features/panels/primitives/PanelContext';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { Readout } from '@/features/panels/primitives/Readout';
@@ -370,6 +374,39 @@ describe('ControlButton', () => {
       />,
     );
     expect(screen.getByText(REFUSAL_LABEL.notConnected)).toBeTruthy();
+  });
+
+  it('marks a selected control for sight and for screen readers', async () => {
+    await renderInFrame(
+      live(),
+      <ControlButton
+        label="ALT"
+        featureId={FEATURE_HEADING_CONTROL}
+        target="t"
+        selected
+        onPress={() => undefined}
+      />,
+    );
+    const button = screen.getByRole('button', { name: 'ALT' });
+    expect(button.props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByText('● ALT')).toBeTruthy();
+  });
+
+  it('prints a quiet control’s failure once through OperationNotice', async () => {
+    await renderInFrame(
+      live({ operations: { t: failed({ refusal: 'notConnected' }) } }),
+      <>
+        <ControlButton
+          label="A"
+          featureId={FEATURE_HEADING_CONTROL}
+          target="t"
+          quiet
+          onPress={() => undefined}
+        />
+        <OperationNotice target="t" />
+      </>,
+    );
+    expect(screen.getAllByText('Not sent: Avionix is not connected to X-Plane.')).toHaveLength(1);
   });
 
   describe('confirmation', () => {
