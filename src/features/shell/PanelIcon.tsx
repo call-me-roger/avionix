@@ -77,6 +77,20 @@ function renderGlyph(id: string, color: string): React.ReactNode {
           </SvgText>
         </>
       );
+    case 'navigation':
+      return (
+        <>
+          <Circle cx={12} cy={12} r={9} stroke={color} strokeWidth={2} fill="none" />
+          {/* Four ticks, one per cardinal point on the compass rose. */}
+          <Line x1={12} y1={3} x2={12} y2={5.5} stroke={color} strokeWidth={2} />
+          <Line x1={12} y1={18.5} x2={12} y2={21} stroke={color} strokeWidth={2} />
+          <Line x1={3} y1={12} x2={5.5} y2={12} stroke={color} strokeWidth={2} />
+          <Line x1={18.5} y1={12} x2={21} y2={12} stroke={color} strokeWidth={2} />
+          {/* A course arrow through the centre, pointing north. */}
+          <Polygon points="12,5 9.5,12 12,10 14.5,12" fill={color} />
+          <Line x1={12} y1={10} x2={12} y2={18} stroke={color} strokeWidth={2} />
+        </>
+      );
     case 'flight-data':
       return (
         <>

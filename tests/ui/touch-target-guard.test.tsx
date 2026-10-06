@@ -202,6 +202,30 @@ describe('touch targets on the Autopilot panel with an entry open', () => {
   });
 });
 
+describe('touch targets on the Navigation panel with the course pad open', () => {
+  it('every control, including the keypad and the steppers, is at least 48 dp', async () => {
+    mockLayout = { deviceClass: 'phone', orientation: 'portrait' };
+    const { services } = makeServices(liveSnapshot(), await seeded('navigation'));
+    await render(tree(services));
+    await screen.findByTestId('panel-navigation');
+    await fireEvent.press(screen.getByLabelText('Enter course'));
+    const targets = panelTargets();
+    expect(targets.length).toBeGreaterThan(0);
+    for (const target of targets) {
+      const style = StyleSheet.flatten(target.props.style) ?? {};
+      const label = String(target.props.accessibilityLabel ?? target.props.testID ?? 'unlabelled');
+      expect({ label, minHeight: Number(style.minHeight ?? style.height ?? 0) >= 48 }).toEqual({
+        label,
+        minHeight: true,
+      });
+      expect({ label, minWidth: Number(style.minWidth ?? style.width ?? 0) >= 48 }).toEqual({
+        label,
+        minWidth: true,
+      });
+    }
+  });
+});
+
 /**
  * The GMC-507 wide layout (720 dp and up) packs the controller's lateral, engage and vertical
  * groups into one row instead of three stacked ones; this covers it separately from the phone

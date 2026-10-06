@@ -20,6 +20,7 @@ import {
 import type { DeviceLayout } from '@/domain/panels/device-layout';
 import { EVERYWHERE } from '@/domain/panels/panel';
 import { AUTOPILOT_PANEL } from '@/features/panels/autopilot/autopilot';
+import { NAVIGATION_PANEL } from '@/features/panels/navigation/NavigationPanel';
 import { PANELS, type RegisteredPanel } from '@/features/panels/registry';
 import { AppShell } from '@/features/shell/AppShell';
 import { silentLogger } from '@/infrastructure/logging/logger';
@@ -116,6 +117,7 @@ describe('AppShell', () => {
       'Instruments',
       'Radios',
       'Autopilot',
+      'Navigation',
       'Flight data',
       'Setup',
     ]);
@@ -194,6 +196,10 @@ describe('AppShell', () => {
     expect(session.setDemand).toHaveBeenLastCalledWith(
       [...new Set([FEATURE_FLIGHT_DATA, ...AUTOPILOT_PANEL.features])].sort(),
     );
+    await fireEvent.press(screen.getByRole('tab', { name: 'Navigation' }));
+    expect(session.setDemand).toHaveBeenLastCalledWith(
+      [...new Set([FEATURE_FLIGHT_DATA, ...NAVIGATION_PANEL.features])].sort(),
+    );
   });
 
   it('opens Setup with diagnostics from the status bar on a panel', async () => {
@@ -216,9 +222,11 @@ describe('AppShell', () => {
       await screen.findByRole('switch', { name: 'Show Instruments in the switcher' }),
     );
     await fireEvent.press(screen.getByRole('switch', { name: 'Show Radios in the switcher' }));
+    await fireEvent.press(screen.getByRole('switch', { name: 'Show Navigation in the switcher' }));
     await fireEvent.press(screen.getByRole('switch', { name: 'Show Flight data in the switcher' }));
     expect(screen.queryByRole('tab', { name: 'Instruments' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Radios' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Navigation' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Flight data' })).toBeNull();
     const lastOne = screen.getByRole('switch', { name: 'Show Autopilot in the switcher' });
     expect(lastOne).toBeDisabled();
