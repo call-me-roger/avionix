@@ -27,7 +27,7 @@ function decodeBase64(text: string): Uint8Array | null {
 }
 
 /** Decodes UTF-8, substituting U+FFFD for a malformed sequence rather than throwing. */
-function decodeUtf8(bytes: Uint8Array): string {
+export function decodeUtf8Bytes(bytes: Uint8Array): string {
   let text = '';
   let index = 0;
   while (index < bytes.length) {
@@ -75,6 +75,20 @@ function decodeUtf8(bytes: Uint8Array): string {
 }
 
 /**
+ * The raw bytes of a byte-array DataRef (F-32). Unlike `decodeDataRefString`, a zero byte does not
+ * end the value: the CDU's style bytes use 0 as an ordinary value.
+ */
+export function decodeDataRefBytes(value: DataRefValue | undefined): Uint8Array | null {
+  if (typeof value === 'string') {
+    return decodeBase64(value);
+  }
+  if (Array.isArray(value)) {
+    return Uint8Array.from(value, (byte) => byte & 0xff);
+  }
+  return null;
+}
+
+/**
  * Reads a `data`-typed DataRef as text. X-Plane base64-encodes these and pads them with NUL to the
  * DataRef's declared length. Decoding is driven by the descriptor's `valueType`, never guessed
  * from the shape of the value: a float that happens to arrive as a string must not be read as
@@ -92,6 +106,6 @@ export function decodeDataRefString(
     return null;
   }
   const end = bytes.indexOf(0);
-  const text = decodeUtf8(end === -1 ? bytes : bytes.subarray(0, end)).trim();
+  const text = decodeUtf8Bytes(end === -1 ? bytes : bytes.subarray(0, end)).trim();
   return text === '' ? null : text;
 }
