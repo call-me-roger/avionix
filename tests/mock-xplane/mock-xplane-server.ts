@@ -363,6 +363,114 @@ export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
   { id: 1073, name: 'sim/cockpit2/autopilot/altitude_hold_status', valueType: 'int', value: 0 },
   { id: 1074, name: 'sim/cockpit2/autopilot/vvi_status', valueType: 'int', value: 0 },
   { id: 1075, name: 'sim/cockpit2/autopilot/speed_status', valueType: 'int', value: 0 },
+  // F-30: HSI source (0 NAV1, 1 NAV2, 2 GPS1, 3 GPS2) and course, an ILS with the needle centred
+  // and TO, and a NAV1 DME.
+  {
+    id: 1076,
+    name: 'sim/cockpit2/radios/actuators/HSI_source_select_pilot',
+    valueType: 'int',
+    value: 0,
+    writable: true,
+  },
+  {
+    id: 1077,
+    name: 'sim/cockpit2/radios/actuators/hsi_obs_deg_mag_pilot',
+    valueType: 'float',
+    value: 270,
+    writable: true,
+  },
+  {
+    id: 1078,
+    name: 'sim/cockpit2/radios/indicators/hsi_hdef_dots_pilot',
+    valueType: 'float',
+    value: 0.8,
+  },
+  {
+    id: 1079,
+    name: 'sim/cockpit2/radios/indicators/hsi_vdef_dots_pilot',
+    valueType: 'float',
+    value: 0,
+  },
+  {
+    id: 1080,
+    name: 'sim/cockpit2/radios/indicators/hsi_flag_from_to_pilot',
+    valueType: 'int',
+    value: 1,
+  },
+  {
+    id: 1081,
+    name: 'sim/cockpit2/radios/indicators/hsi_display_horizontal_pilot',
+    valueType: 'int',
+    value: 1,
+  },
+  {
+    id: 1082,
+    name: 'sim/cockpit2/radios/indicators/hsi_display_vertical_pilot',
+    valueType: 'int',
+    value: 0,
+  },
+  {
+    id: 1083,
+    name: 'sim/cockpit2/radios/indicators/hsi_flag_glideslope_pilot',
+    valueType: 'int',
+    value: 0,
+  },
+  {
+    id: 1084,
+    name: 'sim/cockpit2/radios/indicators/hsi_has_dme_pilot',
+    valueType: 'int',
+    value: 1,
+  },
+  {
+    id: 1085,
+    name: 'sim/cockpit2/radios/indicators/hsi_dme_distance_nm_pilot',
+    valueType: 'float',
+    value: 12.4,
+  },
+  {
+    id: 1086,
+    name: 'sim/cockpit2/radios/indicators/hsi_dme_speed_kts_pilot',
+    valueType: 'float',
+    value: 110,
+  },
+  {
+    id: 1087,
+    name: 'sim/cockpit2/radios/indicators/hsi_dme_time_min_pilot',
+    valueType: 'float',
+    value: 7,
+  },
+  {
+    id: 1088,
+    name: 'sim/cockpit2/radios/indicators/nav1_bearing_deg_mag',
+    valueType: 'float',
+    value: 268,
+  },
+  {
+    id: 1089,
+    name: 'sim/cockpit2/radios/indicators/nav2_bearing_deg_mag',
+    valueType: 'float',
+    value: 95,
+  },
+  {
+    id: 1090,
+    name: 'sim/cockpit2/radios/indicators/nav1_display_horizontal',
+    valueType: 'int',
+    value: 1,
+  },
+  {
+    id: 1091,
+    name: 'sim/cockpit2/radios/indicators/nav2_display_horizontal',
+    valueType: 'int',
+    value: 0,
+  },
+  { id: 1092, name: 'sim/cockpit2/radios/indicators/outer_marker_lit', valueType: 'int', value: 0 },
+  {
+    id: 1093,
+    name: 'sim/cockpit2/radios/indicators/middle_marker_lit',
+    valueType: 'int',
+    value: 0,
+  },
+  { id: 1094, name: 'sim/cockpit2/radios/indicators/inner_marker_lit', valueType: 'int', value: 0 },
 ];
 
 export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [
@@ -388,6 +496,7 @@ export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [
   { id: 2020, name: 'sim/autopilot/altitude_hold', description: 'Altitude hold.' },
   { id: 2021, name: 'sim/autopilot/vertical_speed', description: 'Vertical speed.' },
   { id: 2022, name: 'sim/autopilot/level_change', description: 'Level change.' },
+  { id: 2023, name: 'sim/radios/obs_HSI_direct', description: 'HSI course direct-to.' },
 ];
 
 interface JsonError {
@@ -851,7 +960,24 @@ export class MockXPlaneServer {
     if (Array.isArray(dataRef.value) !== Array.isArray(value)) {
       this.fail(400, 'incompatible_data', 'Provided data does not match the dataref shape');
     }
-    dataRef.value = value;
+    dataRef.value = this.normalizeWrite(dataRef.name, value);
+  }
+
+  /**
+   * F-30: the HSI course wraps to [0, 360), the way X-Plane's own OBS knob does; the HSI source
+   * clamps to 0–3 (NAV1, NAV2, GPS1, GPS2), the only values X-Plane accepts for it.
+   */
+  private normalizeWrite(name: string, value: DataRefValue): DataRefValue {
+    if (typeof value !== 'number') {
+      return value;
+    }
+    if (name === 'sim/cockpit2/radios/actuators/hsi_obs_deg_mag_pilot') {
+      return ((value % 360) + 360) % 360;
+    }
+    if (name === 'sim/cockpit2/radios/actuators/HSI_source_select_pilot') {
+      return Math.min(3, Math.max(0, value));
+    }
+    return value;
   }
 
   private applyCommand(id: number): void {
@@ -958,6 +1084,13 @@ export class MockXPlaneServer {
         break;
       case 'sim/autopilot/level_change':
         toggle(`${AP}speed_status`, 2);
+        break;
+      case 'sim/radios/obs_HSI_direct':
+        set(
+          'sim/cockpit2/radios/actuators/hsi_obs_deg_mag_pilot',
+          Math.round(read('sim/cockpit2/radios/indicators/nav1_bearing_deg_mag')) % 360,
+        );
+        set('sim/cockpit2/radios/indicators/hsi_hdef_dots_pilot', 0);
         break;
       default:
         break;

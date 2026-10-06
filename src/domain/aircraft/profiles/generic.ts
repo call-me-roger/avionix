@@ -77,6 +77,25 @@ export const GENERIC_DATAREFS = {
   altitudeStatus: 'sim/cockpit2/autopilot/altitude_hold_status',
   verticalSpeedStatus: 'sim/cockpit2/autopilot/vvi_status',
   speedStatus: 'sim/cockpit2/autopilot/speed_status',
+  hsiSource: 'sim/cockpit2/radios/actuators/HSI_source_select_pilot',
+  hsiCourse: 'sim/cockpit2/radios/actuators/hsi_obs_deg_mag_pilot',
+  hsiHdef: 'sim/cockpit2/radios/indicators/hsi_hdef_dots_pilot',
+  hsiVdef: 'sim/cockpit2/radios/indicators/hsi_vdef_dots_pilot',
+  hsiFromTo: 'sim/cockpit2/radios/indicators/hsi_flag_from_to_pilot',
+  hsiHorizontal: 'sim/cockpit2/radios/indicators/hsi_display_horizontal_pilot',
+  hsiVertical: 'sim/cockpit2/radios/indicators/hsi_display_vertical_pilot',
+  hsiGsFlag: 'sim/cockpit2/radios/indicators/hsi_flag_glideslope_pilot',
+  hsiHasDme: 'sim/cockpit2/radios/indicators/hsi_has_dme_pilot',
+  hsiDmeDistance: 'sim/cockpit2/radios/indicators/hsi_dme_distance_nm_pilot',
+  hsiDmeSpeed: 'sim/cockpit2/radios/indicators/hsi_dme_speed_kts_pilot',
+  hsiDmeTime: 'sim/cockpit2/radios/indicators/hsi_dme_time_min_pilot',
+  nav1Bearing: 'sim/cockpit2/radios/indicators/nav1_bearing_deg_mag',
+  nav2Bearing: 'sim/cockpit2/radios/indicators/nav2_bearing_deg_mag',
+  nav1Signal: 'sim/cockpit2/radios/indicators/nav1_display_horizontal',
+  nav2Signal: 'sim/cockpit2/radios/indicators/nav2_display_horizontal',
+  outerMarker: 'sim/cockpit2/radios/indicators/outer_marker_lit',
+  middleMarker: 'sim/cockpit2/radios/indicators/middle_marker_lit',
+  innerMarker: 'sim/cockpit2/radios/indicators/inner_marker_lit',
 } as const;
 
 export const GENERIC_COMMANDS = {
@@ -101,6 +120,7 @@ export const GENERIC_COMMANDS = {
   modeAltitude: 'sim/autopilot/altitude_hold',
   modeVerticalSpeed: 'sim/autopilot/vertical_speed',
   modeLevelChange: 'sim/autopilot/level_change',
+  hsiDirect: 'sim/radios/obs_HSI_direct',
 } as const;
 
 export const FEATURE_CONNECTION_HEALTH = 'connection-health';
@@ -129,6 +149,11 @@ export const FEATURE_MODE_APR = 'ap-mode-apr';
 export const FEATURE_MODE_ALT = 'ap-mode-alt';
 export const FEATURE_MODE_VS = 'ap-mode-vs';
 export const FEATURE_MODE_FLC = 'ap-mode-flc';
+export const FEATURE_NAV_DEVIATION = 'nav-deviation';
+export const FEATURE_NAV_GLIDESLOPE = 'nav-glideslope';
+export const FEATURE_NAV_SOURCE = 'nav-source';
+export const FEATURE_NAV_COURSE = 'nav-course';
+export const FEATURE_NAV_AIDS = 'nav-aids';
 
 const D = GENERIC_DATAREFS;
 const C = GENERIC_COMMANDS;
@@ -202,12 +227,18 @@ function modeFeature(
  * lacks costs only that radio or control, and the assigned code is optional because it exists
  * only from X-Plane 12.4.4. The autopilot (F-20) is one feature per control as well; mode and
  * engagement state come only from X-Plane's own status DataRefs, and the plugin override is read,
- * never written.
+ * never written. The five navigation features (F-30) split the HSI by what a miss should cost:
+ * the lateral and vertical deviation needles are each one feature with every binding required,
+ * because a half-drawn needle is worse than a hidden one; the source and course are their own
+ * features so a miss disables only the NAV unit's write, not the needles; course direct-to
+ * (`obs_HSI_direct`) is optional because CTR is simply disabled without it (no fallback write
+ * exists); and `nav-aids` bundles everything advisory — bearings, signal flags, DME and markers —
+ * with no binding required, so a miss drops only that one cue.
  */
 export const GENERIC_PROFILE: AircraftProfile = {
   id: 'avionix.generic',
   name: 'Generic X-Plane aircraft',
-  version: '1.4.0',
+  version: '1.5.0',
   match: { kind: 'generic' },
   features: [
     {
@@ -654,5 +685,97 @@ export const GENERIC_PROFILE: AircraftProfile = {
     modeFeature(FEATURE_MODE_ALT, 'ALT mode', D.altitudeStatus, C.modeAltitude),
     modeFeature(FEATURE_MODE_VS, 'VS mode', D.verticalSpeedStatus, C.modeVerticalSpeed),
     modeFeature(FEATURE_MODE_FLC, 'FLC mode', D.speedStatus, C.modeLevelChange),
+    {
+      id: FEATURE_NAV_DEVIATION,
+      label: 'Course deviation',
+      bindings: [
+        { kind: 'dataref', name: D.hsiHdef, required: true, purpose: 'Course deviation' },
+        { kind: 'dataref', name: D.hsiFromTo, required: true, purpose: 'To/from flag' },
+        {
+          kind: 'dataref',
+          name: D.hsiHorizontal,
+          required: true,
+          purpose: 'Course signal valid',
+        },
+      ],
+    },
+    {
+      id: FEATURE_NAV_GLIDESLOPE,
+      label: 'Glideslope',
+      bindings: [
+        { kind: 'dataref', name: D.hsiVdef, required: true, purpose: 'Glideslope deviation' },
+        {
+          kind: 'dataref',
+          name: D.hsiVertical,
+          required: true,
+          purpose: 'Glideslope signal valid',
+        },
+        { kind: 'dataref', name: D.hsiGsFlag, required: true, purpose: 'Glideslope flag' },
+      ],
+    },
+    {
+      id: FEATURE_NAV_SOURCE,
+      label: 'HSI source',
+      bindings: [
+        {
+          kind: 'dataref',
+          name: D.hsiSource,
+          required: true,
+          write: true,
+          purpose: 'HSI source, written when you choose one',
+        },
+      ],
+    },
+    {
+      id: FEATURE_NAV_COURSE,
+      label: 'HSI course',
+      bindings: [
+        {
+          kind: 'dataref',
+          name: D.hsiCourse,
+          required: true,
+          write: true,
+          purpose: 'HSI course, written when you set one',
+        },
+        {
+          kind: 'command',
+          name: C.hsiDirect,
+          required: false,
+          purpose: 'Course direct-to (CTR)',
+        },
+      ],
+    },
+    {
+      id: FEATURE_NAV_AIDS,
+      label: 'Navigation aids',
+      bindings: [
+        { kind: 'dataref', name: D.nav1Bearing, required: false, purpose: 'NAV1 bearing' },
+        { kind: 'dataref', name: D.nav2Bearing, required: false, purpose: 'NAV2 bearing' },
+        { kind: 'dataref', name: D.nav1Signal, required: false, purpose: 'NAV1 signal valid' },
+        { kind: 'dataref', name: D.nav2Signal, required: false, purpose: 'NAV2 signal valid' },
+        { kind: 'dataref', name: D.hsiHasDme, required: false, purpose: 'DME signal' },
+        { kind: 'dataref', name: D.hsiDmeDistance, required: false, purpose: 'DME distance' },
+        { kind: 'dataref', name: D.hsiDmeSpeed, required: false, purpose: 'DME ground speed' },
+        { kind: 'dataref', name: D.hsiDmeTime, required: false, purpose: 'DME time to station' },
+        {
+          kind: 'dataref',
+          name: D.outerMarker,
+          required: false,
+          purpose: 'Marker beacons (outer)',
+        },
+        {
+          kind: 'dataref',
+          name: D.middleMarker,
+          required: false,
+          purpose: 'Marker beacons (middle)',
+        },
+        {
+          kind: 'dataref',
+          name: D.innerMarker,
+          required: false,
+          purpose: 'Marker beacons (inner)',
+        },
+      ],
+    },
   ],
 };
