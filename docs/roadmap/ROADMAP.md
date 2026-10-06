@@ -96,6 +96,10 @@ aircraft-agnostic.
 | F-30 | HSI, CDI and navigation indicators | Needed to use the NAV radios for real | [F-30](features/F-30-hsi-cdi-indicators.md) |
 | F-32 | CDU remote for the default X-Plane FMS | The most requested remote panel; the default FMS is fully supported by the API | [F-32](features/F-32-default-fms-cdu.md) |
 
+Build order (decided 2026-10-06 from competitor prevalence and pilot value): F-30, F-32, F-24, F-12, F-23,
+then F-05 last so the demo covers every panel. Rationale in
+`docs/superpowers/specs/2026-10-06-hsi-cdi-design.md`.
+
 ### Stage 3 — Situational awareness and power users
 
 | ID | Feature | Why now | File |
