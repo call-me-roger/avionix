@@ -8,19 +8,31 @@ import {
 import { BUNDLED_PROFILES } from '@/domain/aircraft/profiles/catalog';
 import {
   FEATURE_ALTIMETER_SETTING,
+  FEATURE_AIRSPEED_SELECT,
+  FEATURE_ALTITUDE_SELECT,
+  FEATURE_AUTOPILOT,
+  FEATURE_AUTOTHROTTLE,
   FEATURE_COM1,
   FEATURE_COM2,
   FEATURE_CONNECTION_HEALTH,
   FEATURE_FLIGHT_DATA,
+  FEATURE_FLIGHT_DIRECTOR,
   FEATURE_FLIGHT_INSTRUMENTS,
   FEATURE_FLIGHT_TELEMETRY,
   FEATURE_GPS_DESTINATION,
   FEATURE_HEADING_CONTROL,
+  FEATURE_MODE_ALT,
+  FEATURE_MODE_APR,
+  FEATURE_MODE_FLC,
+  FEATURE_MODE_HDG,
+  FEATURE_MODE_NAV,
+  FEATURE_MODE_VS,
   FEATURE_NAV1,
   FEATURE_NAV2,
   FEATURE_TRANSPONDER_CODE,
   FEATURE_TRANSPONDER_IDENT,
   FEATURE_TRANSPONDER_MODE,
+  FEATURE_VERTICAL_SPEED_SELECT,
   GENERIC_COMMANDS,
   GENERIC_DATAREFS,
   GENERIC_PROFILE,
@@ -119,6 +131,38 @@ describe('profileBindings', () => {
       GENERIC_DATAREFS.transponderMode,
       GENERIC_COMMANDS.transponderIdent,
       GENERIC_DATAREFS.transponderIdenting,
+      GENERIC_DATAREFS.autopilotServos,
+      GENERIC_COMMANDS.autopilotEngage,
+      GENERIC_COMMANDS.autopilotDisconnect,
+      GENERIC_DATAREFS.autopilotOverride,
+      GENERIC_DATAREFS.rollStatus,
+      GENERIC_DATAREFS.pitchStatus,
+      GENERIC_DATAREFS.flightDirectorBars,
+      GENERIC_COMMANDS.flightDirectorOn,
+      GENERIC_COMMANDS.flightDirectorOff,
+      GENERIC_DATAREFS.autothrottle,
+      GENERIC_COMMANDS.autothrottleOn,
+      GENERIC_COMMANDS.autothrottleOff,
+      GENERIC_COMMANDS.autothrottleArm,
+      GENERIC_COMMANDS.autothrottleDisarm,
+      GENERIC_DATAREFS.altitudeDial,
+      GENERIC_DATAREFS.verticalSpeedDial,
+      GENERIC_DATAREFS.airspeedDial,
+      GENERIC_DATAREFS.airspeedIsMach,
+      GENERIC_COMMANDS.knotsMachToggle,
+      GENERIC_DATAREFS.headingStatus,
+      GENERIC_COMMANDS.modeHeading,
+      GENERIC_DATAREFS.navStatus,
+      GENERIC_COMMANDS.modeNav,
+      GENERIC_DATAREFS.approachStatus,
+      GENERIC_COMMANDS.modeApproach,
+      GENERIC_DATAREFS.glideslopeStatus,
+      GENERIC_DATAREFS.altitudeStatus,
+      GENERIC_COMMANDS.modeAltitude,
+      GENERIC_DATAREFS.verticalSpeedStatus,
+      GENERIC_COMMANDS.modeVerticalSpeed,
+      GENERIC_DATAREFS.speedStatus,
+      GENERIC_COMMANDS.modeLevelChange,
     ]);
   });
 });
@@ -163,6 +207,18 @@ describe('the generic profile', () => {
       FEATURE_TRANSPONDER_CODE,
       FEATURE_TRANSPONDER_MODE,
       FEATURE_TRANSPONDER_IDENT,
+      FEATURE_AUTOPILOT,
+      FEATURE_FLIGHT_DIRECTOR,
+      FEATURE_AUTOTHROTTLE,
+      FEATURE_ALTITUDE_SELECT,
+      FEATURE_VERTICAL_SPEED_SELECT,
+      FEATURE_AIRSPEED_SELECT,
+      FEATURE_MODE_HDG,
+      FEATURE_MODE_NAV,
+      FEATURE_MODE_APR,
+      FEATURE_MODE_ALT,
+      FEATURE_MODE_VS,
+      FEATURE_MODE_FLC,
     ]);
   });
 
@@ -208,11 +264,11 @@ describe('the generic profile', () => {
   });
 
   it('bumps the profile version for the new bindings', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.3.0');
+    expect(GENERIC_PROFILE.version).toBe('1.4.0');
   });
 
   it('declares the flight instruments, every one optional, and the altimeter setting', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.3.0');
+    expect(GENERIC_PROFILE.version).toBe('1.4.0');
     const instruments = findFeature(GENERIC_PROFILE, FEATURE_FLIGHT_INSTRUMENTS);
     expect(instruments?.label).toBe('Flight instruments');
     expect(instruments?.bindings.map((binding) => binding.name)).toEqual([
@@ -337,5 +393,60 @@ describe('the generic profile', () => {
     expect(GENERIC_COMMANDS.com1Flip).toBe('sim/radios/com1_standy_flip');
     expect(GENERIC_COMMANDS.nav2Flip).toBe('sim/radios/nav2_standy_flip');
     expect(GENERIC_COMMANDS.transponderIdent).toBe('sim/transponder/transponder_ident');
+  });
+});
+
+describe('the generic profile’s autopilot (F-20)', () => {
+  const bindingsOf = (id: string) =>
+    findFeature(GENERIC_PROFILE, id)?.bindings.map((binding) => [
+      binding.kind,
+      binding.name,
+      binding.required,
+      binding.write === true,
+    ]);
+
+  it('engages and disconnects by separate commands, and reads the override optionally', () => {
+    expect(bindingsOf(FEATURE_AUTOPILOT)).toEqual([
+      ['dataref', 'sim/cockpit2/autopilot/servos_on', true, false],
+      ['command', 'sim/autopilot/servos_on', true, false],
+      ['command', 'sim/autopilot/servos_off_any', true, false],
+      ['dataref', 'sim/operation/override/override_autopilot', false, false],
+      ['dataref', 'sim/cockpit2/autopilot/roll_status', false, false],
+      ['dataref', 'sim/cockpit2/autopilot/pitch_status', false, false],
+    ]);
+  });
+
+  it('writes each selector, and reads the knots/Mach flag', () => {
+    expect(bindingsOf(FEATURE_ALTITUDE_SELECT)).toEqual([
+      ['dataref', 'sim/cockpit2/autopilot/altitude_dial_ft', true, true],
+    ]);
+    expect(bindingsOf(FEATURE_VERTICAL_SPEED_SELECT)).toEqual([
+      ['dataref', 'sim/cockpit2/autopilot/vvi_dial_fpm', true, true],
+    ]);
+    expect(bindingsOf(FEATURE_AIRSPEED_SELECT)).toEqual([
+      ['dataref', 'sim/cockpit2/autopilot/airspeed_dial_kts_mach', true, true],
+      ['dataref', 'sim/cockpit2/autopilot/airspeed_is_mach', true, false],
+      ['command', 'sim/autopilot/knots_mach_toggle', false, false],
+    ]);
+  });
+
+  it('gives each mode its status and its command, and the approach an optional glideslope', () => {
+    expect(bindingsOf(FEATURE_MODE_APR)).toEqual([
+      ['dataref', 'sim/cockpit2/autopilot/approach_status', true, false],
+      ['command', 'sim/autopilot/approach', true, false],
+      ['dataref', 'sim/cockpit2/autopilot/glideslope_status', false, false],
+    ]);
+    expect(bindingsOf(FEATURE_MODE_FLC)).toEqual([
+      ['dataref', 'sim/cockpit2/autopilot/speed_status', true, false],
+      ['command', 'sim/autopilot/level_change', true, false],
+    ]);
+  });
+
+  it('never declares a write to the override or the autopilot_state bit field', () => {
+    const written = GENERIC_PROFILE.features.flatMap((feature) =>
+      feature.bindings.filter((binding) => binding.write === true).map((binding) => binding.name),
+    );
+    expect(written).not.toContain('sim/operation/override/override_autopilot');
+    expect(written).not.toContain('sim/cockpit/autopilot/autopilot_state');
   });
 });

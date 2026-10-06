@@ -133,6 +133,30 @@ const RADIO_FAKE_DATAREFS: Record<string, FakeDataRef> = {
   [GENERIC_DATAREFS.atcAssignedCode]: { id: 79, valueType: 'int' },
 };
 
+/**
+ * The autopilot (F-20), absent from `DEFAULT_FAKE_DATAREFS` for the same reason as
+ * `FLIGHT_DATA_FAKE_DATAREFS`, `INSTRUMENT_FAKE_DATAREFS` and `RADIO_FAKE_DATAREFS`.
+ */
+const AUTOPILOT_FAKE_DATAREFS: Record<string, FakeDataRef> = {
+  [GENERIC_DATAREFS.autopilotServos]: { id: 80, valueType: 'int' },
+  [GENERIC_DATAREFS.autopilotOverride]: { id: 81, valueType: 'int' },
+  [GENERIC_DATAREFS.rollStatus]: { id: 82, valueType: 'int' },
+  [GENERIC_DATAREFS.pitchStatus]: { id: 83, valueType: 'int' },
+  [GENERIC_DATAREFS.flightDirectorBars]: { id: 84, valueType: 'int' },
+  [GENERIC_DATAREFS.autothrottle]: { id: 85, valueType: 'int' },
+  [GENERIC_DATAREFS.altitudeDial]: { id: 86, valueType: 'float', isWritable: true },
+  [GENERIC_DATAREFS.verticalSpeedDial]: { id: 87, valueType: 'float', isWritable: true },
+  [GENERIC_DATAREFS.airspeedDial]: { id: 88, valueType: 'float', isWritable: true },
+  [GENERIC_DATAREFS.airspeedIsMach]: { id: 89, valueType: 'int' },
+  [GENERIC_DATAREFS.headingStatus]: { id: 90, valueType: 'int' },
+  [GENERIC_DATAREFS.navStatus]: { id: 91, valueType: 'int' },
+  [GENERIC_DATAREFS.approachStatus]: { id: 92, valueType: 'int' },
+  [GENERIC_DATAREFS.glideslopeStatus]: { id: 93, valueType: 'int' },
+  [GENERIC_DATAREFS.altitudeStatus]: { id: 94, valueType: 'int' },
+  [GENERIC_DATAREFS.verticalSpeedStatus]: { id: 95, valueType: 'int' },
+  [GENERIC_DATAREFS.speedStatus]: { id: 96, valueType: 'int' },
+};
+
 class FakeClient implements SimulatorClient {
   updateListeners = new Set<(updates: DataRefUpdate[]) => void>();
   closeListeners = new Set<(info: SocketCloseInfo) => void>();
@@ -1731,6 +1755,7 @@ describe('aircraft compatibility', () => {
       ...FLIGHT_DATA_FAKE_DATAREFS,
       ...INSTRUMENT_FAKE_DATAREFS,
       ...RADIO_FAKE_DATAREFS,
+      ...AUTOPILOT_FAKE_DATAREFS,
     };
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
@@ -2040,9 +2065,9 @@ describe('aircraft changes', () => {
     await flush();
     expect(scheduler.queue.filter((entry) => !entry.cancelled)).toHaveLength(1);
     await scheduler.runNext();
-    // One re-check pass probes every command binding in the profile: headingUp plus the five
-    // radio and transponder commands added in 1.3.0.
-    expect(client.findCommand.mock.calls.length).toBe(before + 6);
+    // One re-check pass probes every command binding in the profile: headingUp, the five radio
+    // and transponder commands added in 1.3.0, and the fifteen autopilot commands added in 1.4.0.
+    expect(client.findCommand.mock.calls.length).toBe(before + 21);
   });
 
   it('ignores an update that repeats the identification already on record', async () => {

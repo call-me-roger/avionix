@@ -60,6 +60,23 @@ export const GENERIC_DATAREFS = {
   transponderMode: 'sim/cockpit2/radios/actuators/transponder_mode',
   transponderIdenting: 'sim/cockpit2/radios/indicators/transponder_id',
   atcAssignedCode: 'sim/atc/transponder_assigned',
+  autopilotServos: 'sim/cockpit2/autopilot/servos_on',
+  autopilotOverride: 'sim/operation/override/override_autopilot',
+  rollStatus: 'sim/cockpit2/autopilot/roll_status',
+  pitchStatus: 'sim/cockpit2/autopilot/pitch_status',
+  flightDirectorBars: 'sim/cockpit2/autopilot/flight_director_command_bars_pilot',
+  autothrottle: 'sim/cockpit2/autopilot/autothrottle_enabled',
+  altitudeDial: 'sim/cockpit2/autopilot/altitude_dial_ft',
+  verticalSpeedDial: 'sim/cockpit2/autopilot/vvi_dial_fpm',
+  airspeedDial: 'sim/cockpit2/autopilot/airspeed_dial_kts_mach',
+  airspeedIsMach: 'sim/cockpit2/autopilot/airspeed_is_mach',
+  headingStatus: 'sim/cockpit2/autopilot/heading_status',
+  navStatus: 'sim/cockpit2/autopilot/nav_status',
+  approachStatus: 'sim/cockpit2/autopilot/approach_status',
+  glideslopeStatus: 'sim/cockpit2/autopilot/glideslope_status',
+  altitudeStatus: 'sim/cockpit2/autopilot/altitude_hold_status',
+  verticalSpeedStatus: 'sim/cockpit2/autopilot/vvi_status',
+  speedStatus: 'sim/cockpit2/autopilot/speed_status',
 } as const;
 
 export const GENERIC_COMMANDS = {
@@ -69,6 +86,21 @@ export const GENERIC_COMMANDS = {
   nav1Flip: 'sim/radios/nav1_standy_flip',
   nav2Flip: 'sim/radios/nav2_standy_flip',
   transponderIdent: 'sim/transponder/transponder_ident',
+  autopilotEngage: 'sim/autopilot/servos_on',
+  autopilotDisconnect: 'sim/autopilot/servos_off_any',
+  flightDirectorOn: 'sim/autopilot/fdir_command_bars_on',
+  flightDirectorOff: 'sim/autopilot/fdir_command_bars_off',
+  autothrottleOn: 'sim/autopilot/autothrottle_on',
+  autothrottleOff: 'sim/autopilot/autothrottle_off',
+  autothrottleArm: 'sim/autopilot/autothrottle_arm',
+  autothrottleDisarm: 'sim/autopilot/autothrottle_hard_off',
+  knotsMachToggle: 'sim/autopilot/knots_mach_toggle',
+  modeHeading: 'sim/autopilot/heading',
+  modeNav: 'sim/autopilot/NAV',
+  modeApproach: 'sim/autopilot/approach',
+  modeAltitude: 'sim/autopilot/altitude_hold',
+  modeVerticalSpeed: 'sim/autopilot/vertical_speed',
+  modeLevelChange: 'sim/autopilot/level_change',
 } as const;
 
 export const FEATURE_CONNECTION_HEALTH = 'connection-health';
@@ -85,6 +117,18 @@ export const FEATURE_NAV2 = 'nav2';
 export const FEATURE_TRANSPONDER_CODE = 'transponder-code';
 export const FEATURE_TRANSPONDER_MODE = 'transponder-mode';
 export const FEATURE_TRANSPONDER_IDENT = 'transponder-ident';
+export const FEATURE_AUTOPILOT = 'autopilot-engage';
+export const FEATURE_FLIGHT_DIRECTOR = 'flight-director';
+export const FEATURE_AUTOTHROTTLE = 'autothrottle';
+export const FEATURE_ALTITUDE_SELECT = 'altitude-select';
+export const FEATURE_VERTICAL_SPEED_SELECT = 'vertical-speed-select';
+export const FEATURE_AIRSPEED_SELECT = 'airspeed-select';
+export const FEATURE_MODE_HDG = 'ap-mode-hdg';
+export const FEATURE_MODE_NAV = 'ap-mode-nav';
+export const FEATURE_MODE_APR = 'ap-mode-apr';
+export const FEATURE_MODE_ALT = 'ap-mode-alt';
+export const FEATURE_MODE_VS = 'ap-mode-vs';
+export const FEATURE_MODE_FLC = 'ap-mode-flc';
 
 const D = GENERIC_DATAREFS;
 const C = GENERIC_COMMANDS;
@@ -125,6 +169,25 @@ function navExtras(label: string, id: string, hasDme: string, dme: string, cours
   ] as const satisfies readonly BindingSpec[];
 }
 
+/** Keeps the six mode features identical in shape: X-Plane's status, then its own command. */
+function modeFeature(
+  id: string,
+  label: string,
+  status: string,
+  command: string,
+  extras: readonly BindingSpec[] = [],
+): FeatureSpec {
+  return {
+    id,
+    label,
+    bindings: [
+      { kind: 'dataref', name: status, required: true, purpose: `${label} state` },
+      { kind: 'command', name: command, required: true, purpose: `${label} button` },
+      ...extras,
+    ],
+  };
+}
+
 /**
  * The fallback for every aircraft, and the only profile Avionix ships today. Add-ons that reuse
  * Laminar names inherit it; one that renames a control needs a profile of its own (Stage 4).
@@ -137,12 +200,14 @@ function navExtras(label: string, id: string, hasDme: string, dme: string, cours
  * one binding is required and written, so a read-only resolution disables only its controls (R5).
  * The radios and transponder controls (F-21, F-22) are one feature each, so a name an aircraft
  * lacks costs only that radio or control, and the assigned code is optional because it exists
- * only from X-Plane 12.4.4.
+ * only from X-Plane 12.4.4. The autopilot (F-20) is one feature per control as well; mode and
+ * engagement state come only from X-Plane's own status DataRefs, and the plugin override is read,
+ * never written.
  */
 export const GENERIC_PROFILE: AircraftProfile = {
   id: 'avionix.generic',
   name: 'Generic X-Plane aircraft',
-  version: '1.3.0',
+  version: '1.4.0',
   match: { kind: 'generic' },
   features: [
     {
@@ -463,5 +528,131 @@ export const GENERIC_PROFILE: AircraftProfile = {
         },
       ],
     },
+    {
+      id: FEATURE_AUTOPILOT,
+      label: 'Autopilot',
+      bindings: [
+        { kind: 'dataref', name: D.autopilotServos, required: true, purpose: 'Autopilot engaged' },
+        { kind: 'command', name: C.autopilotEngage, required: true, purpose: 'Autopilot engage' },
+        {
+          kind: 'command',
+          name: C.autopilotDisconnect,
+          required: true,
+          purpose: 'Autopilot disconnect',
+        },
+        {
+          kind: 'dataref',
+          name: D.autopilotOverride,
+          required: false,
+          purpose: 'Whether another program is flying the autopilot',
+        },
+        { kind: 'dataref', name: D.rollStatus, required: false, purpose: 'Roll hold state' },
+        { kind: 'dataref', name: D.pitchStatus, required: false, purpose: 'Pitch hold state' },
+      ],
+    },
+    {
+      id: FEATURE_FLIGHT_DIRECTOR,
+      label: 'Flight director',
+      bindings: [
+        {
+          kind: 'dataref',
+          name: D.flightDirectorBars,
+          required: true,
+          purpose: 'Flight director on or off',
+        },
+        {
+          kind: 'command',
+          name: C.flightDirectorOn,
+          required: true,
+          purpose: 'Flight director on',
+        },
+        {
+          kind: 'command',
+          name: C.flightDirectorOff,
+          required: true,
+          purpose: 'Flight director off',
+        },
+      ],
+    },
+    {
+      id: FEATURE_AUTOTHROTTLE,
+      label: 'Autothrottle',
+      bindings: [
+        { kind: 'dataref', name: D.autothrottle, required: true, purpose: 'Autothrottle state' },
+        { kind: 'command', name: C.autothrottleOn, required: true, purpose: 'Autothrottle engage' },
+        {
+          kind: 'command',
+          name: C.autothrottleOff,
+          required: true,
+          purpose: 'Autothrottle disengage',
+        },
+        { kind: 'command', name: C.autothrottleArm, required: true, purpose: 'Autothrottle arm' },
+        {
+          kind: 'command',
+          name: C.autothrottleDisarm,
+          required: true,
+          purpose: 'Autothrottle disarm',
+        },
+      ],
+    },
+    {
+      id: FEATURE_ALTITUDE_SELECT,
+      label: 'Altitude selector',
+      bindings: [
+        {
+          kind: 'dataref',
+          name: D.altitudeDial,
+          required: true,
+          write: true,
+          purpose: 'Selected altitude, written when you set one',
+        },
+      ],
+    },
+    {
+      id: FEATURE_VERTICAL_SPEED_SELECT,
+      label: 'Vertical speed selector',
+      bindings: [
+        {
+          kind: 'dataref',
+          name: D.verticalSpeedDial,
+          required: true,
+          write: true,
+          purpose: 'Selected vertical speed, written when you set one',
+        },
+      ],
+    },
+    {
+      id: FEATURE_AIRSPEED_SELECT,
+      label: 'Airspeed selector',
+      bindings: [
+        {
+          kind: 'dataref',
+          name: D.airspeedDial,
+          required: true,
+          write: true,
+          purpose: 'Selected airspeed, written when you set one',
+        },
+        {
+          kind: 'dataref',
+          name: D.airspeedIsMach,
+          required: true,
+          purpose: 'Whether the selected airspeed is in knots or Mach',
+        },
+        {
+          kind: 'command',
+          name: C.knotsMachToggle,
+          required: false,
+          purpose: 'Knots and Mach switch',
+        },
+      ],
+    },
+    modeFeature(FEATURE_MODE_HDG, 'HDG mode', D.headingStatus, C.modeHeading),
+    modeFeature(FEATURE_MODE_NAV, 'NAV mode', D.navStatus, C.modeNav),
+    modeFeature(FEATURE_MODE_APR, 'APR mode', D.approachStatus, C.modeApproach, [
+      { kind: 'dataref', name: D.glideslopeStatus, required: false, purpose: 'Glideslope state' },
+    ]),
+    modeFeature(FEATURE_MODE_ALT, 'ALT mode', D.altitudeStatus, C.modeAltitude),
+    modeFeature(FEATURE_MODE_VS, 'VS mode', D.verticalSpeedStatus, C.modeVerticalSpeed),
+    modeFeature(FEATURE_MODE_FLC, 'FLC mode', D.speedStatus, C.modeLevelChange),
   ],
 };
