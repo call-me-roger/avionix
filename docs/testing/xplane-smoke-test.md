@@ -121,6 +121,21 @@ Record results at the bottom.
 | 92 | C172: tap A/T | "… This aircraft may not have one." appears; note what `autothrottle_enabled` reports | |
 | 93 | Airliner: Use Mach, then Mach +.01 | Selector shows M .xx and steps by .01 | |
 | 94 | Smallest phone, portrait and landscape; a tablet in landscape | Steppers wrap without clipping; the keypad opens under the selector being typed | |
+| 95 | Open any panel on iOS and Android and read a frequency, a squawk, a PFD number and a key legend | All cockpit numbers and legends render in B612 or B612 Mono, not the system font; nothing logs an unrecognized font | |
+| 96 | Install the new development build, leave "Haptic feedback" On in Setup → Display, press a key, then make a change X-Plane refuses (for example tune COM1 standby to 118.020) | A light tick on the key press; an error buzz when the change is refused. Turn "Haptic feedback" Off and repeat: nothing | |
+| 97 | On an existing development build made before this change (no `expo-haptics`), open the app and press keys | The app works normally: no crash, no error, no haptic feedback | |
+| 98 | Open Radios | ACT windows read green; STBY windows show a cyan tuning frame; ⇄ swaps active and standby; ident, DME and course read in cyan | |
+| 99 | Open the transponder, cycle the mode keys, then squawk 7700 | The mode light bar follows X-Plane's own mode; 7700 shows the code and "EMERG" in red | |
+| 100 | Tune a VOR into NAV1, arm NAV, then engage HDG | HDG's light bar is filled (engaged); NAV's light bar is hollow (armed) until it captures, then filled; an unused mode key stays unlit | |
+| 101 | Engage HDG, then switch to NAV | The lateral column boxes NAV for about 10 s after it becomes active, then the box disappears; HDG's earlier box is long gone | |
+| 102 | Disconnect the autopilot from the yoke's AP disconnect button in X-Plane | The FMA's "AP" slot turns amber reverse video and flashes for 5 s, with one error buzz; tapping the FMA clears it early. Turn on iOS Reduce Motion and repeat: "AP" shows steady, not flashing | |
+| 103 | Turn X-Plane's ALT knob and HDG knob, then engage FLC and VS | The cyan altitude box and bug follow the ALT knob; the heading bug and HDG box follow the HDG knob; the speed box appears with FLC; the VS bug appears with VS | |
+| 104 | On the six-pack, turn the HDG knob | The orange heading bug on the directional gyro follows it | |
+| 105 | Watch the status bar while live, then while reconnecting, then disconnected | A filled green dot while live; a hollow amber ring while reconnecting (pause X-Plane's network or stop the connector); a red ✕ when disconnected; the age shows only when not live | |
+| 106 | Walk through Setup from a fresh pairing | The four-step row advances Find → Connect → Pair → Live as each happens; the pairing-code boxes fill in as the code is typed | |
+| 107 | Switch to the Night theme in a dark room | Nothing on any new surface glows; light bars, FMA text and display windows are all dim amber, green or cyan, never full brightness | |
+| 108 | On the smallest phone available, in portrait, engage VS with a steep rate (for example −1500 fpm) so the FMA shows "VS −1500FPM" | The whole string stays on one line in its column, shrinking to fit rather than wrapping or clipping | |
+| 109 | Time the AP disconnect's amber flash with a stopwatch or a slow-motion screen recording, on both iOS and Android | The flash cycles at about 2 Hz (on, then off, about every 250 ms each) | |
 
 Rows 44 and 45 verify the keep-awake hold, and row 53 the safe areas: behaviour no automated test
 can observe.

@@ -8,7 +8,7 @@
 | Infrastructure | `src/infrastructure` | domain | zod schemas and mappers for X-Plane payloads, `HttpTransport`, `WebSocketTransport` + `RequestManager`, `XPlaneClient`, `ConnectorClient`, logging, AsyncStorage adapter, `ZeroconfServiceBrowser` and the null browser |
 | Application | `src/application` | domain, infrastructure | `SimulatorSession` (connect flow, diagnostics, telemetry, reconnect), `PairingTokenStore`, `Store`, snapshot types, settings, `ConnectorDiscovery`, `panel-layout`, `subscription-demand` |
 | UI | `src/app`, `src/hooks`, `src/features` | application | composition root, React context, hooks, plain React Native components |
-| Platform | `src/platform` | infrastructure | the only platform-specific code: the web connection default, the `ServiceBrowser` factory (`service-browser.ts` for native, `service-browser.web.ts` for the web) and the keep-awake wrapper |
+| Platform | `src/platform` | infrastructure | the only platform-specific code: the web connection default, the `ServiceBrowser` factory (`service-browser.ts` for native, `service-browser.web.ts` for the web), the keep-awake wrapper and the haptics adapter (`haptics.ts` for native, `haptics.web.ts` for the web) |
 
 Dependencies point downwards only. `src/domain` and `src/application` never import React or
 React Native; `tests/unit` and `tests/integration` run them in plain Node.
@@ -284,6 +284,19 @@ it so the same sentence is not repeated under every button.
 as received, never interpolated between samples or extrapolated past the last one, so a needle can
 never keep moving on a dead link (R2, R7).
 
+**Autopilot targets on the PFD.** The Instruments panel descriptor now also declares the
+autopilot's selectors, its six mode features and AP, flight director and autothrottle, so the shell's
+demand subscribes to them while Instruments is on screen; a feature an aircraft lacks just leaves
+its cue off the PFD; the panel never becomes unavailable for want of an autopilot.
+`src/domain/instruments/bugs.ts` is the pure geometry behind the cyan target bugs: `tapeBug` parks
+an off-scale altitude or speed bug half under the selected-value box at the top of its tape and
+half off the tape's bottom edge below, rather than fully inside where it would read as on-scale;
+`headingDelta` is the signed short way around the compass, so the heading bug wraps correctly
+through 360/0. `PfdView` renders the same `Fma` strip, in its `compact` form, above the tapes
+whenever any autopilot feature is available, and `pfdWidth` takes `FMA_HEIGHT` out of its height
+share so the whole PFD shrinks to keep the FMA inside the panel's height budget instead of crowding
+out the altimeter controls.
+
 ## Radios and transponder
 
 `src/features/panels/radios/` is the Radios panel (F-21, F-22): COM1, COM2, NAV1 and NAV2, each a
@@ -391,6 +404,31 @@ switcher, after Radios. `RETIRED_PANEL_IDS` (`src/application/panel-layout.ts`) 
 `autopilot` before unknown ids are dropped, the same rule that retired Basic data into Flight data,
 so a pilot who last had Heading open reopens on Autopilot instead of Setup.
 
+**The FMA.** `src/domain/autopilot/fma.ts` is a pure domain module, with no React and no simulator
+types, that both the Autopilot panel and the PFD render through one shared component,
+`src/features/panels/autopilot/Fma.tsx`. `fmaColumns(input)` reduces the same `*_status` DataRefs
+`modes.ts` already reads (plus `autothrottle_enabled`, `servos_on` and
+`flight_director_command_bars_pilot`) into the four-column shape `Fma` draws — autothrottle,
+lateral, AP/FD and vertical, each engaged over armed — reusing the `LATERAL`, `VERTICAL` and
+`ARMABLE` precedence tables `modes.ts` exports. The vertical column's reference text comes from the
+same selector dials the panel already shows: `VS 500FPM` from `vvi_dial_fpm` rounded to 100 and
+signed for a descent, or `FLC 120KT` / `FLC M.78` from the airspeed dial. A column shows "—" only
+when there is no mode data at all; otherwise an empty cell is blank, as on a real G1000.
+
+Two more pure functions are the FMA's state machines, each driven by a `useFma.ts` hook that keeps
+state across renders: `nextBoxState(prev, columns, now)` boxes a column for `FMA_BOX_MS` (10 s)
+the moment its active value changes to a new, non-null one, never on first render and never for a
+changed reference alone (a new VS target is not a new mode), and a reconnect clears it so nothing
+boxes for a value merely seen again after a link loss. `nextDisconnect(prev, ap, valuesCurrent,
+now)` detects an AP engaged-to-disengaged transition only while values were current throughout — a
+transition seen only because the link dropped and came back does not count — and
+`disconnectShowing` keeps it true for `AP_DISCONNECT_MS` (5 s). While it shows, the FMA's AP slot
+renders in reverse video (amber fill, dark text), flashing at 2 Hz through an `Animated` loop, or
+steady when `useReducedMotion` (`src/hooks/`, reading `AccessibilityInfo.isReduceMotionEnabled`
+and its change event) says motion is reduced; a tap on the FMA acknowledges it early and fires
+`haptics.failure()` once. `Fma`'s `compact` prop is the PFD's: smaller text and no "not live" line
+of its own, since the PFD already fades as a whole.
+
 ## Error model
 
 Everything that crosses into the application layer is an `AvionixError` with a stable `code`
@@ -429,6 +467,26 @@ and the OS colour scheme, and exposes `useTheme()`, `useThemePreference()` and
 `primitives.tsx` (`Section`, `SectionTitle`, `BodyText`, `ThemedTextInput`) or build styles from
 the theme. The toggle (`ThemeToggle.tsx`) sits in Setup's Display section. Host and port, the
 theme preference and the panel layout are the persisted settings.
+
+**Cockpit look.** `Theme` also carries `avionics: AvionicsColors`, the hardware palette with fixed
+cockpit meanings (green engaged, white armed, cyan selected, amber caution, red warning, shared by
+day and dark, with its own dimmer set for night), and `typography.fonts`, the B612 and B612 Mono
+family names. `AvionixApp` loads the fonts through `expo-font` without blocking the first render;
+until they load, and if a font ever fails to, the family tokens are `undefined`, so React Native
+falls back to the system font instead of logging a missing one. `numeric(theme, bold?)` is the one
+helper every live number in the app sets for tabular digits. The hardware primitives in
+`src/features/panels/primitives/` — `AvionicsUnit` (the bezel), `DisplayWindow` (the glass value
+window), `LightBar` and `ControlButton`'s key face — read these tokens instead of holding colour
+literals, the same rule app chrome follows. A `DisplayWindow` also dims itself when the
+`ControlButton` it sits inside (if any) is disabled, so a pressable value never stays
+full-brightness once its key cannot be pressed.
+
+**Haptics.** `src/platform/haptics.ts` loads `expo-haptics` through a guarded `require`, so an
+existing build without the native module, the web (`haptics.web.ts`) and Jest all get a silent
+no-op; it never throws and never logs. `HapticsProvider` (`src/features/haptics/`) persists an
+on/off preference under `avionix.haptics`, the same `SettingsStorage` pattern as the theme
+preference, and exposes `haptics.press()` and `haptics.failure()` to every `ControlButton` and
+`Keypad` press, a failed read-back and an AP-disconnect annunciation.
 
 ## Web and the bridge
 
