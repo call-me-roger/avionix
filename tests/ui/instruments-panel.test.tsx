@@ -3,9 +3,18 @@ import React from 'react';
 
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
-import { GENERIC_DATAREFS as D, GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
+import {
+  FEATURE_ALTIMETER_SETTING,
+  FEATURE_FLIGHT_INSTRUMENTS,
+  GENERIC_DATAREFS as D,
+  GENERIC_PROFILE,
+} from '@/domain/aircraft/profiles/generic';
+import { AUTOPILOT_PANEL } from '@/features/panels/autopilot/autopilot';
 import { InstrumentPreferencesProvider } from '@/features/panels/instruments/InstrumentPreferencesProvider';
-import { InstrumentsPanel } from '@/features/panels/instruments/InstrumentsPanel';
+import {
+  INSTRUMENTS_PANEL,
+  InstrumentsPanel,
+} from '@/features/panels/instruments/InstrumentsPanel';
 import type { PanelActions } from '@/features/panels/primitives/PanelContext';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
@@ -87,6 +96,14 @@ function tree(snapshot: SessionSnapshot, storage = createMemorySettingsStorage()
 }
 
 describe('Instruments panel', () => {
+  it('asks for the instruments, the altimeter setting and every autopilot feature', () => {
+    // tests/integration/flight-instruments.test.ts streams this same set from the mock X-Plane.
+    expect([...INSTRUMENTS_PANEL.features].sort()).toEqual(
+      [FEATURE_FLIGHT_INSTRUMENTS, FEATURE_ALTIMETER_SETTING, ...AUTOPILOT_PANEL.features].sort(),
+    );
+    expect(INSTRUMENTS_PANEL.features).toHaveLength(15);
+  });
+
   it('opens a piston single on the six-pack by default', async () => {
     await render(tree(withIdentity(live(), 'C172')));
     expect(screen.getByTestId('six-pack')).toBeTruthy();

@@ -8,6 +8,7 @@ import {
   polar,
   slipOffset,
 } from '@/domain/instruments/geometry';
+import { useSvgFonts } from '@/features/panels/instruments/svg-parts';
 import { useTheme } from '@/theme/theme-context';
 
 type Clip = { kind: 'circle'; r: number } | { kind: 'rect'; width: number; height: number };
@@ -43,6 +44,7 @@ export function AttitudeScene({
   clip,
 }: Props) {
   const ink = useTheme().instrument;
+  const { digits } = useSvgFonts();
   const clipId = `attitude${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const { rotateDeg, translateY } = attitudeTransform(pitch, roll, pxPerDeg);
   const bank = BANK_MARKS.flatMap((deg) => [deg, -deg]);
@@ -83,6 +85,7 @@ export function AttitudeScene({
                       fontSize={14}
                       fill={ink.marking}
                       textAnchor="end"
+                      {...digits}
                     >
                       {String(Math.abs(mark.deg))}
                     </SvgText>
@@ -92,6 +95,7 @@ export function AttitudeScene({
                       fontSize={14}
                       fill={ink.marking}
                       textAnchor="start"
+                      {...digits}
                     >
                       {String(Math.abs(mark.deg))}
                     </SvgText>

@@ -128,13 +128,19 @@ describe('AppShell', () => {
     expect(await screen.findByTestId('panel-instruments')).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Instruments' })).toBeSelected();
     expect(screen.getByTestId('pfd')).toBeTruthy();
-    // The strip is docked here too, so its DataRefs join the instruments' own.
+    // The strip is docked here too, so its DataRefs join the instruments' own, which include the
+    // autopilot's for the PFD's targets and FMA.
     await waitFor(() =>
-      expect(session.setDemand).toHaveBeenLastCalledWith([
-        FEATURE_ALTIMETER_SETTING,
-        FEATURE_FLIGHT_DATA,
-        FEATURE_FLIGHT_INSTRUMENTS,
-      ]),
+      expect(session.setDemand).toHaveBeenLastCalledWith(
+        [
+          ...new Set([
+            FEATURE_ALTIMETER_SETTING,
+            FEATURE_FLIGHT_DATA,
+            FEATURE_FLIGHT_INSTRUMENTS,
+            ...AUTOPILOT_PANEL.features,
+          ]),
+        ].sort(),
+      ),
     );
   });
 

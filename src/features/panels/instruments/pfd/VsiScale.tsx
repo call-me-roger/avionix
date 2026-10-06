@@ -1,5 +1,5 @@
 import React from 'react';
-import { Line, Rect, Text as SvgText } from 'react-native-svg';
+import { Line, Polygon, Rect, Text as SvgText } from 'react-native-svg';
 
 import { vsiHundreds, vsiScaleOffset } from '@/domain/instruments/geometry';
 import {
@@ -8,6 +8,7 @@ import {
   withStatus,
 } from '@/domain/instruments/labels';
 import { InstrumentFace } from '@/features/panels/instruments/InstrumentFace';
+import { useSvgFonts } from '@/features/panels/instruments/svg-parts';
 import { useTheme } from '@/theme/theme-context';
 
 const VB = { width: 40, height: 240 };
@@ -18,18 +19,27 @@ const HALF = 96;
 const MARKS = [500, 1000, 2000].flatMap((fpm) => [fpm, -fpm]);
 const LABELS = [1000, 2000].flatMap((fpm) => [fpm, -fpm]);
 
+/**
+ * The selected vertical speed, passed only while VS mode is engaged, is a cyan triangle on the
+ * scale's left edge pointing at the value, where the pointer's tip meets it on capture; it pegs at
+ * either end of the scale as the pointer does.
+ */
 export const VsiScale = React.memo(function VsiScale({
   width,
   height,
   status,
   fpm,
+  bug,
 }: {
   width: number;
   height: number;
   status: InstrumentStatus;
   fpm: number | null;
+  /** The autopilot's selected vertical speed, ft/min. */
+  bug: number | null;
 }) {
   const ink = useTheme().instrument;
+  const { digits } = useSvgFonts();
   const label = withStatus('Vertical speed', status, () => describeVerticalSpeed(fpm ?? 0));
   const scale = (
     <>
@@ -49,6 +59,7 @@ export const VsiScale = React.memo(function VsiScale({
           fontSize={14}
           fill={ink.marking}
           textAnchor="end"
+          {...digits}
         >
           {String(Math.abs(mark) / 1000)}
         </SvgText>
@@ -56,6 +67,7 @@ export const VsiScale = React.memo(function VsiScale({
     </>
   );
   const hundreds = fpm === null ? '' : vsiHundreds(fpm);
+  const bugY = (value: number) => CY - vsiScaleOffset(value, HALF);
   return (
     <InstrumentFace
       testID="instrument-vertical-speed"
@@ -76,9 +88,17 @@ export const VsiScale = React.memo(function VsiScale({
               fontSize={14}
               fill={ink.marking}
               textAnchor="middle"
+              {...digits}
             >
               {hundreds}
             </SvgText>
+          )}
+          {bug === null ? null : (
+            <Polygon
+              testID="pfd-vsi-bug"
+              points={`0,${bugY(bug) - 6} 9,${bugY(bug)} 0,${bugY(bug) + 6}`}
+              fill={ink.selected}
+            />
           )}
           <Line
             x1={40}

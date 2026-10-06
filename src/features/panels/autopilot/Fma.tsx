@@ -22,6 +22,11 @@ import { avionicsText } from '@/theme/typography';
 const FLASH_HALF_MS = 250;
 const FLASH_DIM = 0.15;
 const MISSING = '—';
+/**
+ * Every FMA word stays on one line, shrinking to fit rather than wrapping: at the PFD's compact size
+ * on a narrow phone, "VS −1500FPM" is wider than its column.
+ */
+const ONE_LINE = { numberOfLines: 1, adjustsFontSizeToFit: true } as const;
 
 const makeStyles = (theme: Theme) => ({
   wrap: {
@@ -100,13 +105,21 @@ export function Fma({ compact = false }: { compact?: boolean }) {
     link.valuesCurrent ? live : styles.dim,
   ];
   // With mode data an empty cell stays blank, as on the G1000; "—" only says there is none.
-  const missing = hasValue ? null : <Text style={[cell, styles.dim]}>{MISSING}</Text>;
+  const missing = hasValue ? null : (
+    <Text style={[cell, styles.dim]} {...ONE_LINE}>
+      {MISSING}
+    </Text>
+  );
 
   const active = (slot: FmaSlot, word: string | null) => {
     if (word === null) {
       return missing;
     }
-    const label = <Text style={tone(styles.engaged)}>{word}</Text>;
+    const label = (
+      <Text style={tone(styles.engaged)} {...ONE_LINE}>
+        {word}
+      </Text>
+    );
     return boxed(slot) ? (
       <View testID={`fma-box-${slot}`} style={styles.box}>
         {label}
@@ -116,7 +129,11 @@ export function Fma({ compact = false }: { compact?: boolean }) {
     );
   };
   const armed = (words: readonly string[]) =>
-    words.length === 0 ? null : <Text style={tone(styles.armed)}>{words.join('  ')}</Text>;
+    words.length === 0 ? null : (
+      <Text style={tone(styles.armed)} {...ONE_LINE}>
+        {words.join('  ')}
+      </Text>
+    );
 
   const { autothrottle, lateral, vertical } = columns;
   const verticalWord =
@@ -131,7 +148,11 @@ export function Fma({ compact = false }: { compact?: boolean }) {
         ) : columns.ap ? (
           active('ap', 'AP')
         ) : null}
-        {columns.fd ? <Text style={tone(styles.engaged)}>FD</Text> : null}
+        {columns.fd ? (
+          <Text style={tone(styles.engaged)} {...ONE_LINE}>
+            FD
+          </Text>
+        ) : null}
       </>
     ) : (
       missing
@@ -154,7 +175,11 @@ export function Fma({ compact = false }: { compact?: boolean }) {
           )}
         </View>
         <View style={styles.row}>
-          {autothrottle.armed ? <Text style={tone(styles.armed)}>A/T</Text> : null}
+          {autothrottle.armed ? (
+            <Text style={tone(styles.armed)} {...ONE_LINE}>
+              A/T
+            </Text>
+          ) : null}
         </View>
       </View>
       <View style={[styles.column, styles.wide, styles.divider]}>
@@ -206,7 +231,7 @@ function FlashingAp({ style, steady }: { style: StyleProp<TextStyle>; steady: bo
   }, [steady, opacity]);
 
   return (
-    <Animated.Text testID="fma-ap-disconnect" style={[style, { opacity }]}>
+    <Animated.Text testID="fma-ap-disconnect" style={[style, { opacity }]} {...ONE_LINE}>
       AP
     </Animated.Text>
   );

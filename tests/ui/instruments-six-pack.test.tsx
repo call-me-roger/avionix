@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react-native';
 import React from 'react';
+import { processColor } from 'react-native';
 
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
@@ -8,7 +9,9 @@ import { SixPackView } from '@/features/panels/instruments/six-pack/SixPackView'
 import { instrumentRenders } from '@/features/panels/instruments/svg-parts';
 import { PanelScope } from '@/features/panels/primitives/PanelFrame';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
+import { AVIONICS_FAMILIES } from '@/theme/fonts';
 import { ThemeProvider } from '@/theme/theme-context';
+import { darkTheme } from '@/theme/tokens';
 
 const NOW = 1_000_000;
 const base = initialSnapshot(GENERIC_PROFILE, 5);
@@ -59,9 +62,13 @@ function withMissing(snapshot: SessionSnapshot, ...names: string[]): SessionSnap
 
 const actions = { write: jest.fn(async () => undefined), activate: jest.fn(async () => undefined) };
 
-function tree(snapshot: SessionSnapshot, storage = createMemorySettingsStorage()) {
+function tree(
+  snapshot: SessionSnapshot,
+  storage = createMemorySettingsStorage(),
+  fontsLoaded = false,
+) {
   return (
-    <ThemeProvider storage={storage} systemSchemeOverride="dark">
+    <ThemeProvider storage={storage} systemSchemeOverride="dark" fontsLoaded={fontsLoaded}>
       <UnitsProvider storage={storage}>
         <PanelScope snapshot={snapshot} now={NOW} actions={actions}>
           <SixPackView contentWidth={400} windowHeight={900} landscape={false} />
@@ -177,5 +184,69 @@ describe('six-pack', () => {
     for (const other of OTHER_FACES) {
       expect(instrumentRenders[other] ?? 0).toBe(0);
     }
+  });
+});
+
+describe('six-pack heading bug', () => {
+  const withBug = (bug: number, snapshot = live()): SessionSnapshot => ({
+    ...snapshot,
+    telemetry: { ...snapshot.telemetry, ...telemetry({ [D.headingBug]: bug }) },
+  });
+
+  it('draws an orange bug on the card and says it', async () => {
+    await render(tree(withBug(270)));
+    expect(screen.getByLabelText('Heading 270 degrees, heading bug 270')).toBeTruthy();
+    // react-native-svg hands a fill to the native view as `{ type, payload }`.
+    expect(screen.getByTestId('dg-heading-bug').props.fill.payload).toBe(
+      processColor(darkTheme.instrument.bug),
+    );
+  });
+
+  it('pads the bug to three digits and calls north 360', async () => {
+    const view = await render(tree(withBug(5)));
+    expect(screen.getByLabelText('Heading 270 degrees, heading bug 005')).toBeTruthy();
+    await view.rerender(tree(withBug(0)));
+    expect(screen.getByLabelText('Heading 270 degrees, heading bug 360')).toBeTruthy();
+  });
+
+  it('shows no bug when the heading bug is missing on the aircraft', async () => {
+    await render(tree(withMissing(withBug(270), D.headingBug)));
+    expect(screen.queryByTestId('dg-heading-bug')).toBeNull();
+    expect(screen.getByLabelText('Heading 270 degrees')).toBeTruthy();
+  });
+
+  it('shows no bug with no flight loaded', async () => {
+    await render(
+      tree(
+        withBug(
+          270,
+          live({
+            health: { ...base.health, activity: 'noFlight', live: false, lastHeartbeatAt: NOW },
+          }),
+        ),
+      ),
+    );
+    expect(screen.queryByTestId('dg-heading-bug')).toBeNull();
+    expect(screen.getByLabelText('Heading: no value')).toBeTruthy();
+  });
+
+  it('keeps the bug, faded with the card, when the link drops', async () => {
+    await render(tree(withBug(270, live({ state: 'reconnecting' }))));
+    expect(screen.getByTestId('dg-heading-bug')).toBeTruthy();
+    expect(screen.getByLabelText('Heading 270 degrees, heading bug 270, not live')).toBeTruthy();
+  });
+
+  it('prints the card cardinals in B612 and its numbers in B612 Mono once the fonts load', async () => {
+    await render(tree(withBug(270), createMemorySettingsStorage(), true));
+    const fonts = screen
+      .getAllByTestId(/^dg-card-label-/)
+      .map((node) => [
+        (node.children[0] as { props: { content?: unknown } }).props.content,
+        node.props.font?.fontFamily,
+      ]);
+    expect(fonts).toContainEqual(['W', AVIONICS_FAMILIES.avionicsBold]);
+    expect(fonts).toContainEqual(['N', AVIONICS_FAMILIES.avionicsBold]);
+    expect(fonts).toContainEqual(['3', AVIONICS_FAMILIES.monoBold]);
+    expect(fonts).toContainEqual(['33', AVIONICS_FAMILIES.monoBold]);
   });
 });
