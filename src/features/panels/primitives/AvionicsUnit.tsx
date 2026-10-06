@@ -18,6 +18,11 @@ const makeStyles = (theme: Theme) => ({
     padding: AVIONICS_UNIT_PADDING,
     gap: theme.spacing.sm,
   },
+  labelRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: theme.spacing.sm,
+  },
   label: {
     ...avionicsText(theme, true),
     fontSize: theme.typography.captionSize,
@@ -29,6 +34,11 @@ const makeStyles = (theme: Theme) => ({
 interface Props {
   /** Engraved at the top left, capitals as given (e.g. "COM1", "XPDR", "AUTOPILOT"). */
   label?: string;
+  /**
+   * Drawn on the label's own row, after it (the CDU's unit keys and annunciators), so a unit whose
+   * height is precious spends no separate row on them.
+   */
+  labelAccessory?: React.ReactNode;
   testID?: string;
   style?: StyleProp<ViewStyle>;
   children: React.ReactNode;
@@ -39,14 +49,23 @@ interface Props {
  * sections that radios, transponder and autopilot used before this refinement. Provides the
  * on-bezel context so `BodyText` inside it switches to the avionics palette automatically.
  */
-export function AvionicsUnit({ label, testID, style, children }: Props) {
+export function AvionicsUnit({ label, labelAccessory, testID, style, children }: Props) {
   const styles = useThemedStyles(makeStyles);
+  const labelText =
+    label === undefined ? null : (
+      <Text style={styles.label} accessibilityRole="header">
+        {label}
+      </Text>
+    );
   return (
     <View style={[styles.unit, style]} testID={testID}>
-      {label === undefined ? null : (
-        <Text style={styles.label} accessibilityRole="header">
-          {label}
-        </Text>
+      {labelAccessory === undefined ? (
+        labelText
+      ) : (
+        <View style={styles.labelRow}>
+          {labelText}
+          {labelAccessory}
+        </View>
       )}
       <OnBezelContext.Provider value={true}>{children}</OnBezelContext.Provider>
     </View>

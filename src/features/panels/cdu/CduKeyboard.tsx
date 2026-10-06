@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import { type StyleProp, View, type ViewStyle } from 'react-native';
 
 import type { SessionSnapshot } from '@/application/session-snapshot';
 import { cduKeysFeatureId } from '@/domain/aircraft/profiles/generic';
@@ -13,6 +13,7 @@ import {
   cduCommand,
 } from '@/domain/cdu/keys';
 import { ControlButton } from '@/features/panels/primitives/ControlButton';
+import type { LightBarState } from '@/features/panels/primitives/LightBar';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
@@ -32,6 +33,55 @@ export function missingKeyCount(snapshot: SessionSnapshot, unit: CduUnit): numbe
 /** A key's spoken name, with the reason when its command is missing. */
 export function keyLabel(spoken: string, missing: boolean): string {
   return missing ? `${spoken}${NOT_AVAILABLE}` : spoken;
+}
+
+/**
+ * One CDU key, line-select keys included: the only place the key rules live. Quiet (the panel's
+ * one message line speaks for every key) and repeatable (a press still in flight never disables
+ * it, so `LL` sends two presses through the queue); compact, so a 4–5 letter legend fits a phone's
+ * 5- and 6-key rows. Disabled with its reason spoken when its command is missing (R9) and while
+ * the screen has not arrived (spec §4.4); the link gate (C5) is ControlButton's own.
+ */
+export function CduKeyButton({
+  entry,
+  unit,
+  press,
+  waiting,
+  spoken = entry.spoken,
+  annunciation,
+  style,
+  children,
+}: {
+  entry: CduKey;
+  unit: CduUnit;
+  press: (keyId: string) => void;
+  waiting: boolean;
+  /** Overrides the catalogue's spoken name (EXEC speaks its light). */
+  spoken?: string;
+  annunciation?: LightBarState;
+  style?: StyleProp<ViewStyle>;
+  /** Drawn instead of the legend (a line-select key's bar). */
+  children?: React.ReactNode;
+}) {
+  const { snapshot } = usePanel();
+  const missing = isKeyMissing(snapshot, unit, entry.id);
+  return (
+    <ControlButton
+      label={entry.legend === '' ? entry.name : entry.legend}
+      accessibilityLabel={keyLabel(spoken, missing)}
+      featureId={cduKeysFeatureId(unit)}
+      target={cduCommand(unit, entry.id)}
+      quiet
+      repeatable
+      compact
+      invalid={missing || waiting}
+      annunciation={annunciation}
+      onPress={() => press(entry.id)}
+      style={style}
+    >
+      {children}
+    </ControlButton>
+  );
 }
 
 const makeStyles = (theme: Theme) => ({
@@ -54,32 +104,22 @@ interface Props {
   sideBySide: boolean;
 }
 
-/**
- * The CDU's function, alpha and numeric keys (spec §4.5). Every key is a quiet, repeatable
- * `ControlButton`: it never prints a notice of its own (the panel's one message line does), and a
- * press still in flight never disables it, so `LL` sends two presses through the panel's queue.
- */
+/** The CDU's function, alpha and numeric keys (spec §4.5), in rows of `CduKeyButton`s. */
 export function CduKeyboard({ unit, press, execLit, waiting, sideBySide }: Props) {
-  const { snapshot } = usePanel();
   const styles = useThemedStyles(makeStyles);
 
   const key = (entry: CduKey) => {
-    const missing = isKeyMissing(snapshot, unit, entry.id);
     const exec = entry.id === 'exec';
-    // Spec §4.5: EXEC is spoken "EXEC, light on" / "EXEC", not by its catalogue name.
-    const spoken = exec ? (execLit && !missing ? 'EXEC, light on' : 'EXEC') : entry.spoken;
     return (
-      <ControlButton
+      <CduKeyButton
         key={entry.id}
-        label={entry.legend}
-        accessibilityLabel={keyLabel(spoken, missing)}
-        featureId={cduKeysFeatureId(unit)}
-        target={cduCommand(unit, entry.id)}
-        quiet
-        repeatable
-        invalid={missing || waiting}
+        entry={entry}
+        unit={unit}
+        press={press}
+        waiting={waiting}
+        // Spec §4.5: EXEC is spoken "EXEC, light on" / "EXEC", not by its catalogue name.
+        spoken={exec ? (execLit ? 'EXEC, light on' : 'EXEC') : entry.spoken}
         annunciation={exec ? (execLit ? 'lit' : 'off') : undefined}
-        onPress={() => press(entry.id)}
         style={styles.key}
       />
     );

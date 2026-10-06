@@ -271,13 +271,13 @@ describe('touch targets on the Autopilot panel in a wide layout', () => {
  * state. This case gives it the toy FMS's screen on both units, so the live glass, both columns
  * of line-select keys and every function, alpha and numeric key are measured, at a window size
  * typical of each layout: a phone in portrait gets the narrow layout (keys scrolling under the
- * pinned unit), every other the wide one.
+ * pinned unit), every other the wide one — asserted, not assumed.
  */
-const CDU_WINDOWS: Record<string, { width: number; height: number }> = {
-  'phone portrait': { width: 390, height: 844 },
-  'phone landscape': { width: 844, height: 390 },
-  'tablet portrait': { width: 820, height: 1180 },
-  'tablet landscape': { width: 1180, height: 820 },
+const CDU_WINDOWS: Record<string, { width: number; height: number; wide: boolean }> = {
+  'phone portrait': { width: 390, height: 844, wide: false },
+  'phone landscape': { width: 844, height: 390, wide: true },
+  'tablet portrait': { width: 820, height: 1180, wide: true },
+  'tablet landscape': { width: 1180, height: 820, wide: true },
 };
 
 describe.each(LAYOUTS)(
@@ -287,7 +287,12 @@ describe.each(LAYOUTS)(
       mockLayout = layout;
       const original = Dimensions.get('window');
       const size = CDU_WINDOWS[`${layout.deviceClass} ${layout.orientation}`];
-      Dimensions.set({ window: { ...size, scale: 1, fontScale: 1 } });
+      if (size === undefined) {
+        throw new Error(`no CDU window for ${layout.deviceClass} ${layout.orientation}`);
+      }
+      Dimensions.set({
+        window: { width: size.width, height: size.height, scale: 1, fontScale: 1 },
+      });
       try {
         const snapshot = liveSnapshot();
         const { services } = makeServices(
@@ -303,6 +308,13 @@ describe.each(LAYOUTS)(
         expect(screen.getByLabelText('TOY FMS')).toBeTruthy();
         expect(screen.getByLabelText('K').props.accessibilityState?.disabled).toBe(false);
         expect(screen.getByLabelText('Line select right 6')).toBeTruthy();
+        if (size.wide) {
+          expect(screen.getByTestId('cdu-wide-left')).toBeTruthy();
+          expect(screen.getByTestId('cdu-wide-right')).toBeTruthy();
+        } else {
+          expect(screen.queryByTestId('cdu-wide-left')).toBeNull();
+          expect(screen.getByTestId('cdu-keys-scroll')).toBeTruthy();
+        }
         const targets = panelTargets();
         expect(targets.length).toBeGreaterThanOrEqual(70);
         for (const target of targets) {

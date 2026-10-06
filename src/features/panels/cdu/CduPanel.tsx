@@ -7,21 +7,15 @@ import {
   FEATURE_CDU1_SCREEN,
   FEATURE_CDU2_KEYS,
   FEATURE_CDU2_SCREEN,
-  cduKeysFeatureId,
   cduScreenFeatureId,
 } from '@/domain/aircraft/profiles/generic';
 import { CDU_COLUMNS } from '@/domain/cdu/screen';
-import { type CduKey, type CduUnit, LSK_LEFT, LSK_RIGHT, cduCommand } from '@/domain/cdu/keys';
+import { type CduKey, type CduUnit, LSK_LEFT, LSK_RIGHT } from '@/domain/cdu/keys';
 import { missingKeysMessage } from '@/domain/cdu/messages';
 import { TWO_COLUMN_MIN_WIDTH } from '@/domain/panels/device-layout';
 import { EVERYWHERE, type PanelDescriptor } from '@/domain/panels/panel';
 import { useCduUnit } from '@/features/panels/cdu/CduPreferenceProvider';
-import {
-  CduKeyboard,
-  isKeyMissing,
-  keyLabel,
-  missingKeyCount,
-} from '@/features/panels/cdu/CduKeyboard';
+import { CduKeyButton, CduKeyboard, missingKeyCount } from '@/features/panels/cdu/CduKeyboard';
 import { CduScreen } from '@/features/panels/cdu/CduScreen';
 import { LSK_COLUMN, cduGeometry } from '@/features/panels/cdu/cdu-geometry';
 import { useCduKeys } from '@/features/panels/cdu/useCduKeys';
@@ -40,27 +34,27 @@ export const CDU_PANEL: PanelDescriptor = {
   title: 'CDU',
   features: [FEATURE_CDU1_SCREEN, FEATURE_CDU1_KEYS, FEATURE_CDU2_SCREEN, FEATURE_CDU2_KEYS],
   supports: EVERYWHERE,
+  // The glass stays pinned while only the keys scroll (spec §4.7): the panel scrolls its own parts.
+  fillsFrame: true,
 };
 
 const UNITS: readonly CduUnit[] = [1, 2];
 
-/**
- * What a phone's shell takes around a panel in portrait — the link status bar under the system
- * status area, the panel title, the frame's padding and the switcher bar over the home indicator —
- * so the narrow layout can bound the key area to what is left under the pinned CDU. An estimate:
- * the panel cannot see the frame's viewport, and a device check confirms it (spec §4.7).
- */
-const NARROW_SHELL_ESTIMATE = 260;
+/** The glass's own border: its rows, and so the line-select keys, start this far down. */
+const GLASS_BORDER = 1;
 
 /** A blank glass row: drawn while waiting, so no half-arrived line is shown as if it were live. */
 const BLANK_ROW = { text: ' '.repeat(CDU_COLUMNS), style: '' };
 
 const makeStyles = (theme: Theme) => ({
+  // Shares the bezel's label row: the unit keys, then the annunciators pushed to the right.
   header: {
+    flex: 1,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: theme.touch.spacing,
   },
+  unitKey: { marginVertical: 0 },
   annunciators: {
     flex: 1,
     flexDirection: 'row' as const,
@@ -100,13 +94,10 @@ const makeStyles = (theme: Theme) => ({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
-  narrow: { gap: theme.touch.spacing },
-  wide: {
-    flexDirection: 'row' as const,
-    gap: theme.touch.spacing,
-    alignItems: 'flex-start' as const,
-  },
+  root: { flex: 1, gap: theme.touch.spacing },
+  wide: { flex: 1, flexDirection: 'row' as const, gap: theme.touch.spacing },
   column: { flex: 1 },
+  scroll: { flex: 1 },
 });
 
 function screenUnavailable(compatibility: CompatibilitySnapshot, unit: CduUnit): boolean {
@@ -149,10 +140,15 @@ function LskBar() {
 }
 
 /**
- * F-32. The default FMS's CDU: a bezel with the CDU 1 / CDU 2 keys, the mirrored glass between two
- * columns of line-select keys and one message line, and the function, alpha and numeric keys.
+ * F-32. The default FMS's CDU: a bezel whose label row carries the CDU 1 / CDU 2 keys and the SLOW
+ * and NOT LIVE tags, the mirrored glass between two columns of line-select keys, the message line
+ * (only while there is something to say), and the function, alpha and numeric keys.
  * `useCduScreen` is called here, once, with whichever unit is shown: nothing that owns it is keyed
  * on the unit, so each unit's "seen" and rows 14–15 memory survives switching back and forth.
+ *
+ * The frame does not scroll this panel (`fillsFrame`). Narrow, the bezel is pinned and the keys
+ * scroll in the rest of the height; wide (a window of 720 dp or more, landscape phones included),
+ * the bezel and the keys are two columns that each scroll on their own (spec §4.7).
  */
 export function CduPanel() {
   const theme = useTheme();
@@ -165,12 +161,13 @@ export function CduPanel() {
   const keys = useCduKeys(unit);
   // Until the first layout pass, assume the frame's padding; tests never run a layout pass.
   const [measured, setMeasured] = useState<number | null>(null);
-  const [unitHeight, setUnitHeight] = useState<number | null>(null);
 
   const gap = theme.touch.spacing;
-  const contentWidth = measured ?? window.width - theme.spacing.lg * 2;
   const hasKeys = screen.state === 'live' || screen.state === 'waiting';
-  const wide = hasKeys && contentWidth >= TWO_COLUMN_MIN_WIDTH;
+  // By the window, not the measured width: a landscape phone loses ~250 dp to the switcher rail and
+  // insets, and a narrow layout at that width would grow a glass taller than the window.
+  const wide = hasKeys && window.width >= TWO_COLUMN_MIN_WIDTH;
+  const contentWidth = measured ?? window.width - theme.spacing.lg * 2;
   const columnWidth = wide ? (contentWidth - gap) / 2 : contentWidth;
   // The unit's border (1 dp) and padding on each side, then a line-select column and a gap each.
   const innerWidth = columnWidth - 2 * (AVIONICS_UNIT_PADDING + 1);
@@ -181,31 +178,26 @@ export function CduPanel() {
   const sideBySide = columnWidth >= 8 * theme.touch.minTarget + 7 * gap;
   const waiting = screen.state === 'waiting';
   const rows = waiting ? screen.rows.map(() => BLANK_ROW) : screen.rows;
-  // The glass's own 1 dp border, above and below its rows.
-  const glassHeight = rows.length * rowHeight + 2;
+  const glassHeight = rows.length * rowHeight + 2 * GLASS_BORDER;
   const missing = missingKeysMessage(missingKeyCount(snapshot, unit));
 
   const lskColumn = (side: readonly CduKey[]) => (
     <View style={[styles.lskColumn, { height: glassHeight }]}>
-      {side.map((entry, index) => {
-        const absent = isKeyMissing(snapshot, unit, entry.id);
-        return (
-          <ControlButton
-            key={entry.id}
-            label={entry.name}
-            accessibilityLabel={keyLabel(entry.spoken, absent)}
-            featureId={cduKeysFeatureId(unit)}
-            target={cduCommand(unit, entry.id)}
-            quiet
-            repeatable
-            invalid={absent || waiting}
-            onPress={() => keys.press(entry.id)}
-            style={[styles.lsk, { top: rowHeight * (2 * (index + 1) - 1), height: 2 * rowHeight }]}
-          >
-            <LskBar />
-          </ControlButton>
-        );
-      })}
+      {side.map((entry, index) => (
+        <CduKeyButton
+          key={entry.id}
+          entry={entry}
+          unit={unit}
+          press={keys.press}
+          waiting={waiting}
+          style={[
+            styles.lsk,
+            { top: GLASS_BORDER + rowHeight * (2 * (index + 1) - 1), height: 2 * rowHeight },
+          ]}
+        >
+          <LskBar />
+        </CduKeyButton>
+      ))}
     </View>
   );
 
@@ -223,8 +215,10 @@ export function CduPanel() {
           featureId={cduScreenFeatureId(n)}
           target={`cdu-select-${n}`}
           quiet
+          compact
           selected={unit === n}
           onPress={() => setPreferred(n)}
+          style={styles.unitKey}
         />
       ))}
       <View style={styles.annunciators}>
@@ -274,9 +268,13 @@ export function CduPanel() {
             </View>
             {lskColumn(LSK_RIGHT)}
           </View>
-          <BodyText testID="cdu-message" accessibilityLiveRegion="polite">
-            {keys.message ?? ''}
-          </BodyText>
+          {/* Spec §4.5's message line takes no height until there is a message: on a phone the
+              pinned bezel cannot spare an empty line. */}
+          {keys.message === null ? null : (
+            <BodyText testID="cdu-message" accessibilityLiveRegion="polite">
+              {keys.message}
+            </BodyText>
+          )}
           {missing === null ? null : (
             <BodyText muted testID="cdu-missing">
               {missing}
@@ -288,15 +286,20 @@ export function CduPanel() {
   }
 
   const cdu = (
-    <View onLayout={(event) => setUnitHeight(event.nativeEvent.layout.height)}>
-      <AvionicsUnit label="CDU" testID="cdu-unit">
-        {header}
-        {body}
-      </AvionicsUnit>
-    </View>
+    <AvionicsUnit label="CDU" labelAccessory={header} testID="cdu-unit">
+      {body}
+    </AvionicsUnit>
   );
 
-  const keyboard = hasKeys ? (
+  if (!hasKeys) {
+    return (
+      <View testID="cdu-panel" onLayout={(event) => setMeasured(event.nativeEvent.layout.width)}>
+        {cdu}
+      </View>
+    );
+  }
+
+  const keyboard = (
     <CduKeyboard
       unit={unit}
       press={keys.press}
@@ -304,7 +307,7 @@ export function CduPanel() {
       waiting={waiting}
       sideBySide={sideBySide}
     />
-  ) : null;
+  );
 
   if (wide) {
     return (
@@ -314,10 +317,12 @@ export function CduPanel() {
         style={styles.wide}
       >
         <View testID="cdu-wide-left" style={styles.column}>
-          {cdu}
+          <ScrollView testID="cdu-unit-scroll" style={styles.scroll}>
+            {cdu}
+          </ScrollView>
         </View>
         <View testID="cdu-wide-right" style={styles.column}>
-          <ScrollView testID="cdu-keys-scroll" nestedScrollEnabled>
+          <ScrollView testID="cdu-keys-scroll" style={styles.scroll}>
             {keyboard}
           </ScrollView>
         </View>
@@ -325,23 +330,18 @@ export function CduPanel() {
     );
   }
 
-  // Narrow: the CDU stays put and only the keys scroll beneath it, so the scratchpad stays in view
-  // while typing (spec §4.7). Two key rows at least, however short the window.
-  const keyRow = theme.touch.minTarget + theme.touch.spacing;
-  const pinned = unitHeight ?? glassHeight + 4 * keyRow;
-  const keysHeight = Math.max(2 * keyRow, window.height - pinned - NARROW_SHELL_ESTIMATE);
+  // Narrow: the CDU stays put and only the keys scroll beneath it, in whatever height the frame
+  // leaves, so the scratchpad stays in view while typing (spec §4.7).
   return (
     <View
       testID="cdu-panel"
       onLayout={(event) => setMeasured(event.nativeEvent.layout.width)}
-      style={styles.narrow}
+      style={styles.root}
     >
       {cdu}
-      {keyboard === null ? null : (
-        <ScrollView testID="cdu-keys-scroll" nestedScrollEnabled style={{ maxHeight: keysHeight }}>
-          {keyboard}
-        </ScrollView>
-      )}
+      <ScrollView testID="cdu-keys-scroll" style={styles.scroll}>
+        {keyboard}
+      </ScrollView>
     </View>
   );
 }

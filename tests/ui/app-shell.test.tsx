@@ -24,6 +24,7 @@ import {
 import type { DeviceLayout } from '@/domain/panels/device-layout';
 import { EVERYWHERE } from '@/domain/panels/panel';
 import { AUTOPILOT_PANEL } from '@/features/panels/autopilot/autopilot';
+import { CDU_PANEL } from '@/features/panels/cdu/CduPanel';
 import { NAVIGATION_PANEL } from '@/features/panels/navigation/NavigationPanel';
 import { PANELS, type RegisteredPanel } from '@/features/panels/registry';
 import { AppShell } from '@/features/shell/AppShell';
@@ -388,6 +389,20 @@ describe('AppShell', () => {
     expect(screen.queryByTestId('flight-data-strip')).toBeNull();
     await fireEvent.press(screen.getByRole('tab', { name: 'Setup' }));
     expect(screen.queryByTestId('flight-data-strip')).toBeNull();
+  });
+
+  it('hides the strip on the CDU, whose pinned glass needs the height, and stops asking for it', async () => {
+    const { services, session } = makeServices(liveSnapshot(), await seeded('cdu'));
+    await render(tree(services));
+    await screen.findByTestId('panel-cdu');
+    expect(screen.queryByTestId('flight-data-strip')).toBeNull();
+    await waitFor(() =>
+      expect(session.setDemand).toHaveBeenLastCalledWith([...CDU_PANEL.features].sort()),
+    );
+    // The CDU frame does not scroll: the panel scrolls its own keys.
+    expect(screen.getByTestId('panel-frame').props.keyboardShouldPersistTaps).toBeUndefined();
+    await fireEvent.press(screen.getByRole('tab', { name: 'Autopilot' }));
+    expect(screen.getByTestId('flight-data-strip')).toBeTruthy();
   });
 
   it('asks for the flight data DataRefs only while the strip is visible', async () => {

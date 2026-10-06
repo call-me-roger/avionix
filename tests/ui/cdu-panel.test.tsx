@@ -119,18 +119,17 @@ async function resolveNext(result: ActivationResult) {
   });
 }
 
-function tree(
-  snapshot: SessionSnapshot,
-  storage: SettingsStorage | null = null,
-  themeStorage: SettingsStorage = createMemorySettingsStorage(),
-) {
+/** One theme storage for every tree, so a `rerender` never hands ThemeProvider a new one. */
+const THEME_STORAGE = createMemorySettingsStorage();
+
+function tree(snapshot: SessionSnapshot, storage: SettingsStorage | null = null) {
   const panel = (
     <PanelScope snapshot={snapshot} now={NOW} actions={actions}>
       <CduPanel />
     </PanelScope>
   );
   return (
-    <ThemeProvider storage={themeStorage} systemSchemeOverride="light">
+    <ThemeProvider storage={THEME_STORAGE} systemSchemeOverride="light">
       {storage === null ? (
         panel
       ) : (
@@ -233,16 +232,16 @@ describe('CDU panel keys', () => {
   it('places LSK 1L on rows 1 and 2 and sends ls_1l', async () => {
     await render(tree(live()));
     const lsk = screen.getByLabelText('Line select left 1');
-    // The default test window (750 wide, 718 of content) is narrow; the row height is the glass's own.
+    // The row height is the glass's own; rows start under the glass's 1 dp top border.
     const style = styledAncestor(lsk, 'top');
     const rowHeight = Number(
       StyleSheet.flatten(screen.getByTestId('cdu-row-0').props.style).height,
     );
     expect(rowHeight).toBeGreaterThanOrEqual(24);
-    expect(style.top).toBe(rowHeight);
+    expect(style.top).toBe(1 + rowHeight);
     expect(style.height).toBe(2 * rowHeight);
     const lsk6 = styledAncestor(screen.getByLabelText('Line select right 6'), 'top');
-    expect(lsk6.top).toBe(11 * rowHeight);
+    expect(lsk6.top).toBe(1 + 11 * rowHeight);
     await fireEvent.press(lsk);
     expect(sentCommands()).toEqual(['sim/FMS/ls_1l']);
   });
@@ -251,10 +250,11 @@ describe('CDU panel keys', () => {
     const lit = live({
       telemetry: { ...toyScreenTelemetry(1, NOW, { execLight: 1 }) },
     });
-    await render(tree(lit));
+    const { rerender } = await render(tree(lit));
     const exec = screen.getByLabelText('EXEC, light on');
     expect(within(exec).getByTestId('light-bar-lit', HIDDEN)).toBeTruthy();
-    await render(tree(live()));
+    // The same instance, the light going out.
+    await rerender(tree(live()));
     const dark = screen.getByLabelText('EXEC');
     expect(within(dark).getByTestId('light-bar-off', HIDDEN)).toBeTruthy();
     expect(screen.queryByLabelText('EXEC, light on')).toBeNull();
@@ -310,6 +310,8 @@ describe('CDU panel keys', () => {
 
   it('shows a failed key in the message line, never as a per-key notice', async () => {
     await render(tree(live()));
+    // No message, no line: it takes no height until there is something to say.
+    expect(screen.queryByTestId('cdu-message')).toBeNull();
     await fireEvent.press(screen.getByLabelText('K'));
     await fireEvent.press(screen.getByLabelText('L'));
     await resolveNext('failed');
@@ -351,9 +353,10 @@ describe('CDU 1 / CDU 2', () => {
     const storage = createMemorySettingsStorage();
     await storage.setItem(CDU_STORAGE_KEY, JSON.stringify({ unit: 2 }));
     const snapshot = live({ overrides: { [cduTextLine(2, 0)]: 'missing' } });
-    await render(tree(snapshot, storage));
+    const { rerender } = await render(tree(snapshot, storage));
     // Let the stored choice arrive; the shown unit must stay CDU 1 regardless.
     await act(async () => {
+      await Promise.resolve();
       await Promise.resolve();
     });
     const cdu2 = screen.getByLabelText("CDU 2. This X-Plane doesn't publish the CDU 2 screen.");
@@ -361,6 +364,13 @@ describe('CDU 1 / CDU 2', () => {
     expect(screen.getByLabelText('CDU 1').props.accessibilityState?.selected).toBe(true);
     expect(screen.getByLabelText('TOY FMS')).toBeTruthy();
     expect(await storage.getItem(CDU_STORAGE_KEY)).toBe(JSON.stringify({ unit: 2 }));
+    // Proof the stored 2 was loaded and kept, not merely never read: once this X-Plane publishes
+    // CDU 2, the panel shows it without anyone pressing a key.
+    await rerender(tree(live(), storage));
+    await waitFor(() =>
+      expect(screen.getByLabelText('CDU 2').props.accessibilityState?.selected).toBe(true),
+    );
+    expect(screen.getByLabelText('TOY FMS 2')).toBeTruthy();
   });
 });
 
@@ -426,6 +436,8 @@ describe('CDU panel layout', () => {
       expect(within(scroll).queryByTestId('cdu-screen')).toBeNull();
       expect(screen.getByTestId('cdu-screen')).toBeTruthy();
       expect(screen.queryByTestId('cdu-wide-left')).toBeNull();
+      // The frame does not scroll this panel: the key area takes whatever height is left.
+      expect(StyleSheet.flatten(scroll.props.style)).toEqual(expect.objectContaining({ flex: 1 }));
       // 358 dp of content cannot hold 8 keys side by side: alpha above numeric.
       expect(screen.getByTestId('cdu-blocks').props.style).toEqual(
         expect.objectContaining({ flexDirection: 'column' }),
@@ -438,11 +450,64 @@ describe('CDU panel layout', () => {
       await render(tree(live()));
       const left = screen.getByTestId('cdu-wide-left');
       const right = screen.getByTestId('cdu-wide-right');
-      expect(within(left).getByTestId('cdu-screen')).toBeTruthy();
-      expect(within(right).getByLabelText('K')).toBeTruthy();
+      // Each column scrolls on its own.
+      const unitScroll = within(left).getByTestId('cdu-unit-scroll');
+      const keysScroll = within(right).getByTestId('cdu-keys-scroll');
+      expect(within(unitScroll).getByTestId('cdu-screen')).toBeTruthy();
+      expect(within(keysScroll).getByLabelText('K')).toBeTruthy();
+      expect(StyleSheet.flatten(unitScroll.props.style)).toEqual(
+        expect.objectContaining({ flex: 1 }),
+      );
+      expect(StyleSheet.flatten(keysScroll.props.style)).toEqual(
+        expect.objectContaining({ flex: 1 }),
+      );
       expect(screen.getByTestId('cdu-blocks').props.style).toEqual(
         expect.objectContaining({ flexDirection: 'row' }),
       );
     });
+  });
+
+  it('is wide on a landscape phone, by the window, though the rail leaves ~600 dp of content', async () => {
+    await withWindow(844, 390, async () => {
+      await render(tree(live()));
+      await fireEvent(screen.getByTestId('cdu-panel'), 'layout', {
+        nativeEvent: { layout: { x: 0, y: 0, width: 600, height: 300 } },
+      });
+      expect(screen.getByTestId('cdu-wide-left')).toBeTruthy();
+      expect(screen.getByTestId('cdu-wide-right')).toBeTruthy();
+      // The glass is sized from the measured half column, so its rows sit at the 24 dp floor.
+      expect(StyleSheet.flatten(screen.getByTestId('cdu-row-0').props.style).height).toBe(24);
+    });
+  });
+
+  it('gives every key a compact legend that shrinks to fit instead of breaking a word', async () => {
+    await withWindow(390, 844, async () => {
+      await render(tree(live()));
+      const hold = within(screen.getByLabelText('Hold')).getByText('HOLD');
+      expect(hold.props.adjustsFontSizeToFit).toBe(true);
+      expect(hold.props.minimumFontScale).toBe(0.7);
+      expect(hold.props.numberOfLines).toBe(1);
+      const dirIntc = within(screen.getByLabelText('Direct intercept')).getByText('DIR\nINTC');
+      expect(dirIntc.props.numberOfLines).toBe(2);
+      // Narrow side padding, the 48 dp minimum kept.
+      const face = StyleSheet.flatten(screen.getByLabelText('Hold').props.style);
+      expect(face.paddingHorizontal).toBe(4);
+      expect(face.minHeight).toBe(48);
+      expect(face.minWidth).toBe(48);
+    });
+  });
+
+  it("puts the unit keys on the bezel's label row", async () => {
+    await render(tree(live()));
+    const label = screen.getByText('CDU');
+    const row = label.parent;
+    expect(row).not.toBeNull();
+    const labelRow = row as NonNullable<typeof row>;
+    // A row of its own (not the bezel's column), holding the unit keys beside the label.
+    expect(StyleSheet.flatten(labelRow.props.style)).toEqual(
+      expect.objectContaining({ flexDirection: 'row' }),
+    );
+    expect(within(labelRow).getByLabelText('CDU 1')).toBeTruthy();
+    expect(within(labelRow).getByLabelText('CDU 2')).toBeTruthy();
   });
 });

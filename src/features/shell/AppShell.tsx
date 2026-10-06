@@ -10,6 +10,7 @@ import { shouldHoldScreenAwake } from '@/domain/panels/keep-awake-policy';
 import { HapticsProvider } from '@/features/haptics/HapticsProvider';
 import { CduPreferenceProvider } from '@/features/panels/cdu/CduPreferenceProvider';
 import { LinkStatusBar } from '@/features/health/LinkStatusBar';
+import { CDU_PANEL } from '@/features/panels/cdu/CduPanel';
 import { FLIGHT_DATA_PANEL } from '@/features/panels/flight-data/FlightDataPanel';
 import { FlightDataStrip } from '@/features/panels/flight-data/FlightDataStrip';
 import { InstrumentPreferencesProvider } from '@/features/panels/instruments/InstrumentPreferencesProvider';
@@ -26,6 +27,12 @@ import { useSimulatorSession } from '@/hooks/useSimulatorSession';
 import { BodyText } from '@/theme/primitives';
 import { useTheme, useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
+
+/**
+ * Panels the flight data strip never docks on: Flight data itself, and the CDU, whose pinned glass
+ * needs every dp of a phone's height above its keys.
+ */
+const STRIPLESS_PANELS: readonly string[] = [FLIGHT_DATA_PANEL.id, CDU_PANEL.id];
 
 const makeStyles = (theme: Theme) => ({
   root: { flex: 1, backgroundColor: theme.colors.background },
@@ -80,7 +87,7 @@ export function AppShell({ panels = PANELS }: { panels?: readonly RegisteredPane
     layout.strip &&
     active !== null &&
     fit === 'fits' &&
-    active.descriptor.id !== FLIGHT_DATA_PANEL.id;
+    !STRIPLESS_PANELS.includes(active.descriptor.id);
   // A string key, so the effect below fires on a change of features, not of array identity.
   const demanded = [
     ...(active !== null && fit === 'fits' ? active.descriptor.features : []),
@@ -203,6 +210,7 @@ export function AppShell({ panels = PANELS }: { panels?: readonly RegisteredPane
                             snapshot={snapshot}
                             now={now}
                             actions={actions}
+                            fillsFrame={active.descriptor.fillsFrame === true}
                           >
                             <active.Component />
                           </PanelFrame>

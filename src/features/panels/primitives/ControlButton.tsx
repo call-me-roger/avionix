@@ -39,6 +39,8 @@ const makeStyles = (theme: Theme) => ({
     justifyContent: 'center' as const,
   },
   // Pressed is translated down 1 dp, a hardware key's own travel.
+  // `compact`: a key in a dense grid (the CDU) keeps its 48 dp minimum but gives its legend the width.
+  compact: { paddingHorizontal: theme.spacing.xs },
   pressed: { backgroundColor: theme.avionics.keyFacePressed, transform: [{ translateY: 1 }] },
   // Disabled is a transparent face, not a shade: told apart by shape, which the night palette's
   // dim colours cannot carry through colour alone.
@@ -77,6 +79,12 @@ interface Props {
   repeatable?: boolean;
   /** Replaces the legend text when given (e.g. a display window made pressable). */
   children?: React.ReactNode;
+  /**
+   * A key in a dense grid (the CDU's 5- and 6-key rows on a phone): narrow side padding, and a
+   * legend that shrinks (to 70 % at most) to fit on its lines — two when it has a `\n`, else one —
+   * instead of breaking a word mid-character. The 48 dp minimum is unchanged.
+   */
+  compact?: boolean;
   /** Applies to the outer wrap `View`, so a key can take `flex: 1` in a row. */
   style?: StyleProp<ViewStyle>;
 }
@@ -135,6 +143,7 @@ export function ControlButton(props: Props) {
         onPress={onPress}
         style={({ pressed }) => [
           styles.key,
+          props.compact === true ? styles.compact : null,
           enabled ? null : styles.disabled,
           pressed ? styles.pressed : null,
           armed ? styles.armed : null,
@@ -147,7 +156,18 @@ export function ControlButton(props: Props) {
         )}
         <KeyEnabledContext.Provider value={enabled}>
           {showLegend ? (
-            <Text style={[styles.legend, enabled ? null : styles.legendDisabled]}>{shown}</Text>
+            <Text
+              style={[styles.legend, enabled ? null : styles.legendDisabled]}
+              {...(props.compact === true
+                ? {
+                    adjustsFontSizeToFit: true,
+                    minimumFontScale: 0.7,
+                    numberOfLines: shown.includes('\n') ? 2 : 1,
+                  }
+                : null)}
+            >
+              {shown}
+            </Text>
           ) : (
             props.children
           )}

@@ -14,6 +14,11 @@ export interface PanelDescriptor {
   /** Profile feature ids whose DataRefs this panel reads; they drive the subscription. */
   features: readonly string[];
   supports: Readonly<Record<DeviceClass, readonly Orientation[]>>;
+  /**
+   * The panel lays out its own scrolling in a fixed-height frame: the frame gives it the space
+   * under the title instead of scrolling it (the CDU, which pins its glass above scrolling keys).
+   */
+  fillsFrame?: boolean;
 }
 
 /** Every device class in both orientations. */
