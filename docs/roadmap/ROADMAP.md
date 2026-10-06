@@ -76,6 +76,7 @@ features address the top complaints before they can happen.
 | F-20 | Autopilot panel | Second most requested control after the CDU | [F-20](features/F-20-autopilot-panel.md) |
 | F-21 | COM and NAV radios | Radio stacks are the most common control panel; keypad entry is praised | [F-21](features/F-21-com-nav-radios.md) |
 | F-22 | Transponder | Always paired with radios in competitor apps | [F-22](features/F-22-transponder.md) |
+| R-01 | Cockpit look and feel refinement | Pilots judge credibility by cockpit colours, fonts and control behaviour; done before Stage 2 | [spec](../superpowers/specs/2026-10-06-cockpit-ux-refinement-design.md) |
 
 Exit criteria: a default X-Plane aircraft can be flown from takeoff to landing with the app
 providing instruments, autopilot and radios, on iOS and Android, with the connection state
