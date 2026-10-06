@@ -10,6 +10,7 @@ import { CompatibilityScreen } from '@/features/aircraft/CompatibilityScreen';
 import { ConnectionForm } from '@/features/connection/ConnectionForm';
 import { DiscoveredConnectors } from '@/features/connection/DiscoveredConnectors';
 import { DiagnosticsScreen } from '@/features/health/DiagnosticsScreen';
+import { HapticsToggle } from '@/features/haptics/HapticsToggle';
 import type { RegisteredPanel } from '@/features/panels/registry';
 import { PanelChooser } from '@/features/shell/PanelChooser';
 import { UnitsSection } from '@/features/units/UnitsSection';
@@ -17,7 +18,7 @@ import { useConnectionSettings } from '@/hooks/useConnectionSettings';
 import { isDiscoveryState, useConnectorDiscovery } from '@/hooks/useConnectorDiscovery';
 import { useSimulatorSession } from '@/hooks/useSimulatorSession';
 import { ThemeToggle } from '@/theme/ThemeToggle';
-import { Section, SectionTitle } from '@/theme/primitives';
+import { BodyText, Section, SectionTitle } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
@@ -112,6 +113,8 @@ export function SetupScreen(props: {
       <Section>
         <SectionTitle>Display</SectionTitle>
         <ThemeToggle />
+        <BodyText muted>Haptic feedback</BodyText>
+        <HapticsToggle />
       </Section>
       <UnitsSection />
       <PanelChooser
