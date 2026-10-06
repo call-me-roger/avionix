@@ -324,6 +324,73 @@ width reaches `TWO_COLUMN_MIN_WIDTH` (720 dp); narrower, the keypad sits below t
 in portrait or landscape is never asked to fit a readable frequency and a thumb-sized keypad side by
 side.
 
+## Autopilot
+
+`src/features/panels/autopilot/` is the Autopilot panel (F-20): `AutopilotPanel` lays out
+`Annunciator`, `EngageRow` and `ModeButtons` in one column and the four selectors (`SelectorRow`,
+one per selector, each opening `SelectorPad` when it is being typed) in a second once the panel's
+measured width reaches `TWO_COLUMN_MIN_WIDTH`, narrower stacking everything in one column.
+`autopilot.ts` holds the panel's two lookup tables: `SELECTORS`, four `SelectorSpec`s (heading,
+altitude, vertical speed, airspeed) each naming its DataRef and feature, and `MODES`, six
+`ModeSpec`s (HDG, NAV, APR, ALT, VS, FLC) each naming its `*_status` DataRef, its toggle command,
+and whether its "did not engage" sentence should mention the navigation source (NAV and APR).
+Twelve profile features were added for the panel — `autopilot-engage`, `flight-director`,
+`autothrottle`, `altitude-select`, `vertical-speed-select`, `airspeed-select`, and the six
+`ap-mode-*` features (profile version 1.4.0) — plus `heading-control`, reused from the retired
+Heading panel, so a name missing or read-only on one control disables only that control, by the
+same probe described under Aircraft compatibility.
+
+`src/domain/autopilot/` holds every calculation as pure functions with no React and no simulator
+types: `selectors.ts` (formatting, stepping, limits and the read-back predicate for each of the
+five `SelectorKind`s — heading, altitude, vertical speed, knots and Mach, the airspeed selector
+being knots or Mach depending on X-Plane's own flag), `selector-entry.ts` (the keypad's
+digit-by-digit draft, validation and range messages, the same shape as the radios' entry but its
+own limits and no snapping), and `modes.ts` (`modeState`, reading X-Plane's `*_status` convention —
+0 off, 1 armed, 2 captured — into `off | armed | engaged`, and `annunciationText`, which reduces
+all nine status DataRefs plus `autothrottle_enabled` to one line read like a flight-mode
+annunciator, e.g. "HDG · ALT · Armed NAV, GS · A/T SPD", or "No modes engaged").
+
+**State comes only from the simulator.** Every annunciation and selector value is read from
+`*_status` DataRefs (`heading_status`, `nav_status`, `approach_status`, `glideslope_status`,
+`altitude_hold_status`, `vvi_status`, `speed_status`, plus `roll_status` and `pitch_status`) and
+from `servos_on` (autopilot engaged), `flight_director_command_bars_pilot` (flight director) and
+`autothrottle_enabled` (autothrottle armed and engaged); the panel never infers a state from having
+sent a request (R5).
+
+**Engagement.** AP, FD and autothrottle each have an idempotent command pair in X-Plane —
+`servos_on`/`servos_off_any`, `fdir_command_bars_on`/`_off`, `autothrottle_on`/`_off`,
+`autothrottle_arm`/`_hard_off` — so `EngageRow` always sends the command for the state it wants,
+never a toggle, and a stale display can never flip the wrong way. The six modes have no such pair
+in X-Plane; `ModeButtons` activates the one toggle command each one has (`sim/autopilot/heading`,
+`NAV`, `approach`, `altitude_hold`, `vertical_speed`, `level_change`) and reads the result back
+from its own `*_status` DataRef rather than assuming the press took.
+
+**Read-back.** Every write and every mode press is watched the way the radios are
+(`src/domain/panels/read-back.ts`, `useReadBack`, `READ_BACK_MS` 3 s): did X-Plane adopt the value,
+not merely accept the write. The autopilot panel is the first and, so far, only caller of two
+additions `useReadBack` gained for it: a watch's own `matches` predicate, used where "half a unit
+is the whole range" (Mach, read back within 0.005) or a wrapped value (a heading of 0 read back as
+359.9) makes a plain equality check wrong, and `pendingExpected(key)`, the value a still-waiting
+watch expects. A selector's steppers compute their next step from `pendingExpected` when a watch is
+pending, falling back to X-Plane's own value otherwise, so three quick "+1000" presses on altitude
+add 3,000 ft instead of each one landing back on the value X-Plane has not yet caught up to.
+
+**The override.** `sim/operation/override/override_autopilot` is read, never written (R10): while
+it reads 1, `AutopilotContent` shows `OVERRIDE_NOTICE` and marks every control invalid, so a plugin
+flying the autopilot is never fought by the panel.
+
+**Shared primitives.** `Keypad` (`src/features/panels/primitives/Keypad.tsx`) is the digit grid
+`SelectorPad` and the radios' entry pad both render — digits, delete, zero, clear and an optional
+sign key — pulled out of the radios panel so a second typed-entry surface does not duplicate it.
+`TWO_COLUMN_MIN_WIDTH` (`src/domain/panels/device-layout.ts`, 720 dp) is the same breakpoint both
+panels switch their layout on.
+
+**Retiring Heading.** The interim Heading panel is gone; Autopilot takes its place in the
+switcher, after Radios. `RETIRED_PANEL_IDS` (`src/application/panel-layout.ts`) now also carries
+`{ heading: 'autopilot' }`: a stored `last` entry for the retired `heading` id is rewritten to
+`autopilot` before unknown ids are dropped, the same rule that retired Basic data into Flight data,
+so a pilot who last had Heading open reopens on Autopilot instead of Setup.
+
 ## Error model
 
 Everything that crosses into the application layer is an `AvionixError` with a stable `code`

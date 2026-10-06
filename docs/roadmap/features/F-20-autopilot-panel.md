@@ -5,7 +5,7 @@
 | ID | `F-20` |
 | Stage | `1` |
 | Category | Control |
-| Status | Proposed |
+| Status | Done |
 | Depends on | `F-03`, `F-04` |
 | Competitor prevalence | Matrix count 4 of 12 representative products (`research/competitors.md`). Wider set: 6 of 15 products researched offer it (XpRemotePanel, XP Remote – Voice Commands, Flight Deck ONE, Air Manager, Simionic G1000 PFD, Remote X-Plane Avionics) |
 
@@ -93,10 +93,10 @@ speed. Writes use dataref writes and command activation.
 | Autothrottle arm | `sim/cockpit2/autopilot/autothrottle_arm` | int: 0 disarmed, 1 armed | Read/Write | [2] |
 | Autothrottle engaged | `sim/cockpit2/autopilot/autothrottle_enabled` | int, -1 disarmed | Read | [1], [2] |
 | Plugin autopilot override | `sim/operation/override/override_autopilot` | boolean | Read only | [1] |
-| Altitude selector | not identified; verify in `DataRefs.txt` | expected float, feet | Read/Write | — |
-| Vertical speed selector | not identified; verify in `DataRefs.txt` | expected float, ft/min | Read/Write | — |
-| Airspeed selector, knots/Mach flag | not identified; verify in `DataRefs.txt` | expected float, boolean | Read/Write | — |
-| Mode engage commands beyond `heading_up` | not identified; verify in `Commands.txt` | commands | Write | — |
+| Altitude selector | `sim/cockpit2/autopilot/altitude_dial_ft` | float, feet | Read/Write | [7] |
+| Vertical speed selector | `sim/cockpit2/autopilot/vvi_dial_fpm` | float, ft/min | Read/Write | [7] |
+| Airspeed selector, knots/Mach flag | `sim/cockpit2/autopilot/airspeed_dial_kts_mach`, `sim/cockpit2/autopilot/airspeed_is_mach` | float, knots or Mach; int, boolean (read only) | Read/Write | [7] |
+| Mode engage commands beyond `heading_up` | `sim/autopilot/heading`, `sim/autopilot/NAV`, `sim/autopilot/approach`, `sim/autopilot/altitude_hold`, `sim/autopilot/vertical_speed`, `sim/autopilot/level_change` | commands | Write | [7] |
 
 The `mode_hnav`, `airspeed_mode`, `heading_mode`, `altitude_mode` and `altitude_gls` datarefs under
 `sim/cockpit/autopilot/` are documented as deprecated and must not be used [1].
@@ -152,3 +152,4 @@ resolve are offered.
 4. `docs/xplane.md`
 5. `docs/roadmap/research/xplane-web-api.md`, `remote-control-apps.md`, `panel-builders.md`
 6. https://appgrooves.com/android/org.baltazar.XPlaneRemotePlus/flight-sim-remote-panel/baltazar-studios-llc
+7. Design spec: docs/superpowers/specs/2026-10-06-autopilot-panel-design.md

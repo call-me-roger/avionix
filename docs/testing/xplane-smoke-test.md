@@ -109,6 +109,18 @@ Record results at the bottom.
 | 80 | X-Plane 12.4.4+: request a clearance from X-Plane ATC | "ATC assigned NNNN" appears; it shows "— not set" until the code matches; note what the DataRef reports before any assignment | |
 | 81 | Disconnect the network with an entry open | The entry disappears; values are muted "not live"; reconnecting sends nothing | |
 | 82 | Smallest phone, portrait and landscape; a tablet in landscape | Rows fit without clipping; the keypad keys are easy to hit; on the phone, tapping a standby value or the squawk opens the keypad right under that row, in view; on the tablet the keypad sits beside the stack | |
+| 83 | C172 (GFC 700 or KAP 140), avionics on: open Autopilot | Annunciator reads "No modes engaged"; selectors match the aircraft's heading bug and altitude preselect | |
+| 84 | Tap AP, then HDG | X-Plane's autopilot engages in HDG; the panel shows ● AP and ● HDG only after X-Plane does | |
+| 85 | Tap AP again | The autopilot disconnects with one tap | |
+| 86 | Altitude +1000 three times quickly | The preselect rises 3,000 ft, not 1,000 | |
+| 87 | Turn the heading bug with the mouse in X-Plane | The panel's heading follows within a second | |
+| 88 | Enter altitude 8500, Set; enter vertical speed 700 with ±, Set | Both reach X-Plane; VS shows −700 fpm | |
+| 89 | Tune NAV1 to an ILS, tap APR | APR shows ○ (armed) then ● as it captures; GS arms and captures in the annunciator | |
+| 90 | Tap APR with nothing tuned | "X-Plane did not engage APR. Check the navigation source." after about 3 s | |
+| 91 | Airliner with autothrottle (default 737 or A330): A/T ARM off, then A/T | Note whether A/T engages from disarmed or needs ARM first | |
+| 92 | C172: tap A/T | "… This aircraft may not have one." appears; note what `autothrottle_enabled` reports | |
+| 93 | Airliner: Use Mach, then Mach +.01 | Selector shows M .xx and steps by .01 | |
+| 94 | Smallest phone, portrait and landscape; a tablet in landscape | Steppers wrap without clipping; the keypad opens under the selector being typed | |
 
 Rows 44 and 45 verify the keep-awake hold, and row 53 the safe areas: behaviour no automated test
 can observe.
