@@ -40,7 +40,7 @@ describe('AircraftSummary', () => {
   it('names the aircraft, the profile and the verdict', async () => {
     await renderSummary({ state: 'connected', compatibility: identified });
     expect(screen.getByText('Cessna 172 SP (C172) · N172SP')).toBeTruthy();
-    expect(screen.getByText('Generic X-Plane aircraft 1.5.0 · generic fallback')).toBeTruthy();
+    expect(screen.getByText('Generic X-Plane aircraft 1.6.0 · generic fallback')).toBeTruthy();
     expect(screen.getByText('All features available')).toBeTruthy();
   });
 

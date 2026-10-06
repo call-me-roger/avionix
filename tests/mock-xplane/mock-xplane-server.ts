@@ -3,6 +3,15 @@ import type { AddressInfo } from 'node:net';
 
 import { WebSocket as WsSocket, WebSocketServer } from 'ws';
 
+import {
+  CDU_KEYS,
+  CDU_LINE_COUNT,
+  type CduUnit,
+  cduCommand,
+  cduExecLight,
+  cduStyleLine,
+  cduTextLine,
+} from '@/domain/cdu/keys';
 import type { DataRefValue, DataRefValueType } from '@/domain/simulator/types';
 
 export interface MockDataRef {
@@ -36,6 +45,75 @@ export interface MockXPlaneOptions {
   connector?: MockConnectorOptions;
   /** X-Plane 12.4.3 and newer report `is_writable`; set false to act like an older sim. */
   reportWritability?: boolean;
+}
+
+/** A CDU text line as X-Plane sends it: UTF-8, NUL-padded to the DataRef's 96 bytes, base64. */
+function cduText(text: string): string {
+  const bytes = Buffer.alloc(96);
+  Buffer.from(text, 'utf8').copy(bytes, 0, 0, 96);
+  return bytes.toString('base64');
+}
+
+/** One style byte per glyph (24), base64. */
+function cduStyle(styles: readonly number[]): string {
+  const bytes = Buffer.alloc(24);
+  styles.slice(0, 24).forEach((value, index) => bytes.writeUInt8(value & 0xff, index));
+  return bytes.toString('base64');
+}
+
+const LARGE = 0x80;
+const WHITE = 7;
+const CYAN = 1;
+const AMBER = 6;
+
+/** The toy FMS's unentered origin: four box prompts, as Laminar's own CDU draws them. */
+const CDU_ORIGIN_BOXES = '☐☐☐☐';
+
+const BLANK_CDU_TEXT = cduText('');
+const BLANK_CDU_STYLE = cduStyle(new Array(24).fill(0));
+
+/** F-32: the CDU's 66 DataRefs (32 screen cells per unit, then the two EXEC lights). */
+function cduDataRefs(startId: number): MockDataRef[] {
+  const refs: MockDataRef[] = [];
+  let nextId = startId;
+  for (const unit of [1, 2] as const) {
+    for (let line = 0; line < CDU_LINE_COUNT; line += 1) {
+      refs.push({
+        id: nextId++,
+        name: cduTextLine(unit, line),
+        valueType: 'data',
+        value: BLANK_CDU_TEXT,
+      });
+    }
+    for (let line = 0; line < CDU_LINE_COUNT; line += 1) {
+      refs.push({
+        id: nextId++,
+        name: cduStyleLine(unit, line),
+        valueType: 'data',
+        value: BLANK_CDU_STYLE,
+      });
+    }
+  }
+  for (const unit of [1, 2] as const) {
+    refs.push({ id: nextId++, name: cduExecLight(unit), valueType: 'int', value: 0 });
+  }
+  return refs;
+}
+
+/** F-32: the CDU's 140 key commands (70 per unit). */
+function cduCommands(startId: number): MockCommand[] {
+  const commands: MockCommand[] = [];
+  let nextId = startId;
+  for (const unit of [1, 2] as const) {
+    for (const entry of CDU_KEYS) {
+      commands.push({
+        id: nextId++,
+        name: cduCommand(unit, entry.id),
+        description: `CDU ${unit} ${entry.name} key.`,
+      });
+    }
+  }
+  return commands;
 }
 
 export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
@@ -471,6 +549,8 @@ export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
     value: 0,
   },
   { id: 1094, name: 'sim/cockpit2/radios/indicators/inner_marker_lit', valueType: 'int', value: 0 },
+  // F-32: the default FMS CDU's screen and EXEC lights, ids after 1094.
+  ...cduDataRefs(1095),
 ];
 
 export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [
@@ -497,6 +577,8 @@ export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [
   { id: 2021, name: 'sim/autopilot/vertical_speed', description: 'Vertical speed.' },
   { id: 2022, name: 'sim/autopilot/level_change', description: 'Level change.' },
   { id: 2023, name: 'sim/radios/obs_HSI_direct', description: 'HSI course direct-to.' },
+  // F-32: the default FMS CDU's 70 keys per unit, ids after 2023.
+  ...cduCommands(2024),
 ];
 
 interface JsonError {
@@ -561,6 +643,15 @@ export class MockXPlaneServer {
   private readonly subscriptions = new Map<WsSocket, Map<number, string>>();
   private readonly timer: NodeJS.Timeout;
 
+  /** F-32: the toy FMS's screen state, per CDU unit. */
+  private readonly cduScreens: Record<
+    CduUnit,
+    { title: string; origin: string; scratchpad: string }
+  > = {
+    1: { title: '        TOY FMS', origin: CDU_ORIGIN_BOXES, scratchpad: '' },
+    2: { title: '       TOY FMS 2', origin: CDU_ORIGIN_BOXES, scratchpad: '' },
+  };
+
   private constructor(
     private readonly server: http.Server,
     private readonly wss: WebSocketServer,
@@ -578,6 +669,8 @@ export class MockXPlaneServer {
     this.rejectAllTokens = options.connector?.rejectAllTokens ?? false;
     this.timer = setInterval(() => this.pushUpdates(), options.updateIntervalMs ?? 20);
     this.timer.unref();
+    this.renderCdu(1);
+    this.renderCdu(2);
   }
 
   static start(options: MockXPlaneOptions = {}): Promise<MockXPlaneServer> {
@@ -982,6 +1075,12 @@ export class MockXPlaneServer {
 
   private applyCommand(id: number): void {
     const command = this.commands.get(id);
+    const cdu = /^sim\/(FMS|FMS2)\/(.+)$/.exec(command?.name ?? '');
+    if (cdu !== null) {
+      const [, prefix, keyId] = cdu;
+      this.applyCduKey(prefix === 'FMS' ? 1 : 2, keyId ?? '');
+      return;
+    }
     if (command?.name === 'sim/autopilot/heading_up') {
       const heading = this.getDataRefByName('sim/cockpit2/autopilot/heading_dial_deg_mag_pilot');
       if (heading !== undefined && typeof heading.value === 'number') {
@@ -1095,6 +1194,71 @@ export class MockXPlaneServer {
       default:
         break;
     }
+  }
+
+  /**
+   * F-32: the toy FMS. Letters, digits and punctuation append to the scratchpad (line 13, 24
+   * characters max); `key_clear` empties it, `key_back` removes its last character, `key_delete`
+   * writes `DELETE`; `ls_1l` moves a non-empty scratchpad into the origin and lights EXEC; `exec`
+   * turns EXEC off. Every key re-renders its unit's screen.
+   */
+  private applyCduKey(unit: CduUnit, keyId: string): void {
+    const state = this.cduScreens[unit];
+    const letter = /^key_([A-Z0-9])$/.exec(keyId)?.[1];
+    const punctuation: Record<string, string> = {
+      key_period: '.',
+      key_minus: '-',
+      key_slash: '/',
+      key_space: ' ',
+    };
+    if (letter !== undefined) {
+      state.scratchpad = (state.scratchpad + letter).slice(0, 24);
+    } else if (keyId in punctuation) {
+      state.scratchpad = (state.scratchpad + punctuation[keyId]).slice(0, 24);
+    } else if (keyId === 'key_clear') {
+      state.scratchpad = '';
+    } else if (keyId === 'key_back') {
+      state.scratchpad = state.scratchpad.slice(0, -1);
+    } else if (keyId === 'key_delete') {
+      state.scratchpad = 'DELETE';
+    } else if (keyId === 'ls_1l') {
+      if (state.scratchpad !== '') {
+        state.origin = state.scratchpad;
+        state.scratchpad = '';
+        const execLight = this.getDataRefByName(cduExecLight(unit));
+        if (execLight !== undefined) {
+          execLight.value = 1;
+        }
+      }
+    } else if (keyId === 'exec') {
+      const execLight = this.getDataRefByName(cduExecLight(unit));
+      if (execLight !== undefined) {
+        execLight.value = 0;
+      }
+    }
+    this.renderCdu(unit);
+  }
+
+  /** Renders a CDU unit's toy screen state into its text and style DataRefs. */
+  private renderCdu(unit: CduUnit): void {
+    const state = this.cduScreens[unit];
+    const setLine = (line: number, text: string, style: number): void => {
+      const textRef = this.getDataRefByName(cduTextLine(unit, line));
+      if (textRef !== undefined) {
+        textRef.value = cduText(text);
+      }
+      const styleRef = this.getDataRefByName(cduStyleLine(unit, line));
+      if (styleRef !== undefined) {
+        styleRef.value = cduStyle(new Array(24).fill(style));
+      }
+    };
+    for (let line = 0; line < CDU_LINE_COUNT; line += 1) {
+      setLine(line, '', 0);
+    }
+    setLine(0, state.title, LARGE | WHITE);
+    setLine(1, ' ORIGIN', WHITE);
+    setLine(2, state.origin, LARGE | (state.origin === CDU_ORIGIN_BOXES ? AMBER : WHITE));
+    setLine(13, state.scratchpad, LARGE | CYAN);
   }
 
   private json(res: http.ServerResponse, status: number, payload: unknown): void {

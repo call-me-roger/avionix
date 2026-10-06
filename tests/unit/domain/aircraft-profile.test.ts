@@ -1,3 +1,4 @@
+import { CDU_KEYS, cduCommand, cduExecLight, cduStyleLine, cduTextLine } from '@/domain/cdu/keys';
 import {
   type AircraftProfile,
   commandBindingOf,
@@ -41,6 +42,8 @@ import {
   GENERIC_COMMANDS,
   GENERIC_DATAREFS,
   GENERIC_PROFILE,
+  cduKeysFeatureId,
+  cduScreenFeatureId,
 } from '@/domain/aircraft/profiles/generic';
 
 const shared: AircraftProfile = {
@@ -72,6 +75,20 @@ describe('profileBindings', () => {
   it('keeps the write requirement when any feature writes to the name', () => {
     expect(profileBindings(shared)[0]?.write).toBe(true);
   });
+
+  /** The names one `cdu{n}-screen` feature declares, in declaration order. */
+  function cduScreenNames(unit: 1 | 2): string[] {
+    const lines = Array.from({ length: 16 }, (_, line) => line);
+    return [
+      ...lines.map((line) => cduTextLine(unit, line)),
+      ...lines.map((line) => cduStyleLine(unit, line)),
+    ];
+  }
+
+  /** The names one `cdu{n}-keys` feature declares, in declaration order. */
+  function cduKeysNames(unit: 1 | 2): string[] {
+    return [cduExecLight(unit), ...CDU_KEYS.map((entry) => cduCommand(unit, entry.id))];
+  }
 
   it('lists every distinct name of the generic profile', () => {
     const names = profileBindings(GENERIC_PROFILE).map((binding) => binding.name);
@@ -188,6 +205,10 @@ describe('profileBindings', () => {
       GENERIC_DATAREFS.outerMarker,
       GENERIC_DATAREFS.middleMarker,
       GENERIC_DATAREFS.innerMarker,
+      ...cduScreenNames(1),
+      ...cduKeysNames(1),
+      ...cduScreenNames(2),
+      ...cduKeysNames(2),
     ]);
   });
 });
@@ -249,6 +270,10 @@ describe('the generic profile', () => {
       FEATURE_NAV_SOURCE,
       FEATURE_NAV_COURSE,
       FEATURE_NAV_AIDS,
+      cduScreenFeatureId(1),
+      cduKeysFeatureId(1),
+      cduScreenFeatureId(2),
+      cduKeysFeatureId(2),
     ]);
   });
 
@@ -294,11 +319,11 @@ describe('the generic profile', () => {
   });
 
   it('bumps the profile version for the new bindings', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.5.0');
+    expect(GENERIC_PROFILE.version).toBe('1.6.0');
   });
 
   it('declares the flight instruments, every one optional, and the altimeter setting', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.5.0');
+    expect(GENERIC_PROFILE.version).toBe('1.6.0');
     const instruments = findFeature(GENERIC_PROFILE, FEATURE_FLIGHT_INSTRUMENTS);
     expect(instruments?.label).toBe('Flight instruments');
     expect(instruments?.bindings.map((binding) => binding.name)).toEqual([
@@ -538,5 +563,48 @@ describe('the generic profile’s navigation features (F-30)', () => {
       GENERIC_DATAREFS.middleMarker,
       GENERIC_DATAREFS.innerMarker,
     ]);
+  });
+});
+
+describe('CDU features (F-32)', () => {
+  it('bumps the profile version for the CDU bindings', () => {
+    expect(GENERIC_PROFILE.version).toBe('1.6.0');
+  });
+
+  it.each([1, 2] as const)(
+    'declares cdu%i-screen with 32 bindings, text required and style optional',
+    (unit) => {
+      const feature = findFeature(GENERIC_PROFILE, cduScreenFeatureId(unit));
+      expect(feature?.label).toBe(`CDU ${unit} screen`);
+      const lines = Array.from({ length: 16 }, (_, line) => line);
+      expect(
+        feature?.bindings.map((binding) => [binding.kind, binding.name, binding.required]),
+      ).toEqual([
+        ...lines.map((line) => ['dataref', cduTextLine(unit, line), true]),
+        ...lines.map((line) => ['dataref', cduStyleLine(unit, line), false]),
+      ]);
+      expect(feature?.bindings).toHaveLength(32);
+      expect(feature?.bindings.every((binding) => binding.write === undefined)).toBe(true);
+    },
+  );
+
+  it.each([1, 2] as const)(
+    'declares cdu%i-keys with 71 bindings: the EXEC light and every CDU key',
+    (unit) => {
+      const feature = findFeature(GENERIC_PROFILE, cduKeysFeatureId(unit));
+      expect(feature?.label).toBe(`CDU ${unit} keys`);
+      expect(
+        feature?.bindings.map((binding) => [binding.kind, binding.name, binding.required]),
+      ).toEqual([
+        ['dataref', cduExecLight(unit), false],
+        ...CDU_KEYS.map((entry) => ['command', cduCommand(unit, entry.id), false]),
+      ]);
+      expect(feature?.bindings).toHaveLength(71);
+    },
+  );
+
+  it('names cduScreenFeatureId and cduKeysFeatureId by unit', () => {
+    expect(cduScreenFeatureId(2)).toBe('cdu2-screen');
+    expect(cduKeysFeatureId(1)).toBe('cdu1-keys');
   });
 });
