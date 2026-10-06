@@ -1,6 +1,6 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 
 import {
   type OperationOutcome,
@@ -14,17 +14,31 @@ import {
   GENERIC_PROFILE,
 } from '@/domain/aircraft/profiles/generic';
 import { explainFailure } from '@/domain/health/failure-explanation';
+import { AvionicsUnit } from '@/features/panels/primitives/AvionicsUnit';
 import {
   ControlButton,
   OperationNotice,
   REFUSAL_LABEL,
 } from '@/features/panels/primitives/ControlButton';
+import { DisplayWindow } from '@/features/panels/primitives/DisplayWindow';
+import { Keypad } from '@/features/panels/primitives/Keypad';
 import type { PanelActions } from '@/features/panels/primitives/PanelContext';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { Readout } from '@/features/panels/primitives/Readout';
 import { ValueEntry } from '@/features/panels/primitives/ValueEntry';
+import { haptics } from '@/platform/haptics';
+import { BodyText } from '@/theme/primitives';
 import { ThemeProvider } from '@/theme/theme-context';
 import { lightTheme } from '@/theme/tokens';
+
+jest.mock('@/platform/haptics', () => ({ haptics: { press: jest.fn(), failure: jest.fn() } }));
+
+afterEach(() => {
+  jest.clearAllMocks();
+});
+
+// LightBar is hidden from accessibility (the button's own label already speaks its state).
+const HIDDEN = { includeHiddenElements: true };
 
 const NOW = 100_000;
 const HEADING = GENERIC_DATAREFS.headingBug;
@@ -191,8 +205,8 @@ describe('ControlButton', () => {
     );
     const { rerender } = await renderInFrame(live(), button);
     const enabled = StyleSheet.flatten(screen.getByRole('button', { name: 'Up' }).props.style);
-    expect(enabled.backgroundColor).toBe(lightTheme.colors.primary);
-    expect(enabled.borderColor).toBe(lightTheme.colors.primary);
+    expect(enabled.backgroundColor).toBe(lightTheme.avionics.keyFace);
+    expect(enabled.borderColor).toBe(lightTheme.avionics.bezelEdge);
 
     await rerender(
       <ThemeProvider storage={createMemorySettingsStorage()} systemSchemeOverride="light">
@@ -208,9 +222,9 @@ describe('ControlButton', () => {
     );
     const disabled = StyleSheet.flatten(screen.getByRole('button', { name: 'Up' }).props.style);
     expect(disabled.backgroundColor).toBe('transparent');
-    expect(disabled.borderColor).toBe(lightTheme.colors.border);
+    expect(disabled.borderColor).toBe(lightTheme.avionics.bezelEdge);
     expect(StyleSheet.flatten(screen.getByText('Up').props.style).color).toBe(
-      lightTheme.colors.textMuted,
+      lightTheme.avionics.legendDim,
     );
   });
 
@@ -389,7 +403,126 @@ describe('ControlButton', () => {
     );
     const button = screen.getByRole('button', { name: 'ALT' });
     expect(button.props.accessibilityState).toMatchObject({ selected: true });
-    expect(screen.getByText('● ALT')).toBeTruthy();
+    expect(screen.getByText('ALT')).toBeTruthy();
+    expect(within(button).getByTestId('light-bar-engaged', HIDDEN)).toBeTruthy();
+  });
+
+  it('maps selected={false} to the off light bar', async () => {
+    await renderInFrame(
+      live(),
+      <ControlButton
+        label="ALT"
+        featureId={FEATURE_HEADING_CONTROL}
+        target="t"
+        selected={false}
+        onPress={() => undefined}
+      />,
+    );
+    const button = screen.getByRole('button', { name: 'ALT' });
+    expect(within(button).getByTestId('light-bar-off', HIDDEN)).toBeTruthy();
+  });
+
+  describe('annunciation', () => {
+    const wrap = (node: React.ReactNode) => (
+      <ThemeProvider storage={createMemorySettingsStorage()} systemSchemeOverride="light">
+        <PanelFrame title="Test panel" snapshot={live()} now={NOW} actions={actions}>
+          {node}
+        </PanelFrame>
+      </ThemeProvider>
+    );
+    const button = (annunciation?: 'engaged' | 'armed' | 'off') => (
+      <ControlButton
+        label="HDG"
+        featureId={FEATURE_HEADING_CONTROL}
+        target="t"
+        annunciation={annunciation}
+        onPress={() => undefined}
+      />
+    );
+
+    it('draws a solid bar when engaged', async () => {
+      await render(wrap(button('engaged')));
+      expect(
+        within(screen.getByRole('button', { name: 'HDG' })).getByTestId(
+          'light-bar-engaged',
+          HIDDEN,
+        ),
+      ).toBeTruthy();
+    });
+
+    it('draws a hollow bar when armed', async () => {
+      await render(wrap(button('armed')));
+      expect(
+        within(screen.getByRole('button', { name: 'HDG' })).getByTestId('light-bar-armed', HIDDEN),
+      ).toBeTruthy();
+    });
+
+    it('draws a dim bar when off', async () => {
+      await render(wrap(button('off')));
+      expect(
+        within(screen.getByRole('button', { name: 'HDG' })).getByTestId('light-bar-off', HIDDEN),
+      ).toBeTruthy();
+    });
+
+    it('draws no bar at all with no annunciation and no selected', async () => {
+      await render(wrap(button(undefined)));
+      const found = within(screen.getByRole('button', { name: 'HDG' }));
+      expect(found.queryByTestId('light-bar-engaged', HIDDEN)).toBeNull();
+      expect(found.queryByTestId('light-bar-armed', HIDDEN)).toBeNull();
+      expect(found.queryByTestId('light-bar-off', HIDDEN)).toBeNull();
+    });
+  });
+
+  it('renders children in place of the legend, keeping the accessible name', async () => {
+    await renderInFrame(
+      live(),
+      <ControlButton
+        label="COM1 active"
+        accessibilityLabel="Enter COM1 active"
+        featureId={FEATURE_HEADING_CONTROL}
+        target="t"
+        onPress={() => undefined}
+      >
+        <Text>118.000</Text>
+      </ControlButton>,
+    );
+    expect(screen.getByText('118.000')).toBeTruthy();
+    expect(screen.queryByText('COM1 active')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Enter COM1 active' })).toBeTruthy();
+  });
+
+  describe('haptics', () => {
+    it('fires a press on tap, then onPress', async () => {
+      const onPress = jest.fn();
+      await renderInFrame(
+        live(),
+        <ControlButton
+          label="Up"
+          featureId={FEATURE_HEADING_CONTROL}
+          target="t"
+          onPress={onPress}
+        />,
+      );
+      await fireEvent.press(screen.getByRole('button', { name: 'Up' }));
+      expect(haptics.press).toHaveBeenCalledTimes(1);
+      expect(onPress).toHaveBeenCalledTimes(1);
+    });
+
+    it('fires neither on a disabled button', async () => {
+      const onPress = jest.fn();
+      await renderInFrame(
+        { ...base, state: 'reconnecting' },
+        <ControlButton
+          label="Up"
+          featureId={FEATURE_HEADING_CONTROL}
+          target="t"
+          onPress={onPress}
+        />,
+      );
+      await fireEvent.press(screen.getByRole('button', { name: 'Up' }));
+      expect(haptics.press).not.toHaveBeenCalled();
+      expect(onPress).not.toHaveBeenCalled();
+    });
   });
 
   it('prints a quiet control’s failure once through OperationNotice', async () => {
@@ -427,6 +560,7 @@ describe('ControlButton', () => {
       );
       await fireEvent.press(screen.getByRole('button', { name: 'Disconnect' }));
       expect(onPress).not.toHaveBeenCalled();
+      expect(haptics.press).toHaveBeenCalledTimes(1);
       await fireEvent.press(screen.getByRole('button', { name: 'Tap again: Disconnect' }));
       expect(onPress).toHaveBeenCalledTimes(1);
       expect(screen.getByRole('button', { name: 'Disconnect' })).toBeTruthy();
@@ -490,6 +624,78 @@ describe('ControlButton', () => {
       await rerender(make(live()));
       expect(screen.getByRole('button', { name: 'Disconnect' })).toBeTruthy();
     });
+  });
+});
+
+describe('Keypad', () => {
+  it('fires a press and the digit callback', async () => {
+    const onDigit = jest.fn();
+    await renderInFrame(
+      live(),
+      <Keypad
+        digits={[1, 2, 3, 4, 5, 6, 7, 8, 9, 0]}
+        onDigit={onDigit}
+        onErase={() => undefined}
+        onClear={() => undefined}
+      />,
+    );
+    await fireEvent.press(screen.getByLabelText('5'));
+    expect(haptics.press).toHaveBeenCalledTimes(1);
+    expect(onDigit).toHaveBeenCalledWith(5);
+  });
+});
+
+describe('DisplayWindow', () => {
+  it('colours an active value with the engaged colour', async () => {
+    await renderInFrame(live(), <DisplayWindow text="118.000" role="active" />);
+    expect(screen.getByText('118.000')).toHaveStyle({ color: lightTheme.avionics.engaged });
+  });
+
+  it('colours a selected value with the selected colour', async () => {
+    await renderInFrame(live(), <DisplayWindow text="121.500" role="selected" />);
+    expect(screen.getByText('121.500')).toHaveStyle({ color: lightTheme.avionics.selected });
+  });
+
+  it('draws a stale value in legendDim', async () => {
+    await renderInFrame(live(), <DisplayWindow text="118.000" role="active" stale />);
+    expect(screen.getByText('118.000')).toHaveStyle({ color: lightTheme.avionics.legendDim });
+  });
+
+  it('renders the tuning frame', async () => {
+    await renderInFrame(live(), <DisplayWindow text="118.000" role="active" tuning />);
+    expect(screen.getByTestId('display-window-tuning')).toBeTruthy();
+  });
+
+  it('overrides the role colour with warning for an emergency squawk', async () => {
+    await renderInFrame(live(), <DisplayWindow text="7700" role="active" tone="warning" />);
+    expect(screen.getByText('7700')).toHaveStyle({ color: lightTheme.avionics.warning });
+  });
+});
+
+describe('BodyText on a bezel', () => {
+  it('uses the avionics warning colour for danger inside an AvionicsUnit', async () => {
+    await renderInFrame(
+      live(),
+      <AvionicsUnit>
+        <BodyText tone="danger">Oops</BodyText>
+      </AvionicsUnit>,
+    );
+    expect(screen.getByText('Oops')).toHaveStyle({ color: lightTheme.avionics.warning });
+  });
+
+  it('uses colors.danger for the same text outside a unit', async () => {
+    await renderInFrame(live(), <BodyText tone="danger">Oops</BodyText>);
+    expect(screen.getByText('Oops')).toHaveStyle({ color: lightTheme.colors.danger });
+  });
+
+  it('uses legendDim for muted text inside a unit', async () => {
+    await renderInFrame(
+      live(),
+      <AvionicsUnit>
+        <BodyText muted>Quiet</BodyText>
+      </AvionicsUnit>,
+    );
+    expect(screen.getByText('Quiet')).toHaveStyle({ color: lightTheme.avionics.legendDim });
   });
 });
 

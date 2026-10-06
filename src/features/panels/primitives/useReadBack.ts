@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { readBackVerdict } from '@/domain/panels/read-back';
 import type { DataRefValue } from '@/domain/simulator/types';
+import { useHaptics } from '@/features/haptics/HapticsProvider';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 
 export interface ReadBackRequest {
@@ -32,17 +33,27 @@ type Watch =
   | { kind: 'watching'; request: ReadBackRequest; startedAt: number }
   | { kind: 'settled'; message: string | null };
 
+interface ReadBackState {
+  watches: Readonly<Record<string, Watch>>;
+  /** Counts failures settled, so the haptic effect below fires once per new one, never on mount. */
+  failures: number;
+}
+
 /**
  * Checks that X-Plane adopted what a control sent (F-21 R4, F-22 R4). Each watch settles exactly
  * once: a value the pilot later changes in the simulator must not produce a late "did not take".
  * Evaluated during render, which the panel clock drives every second, so no timer of its own; the
  * state is settled with React's adjust-while-rendering pattern (effects may not set state here).
+ * A settled failure also fires a haptic buzz, from an effect, never during render.
  */
 export function useReadBack(): ReadBack {
   const { snapshot, link, now } = usePanel();
-  const [watches, setWatches] = useState<Readonly<Record<string, Watch>>>({});
+  const { failure } = useHaptics();
+  const [state, setState] = useState<ReadBackState>({ watches: {}, failures: 0 });
+  const { watches } = state;
 
-  let settled: Record<string, Watch> | null = null;
+  let settledWatches: Record<string, Watch> | null = null;
+  let newFailures = 0;
   for (const [key, watch] of Object.entries(watches)) {
     if (watch.kind !== 'watching') {
       continue;
@@ -60,29 +71,43 @@ export function useReadBack(): ReadBack {
     if (verdict === 'waiting') {
       continue;
     }
-    settled ??= { ...watches };
-    settled[key] = {
-      kind: 'settled',
-      message: verdict === 'notAdopted' ? watch.request.failure(current) : null,
-    };
+    settledWatches ??= { ...watches };
+    const message = verdict === 'notAdopted' ? watch.request.failure(current) : null;
+    settledWatches[key] = { kind: 'settled', message };
+    if (message !== null) {
+      newFailures += 1;
+    }
   }
-  if (settled !== null) {
-    setWatches(settled);
+  if (settledWatches !== null) {
+    const finalWatches = settledWatches;
+    setState((previous) => ({
+      watches: finalWatches,
+      failures: previous.failures + newFailures,
+    }));
   }
+
+  useEffect(() => {
+    if (state.failures > 0) {
+      failure();
+    }
+  }, [state.failures, failure]);
 
   return {
     watch: (request) =>
-      setWatches((previous) => ({
+      setState((previous) => ({
         ...previous,
-        [request.key]: { kind: 'watching', request, startedAt: now },
+        watches: {
+          ...previous.watches,
+          [request.key]: { kind: 'watching', request, startedAt: now },
+        },
       })),
     messageFor: (key) => {
       const watch = watches[key];
       return watch?.kind === 'settled' ? watch.message : null;
     },
     pendingExpected: (key) => {
-      // `settled` holds this render's verdicts before React applies them.
-      const watch = (settled ?? watches)[key];
+      // `settledWatches` holds this render's verdicts before React applies them.
+      const watch = (settledWatches ?? watches)[key];
       return watch?.kind === 'watching' ? watch.request.expected : null;
     },
   };

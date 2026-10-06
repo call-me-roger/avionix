@@ -35,11 +35,12 @@ export function ModeButtons({ readBack, blocked }: { readBack: ReadBack; blocked
     return (
       <ControlButton
         key={spec.key}
-        label={state === 'armed' ? `○ ${spec.label}` : spec.label}
+        label={spec.label}
         accessibilityLabel={`${spec.label} mode, ${state}`}
         featureId={spec.featureId}
         target={spec.command}
         selected={state === 'engaged'}
+        annunciation={state}
         invalid={blocked || readBack.pendingExpected(`mode-${spec.key}`) !== null}
         onPress={() => {
           void activate(spec.featureId, spec.command);

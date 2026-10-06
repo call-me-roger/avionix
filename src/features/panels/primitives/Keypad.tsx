@@ -1,8 +1,10 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 
+import { useHaptics } from '@/features/haptics/HapticsProvider';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
+import { numeric } from '@/theme/typography';
 
 /** Taller than the 48 dp minimum: the radio-stack complaint in the research is keys too small to hit. */
 export const KEY_HEIGHT = 56;
@@ -16,17 +18,19 @@ const makeStyles = (theme: Theme) => ({
     flexGrow: 0,
     minHeight: KEY_HEIGHT,
     minWidth: theme.touch.minTarget,
-    borderRadius: theme.radius.md,
+    backgroundColor: theme.avionics.keyFace,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
+    borderColor: theme.avionics.bezelEdge,
+    borderRadius: 6,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
+  // Pressed is translated down 1 dp, a hardware key's own travel.
+  pressed: { backgroundColor: theme.avionics.keyFacePressed, transform: [{ translateY: 1 }] },
   label: {
-    color: theme.colors.text,
-    fontSize: theme.typography.headingSize,
-    fontWeight: 'bold' as const,
+    ...numeric(theme, true),
+    fontSize: theme.typography.displaySize,
+    color: theme.avionics.legend,
   },
 });
 
@@ -43,14 +47,18 @@ interface Props {
 /** Digits in phone order, then delete, the last digit (0) and clear; a sign key when asked for. */
 export function Keypad({ digits, onDigit, onErase, onClear, onSign }: Props) {
   const styles = useThemedStyles(makeStyles);
+  const haptics = useHaptics();
   const zero = digits[digits.length - 1];
   const key = (label: string, accessibilityLabel: string, onPress: () => void) => (
     <Pressable
       key={accessibilityLabel}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      onPress={onPress}
-      style={styles.key}
+      onPress={() => {
+        haptics.press();
+        onPress();
+      }}
+      style={({ pressed }) => [styles.key, pressed ? styles.pressed : null]}
     >
       <Text style={styles.label}>{label}</Text>
     </Pressable>

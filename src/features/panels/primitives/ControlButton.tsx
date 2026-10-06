@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { featureOf } from '@/application/compatibility';
 import type { OperationRefusal } from '@/application/session-snapshot';
 import { controlAvailability } from '@/domain/panels/control-availability';
+import { useHaptics } from '@/features/haptics/HapticsProvider';
 import { FailureNotice } from '@/features/health/FailureNotice';
+import { LightBar, type LightBarState } from '@/features/panels/primitives/LightBar';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import { BodyText } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
+import { avionicsText } from '@/theme/typography';
 
 /** A disruptive control's second press must land within this window (spec decision 10). */
 export const CONFIRM_WINDOW_MS = 3000;
@@ -20,27 +23,32 @@ export const REFUSAL_LABEL: Record<OperationRefusal, string> = {
 
 const makeStyles = (theme: Theme) => ({
   wrap: { gap: theme.spacing.xs, marginVertical: theme.touch.spacing / 2 },
-  button: {
+  key: {
+    backgroundColor: theme.avionics.keyFace,
+    borderWidth: 1,
+    borderColor: theme.avionics.bezelEdge,
+    borderRadius: 6,
     minHeight: theme.touch.minTarget,
     minWidth: theme.touch.minTarget,
-    paddingHorizontal: theme.spacing.lg,
-    borderRadius: theme.radius.md,
-    borderWidth: 2,
-    borderColor: theme.colors.primary,
-    backgroundColor: theme.colors.primary,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: 6,
+    paddingBottom: 8,
+    gap: 6,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
-  // Enabled is a filled button, disabled an outline with a muted label: the two must not be
-  // told apart by a shade alone, which the night palette's dim colours cannot carry.
-  disabled: { backgroundColor: 'transparent', borderColor: theme.colors.border },
-  armed: { borderColor: theme.colors.danger },
-  label: {
-    color: theme.colors.onPrimary,
-    fontSize: theme.typography.titleSize,
-    fontWeight: 'bold' as const,
+  // Pressed is translated down 1 dp, a hardware key's own travel.
+  pressed: { backgroundColor: theme.avionics.keyFacePressed, transform: [{ translateY: 1 }] },
+  // Disabled is a transparent face, not a shade: told apart by shape, which the night palette's
+  // dim colours cannot carry through colour alone.
+  disabled: { backgroundColor: 'transparent' },
+  armed: { borderWidth: 2, borderColor: theme.avionics.caution },
+  legend: {
+    ...avionicsText(theme, true),
+    fontSize: theme.typography.legendSize,
+    color: theme.avionics.legend,
   },
-  labelDisabled: { color: theme.colors.textMuted },
+  legendDisabled: { color: theme.avionics.legendDim },
 });
 
 interface Props {
@@ -62,12 +70,19 @@ interface Props {
   quiet?: boolean;
   /** One of a set of positions (a transponder mode): marked for sight and for screen readers. */
   selected?: boolean;
+  /** The annunciator light bar above the legend; absent draws none. */
+  annunciation?: LightBarState;
+  /** Replaces the legend text when given (e.g. a display window made pressable). */
+  children?: React.ReactNode;
+  /** Applies to the outer wrap `View`, so a key can take `flex: 1` in a row. */
+  style?: StyleProp<ViewStyle>;
 }
 
 /** The only way a panel renders a pressable control: it applies every framework rule at once. */
 export function ControlButton(props: Props) {
   const { snapshot, link } = usePanel();
   const styles = useThemedStyles(makeStyles);
+  const haptics = useHaptics();
   const availability = controlAvailability(featureOf(snapshot.compatibility, props.featureId));
   const outcome = snapshot.operations[props.target];
   const pending = outcome?.status === 'pending';
@@ -87,13 +102,13 @@ export function ControlButton(props: Props) {
     return () => clearTimeout(timer);
   }, [armed]);
 
-  const shown = armed
-    ? `Tap again: ${props.label}`
-    : props.selected === true
-      ? `● ${props.label}`
-      : props.label;
+  const selectedAnnunciation: LightBarState | undefined =
+    props.selected === undefined ? undefined : props.selected ? 'engaged' : 'off';
+  const annunciation = props.annunciation ?? selectedAnnunciation;
+  const shown = armed ? `Tap again: ${props.label}` : props.label;
   const accessibleName = armed ? shown : (props.accessibilityLabel ?? props.label);
   const onPress = () => {
+    haptics.press();
     if (props.confirm === true && !armed) {
       setArmed(true);
       return;
@@ -101,9 +116,10 @@ export function ControlButton(props: Props) {
     setArmed(false);
     props.onPress();
   };
+  const showLegend = armed || props.children === undefined;
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, props.style]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={accessibleName}
@@ -114,9 +130,19 @@ export function ControlButton(props: Props) {
         }}
         disabled={!enabled}
         onPress={onPress}
-        style={[styles.button, enabled ? null : styles.disabled, armed ? styles.armed : null]}
+        style={({ pressed }) => [
+          styles.key,
+          enabled ? null : styles.disabled,
+          pressed ? styles.pressed : null,
+          armed ? styles.armed : null,
+        ]}
       >
-        <Text style={[styles.label, enabled ? null : styles.labelDisabled]}>{shown}</Text>
+        {annunciation === undefined ? null : <LightBar state={annunciation} />}
+        {showLegend ? (
+          <Text style={[styles.legend, enabled ? null : styles.legendDisabled]}>{shown}</Text>
+        ) : (
+          props.children
+        )}
       </Pressable>
       {availability.reason === null || props.quiet === true ? null : (
         <BodyText muted>{availability.reason}</BodyText>

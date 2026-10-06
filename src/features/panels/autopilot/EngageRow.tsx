@@ -152,6 +152,7 @@ export function EngageRow({ readBack, blocked }: { readBack: ReadBack; blocked: 
             featureId={button.featureId}
             target={button.spec.command}
             selected={button.selected}
+            annunciation={button.selected ? 'engaged' : 'off'}
             quiet={'quiet' in button}
             invalid={blocked}
             onPress={() => press(button.spec)}

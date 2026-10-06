@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, within } from '@testing-library/react-native';
 import React from 'react';
 
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
@@ -13,6 +13,9 @@ import type { PanelActions } from '@/features/panels/primitives/PanelContext';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
 import { ThemeProvider } from '@/theme/theme-context';
+
+// LightBar is hidden from accessibility (the button's own label already speaks its state).
+const HIDDEN = { includeHiddenElements: true };
 
 const NOW = 1_000_000;
 const base = initialSnapshot(GENERIC_PROFILE, 5);
@@ -100,9 +103,15 @@ describe('Autopilot panel', () => {
   it('marks each mode engaged, armed or off, in shape and in words', async () => {
     await render(tree(live()));
     expect(screen.getByLabelText('HDG mode, engaged')).toBeTruthy();
-    expect(screen.getByText('● HDG')).toBeTruthy();
+    expect(screen.getByText('HDG')).toBeTruthy();
+    expect(
+      within(screen.getByLabelText('HDG mode, engaged')).getByTestId('light-bar-engaged', HIDDEN),
+    ).toBeTruthy();
     expect(screen.getByLabelText('NAV mode, armed')).toBeTruthy();
-    expect(screen.getByText('○ NAV')).toBeTruthy();
+    expect(screen.getByText('NAV')).toBeTruthy();
+    expect(
+      within(screen.getByLabelText('NAV mode, armed')).getByTestId('light-bar-armed', HIDDEN),
+    ).toBeTruthy();
     expect(screen.getByLabelText('APR mode, off')).toBeTruthy();
   });
 
@@ -162,7 +171,13 @@ describe('Autopilot panel', () => {
     await view.rerender(
       tree(live({ telemetry: telemetry({ ...VALUES, [D.autopilotServos]: 1 }) })),
     );
-    expect(screen.getByText('● AP')).toBeTruthy();
+    expect(screen.getByText('AP')).toBeTruthy();
+    expect(
+      within(screen.getByLabelText('Disconnect autopilot')).getByTestId(
+        'light-bar-engaged',
+        HIDDEN,
+      ),
+    ).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('Disconnect autopilot'));
     expect(actions.activate).toHaveBeenLastCalledWith('autopilot-engage', C.autopilotDisconnect);
   });
@@ -199,7 +214,10 @@ describe('Autopilot panel', () => {
   it('arms, engages and disarms the autothrottle', async () => {
     // autothrottle_enabled 0: armed, not engaged.
     const view = await render(tree(live()));
-    expect(screen.getByText('● A/T ARM')).toBeTruthy();
+    expect(screen.getByText('A/T ARM')).toBeTruthy();
+    expect(
+      within(screen.getByLabelText('Disarm autothrottle')).getByTestId('light-bar-engaged', HIDDEN),
+    ).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('Engage autothrottle'));
     expect(actions.activate).toHaveBeenLastCalledWith('autothrottle', C.autothrottleOn);
     await fireEvent.press(screen.getByLabelText('Disarm autothrottle'));

@@ -317,6 +317,6 @@ describe('autopilot selectors', () => {
     expect(button.props.accessibilityState.disabled).toBe(true);
     const label = within(button).getByText('5,000 ft');
     const style = StyleSheet.flatten(label.props.style);
-    expect(style.color).toBe(lightTheme.colors.textMuted);
+    expect(style.color).toBe(lightTheme.avionics.legendDim);
   });
 });
