@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import React from 'react';
-import { Dimensions, StyleSheet } from 'react-native';
+import { AccessibilityInfo, Dimensions, StyleSheet } from 'react-native';
 
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
@@ -509,5 +509,85 @@ describe('CDU panel layout', () => {
     );
     expect(within(labelRow).getByLabelText('CDU 1')).toBeTruthy();
     expect(within(labelRow).getByLabelText('CDU 2')).toBeTruthy();
+  });
+
+  async function layout(testID: string, width: number, height: number) {
+    await fireEvent(screen.getByTestId(testID), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width, height } },
+    });
+  }
+
+  it('scrolls bezel and keys together when pinning would leave under two key rows', async () => {
+    await withWindow(390, 844, async () => {
+      await render(tree(live()));
+      // Pinned until both heights are known.
+      expect(screen.getByTestId('cdu-keys-scroll')).toBeTruthy();
+      expect(screen.queryByTestId('cdu-panel-scroll')).toBeNull();
+      // H 450 − B 420 − 8 = 22 dp: less than two 56 dp key rows.
+      await layout('cdu-panel', 358, 450);
+      await layout('cdu-bezel', 358, 420);
+      const scroll = screen.getByTestId('cdu-panel-scroll');
+      expect(within(scroll).getByTestId('cdu-screen')).toBeTruthy();
+      expect(within(scroll).getByLabelText('K')).toBeTruthy();
+      // No nested key scroll inside the single one.
+      expect(screen.queryByTestId('cdu-keys-scroll')).toBeNull();
+      // The same two elements are measured in the scrolling mode, with the same heights (the root
+      // fills the frame, the bezel is the bezel): reporting them again keeps the choice.
+      await layout('cdu-panel', 358, 450);
+      await layout('cdu-bezel', 358, 420);
+      expect(screen.getByTestId('cdu-panel-scroll')).toBeTruthy();
+      expect(screen.queryByTestId('cdu-keys-scroll')).toBeNull();
+    });
+  });
+
+  it('stays pinned when the frame leaves room for the keys', async () => {
+    await withWindow(390, 844, async () => {
+      await render(tree(live()));
+      // H 700 − B 420 − 8 = 272 dp: several key rows.
+      await layout('cdu-panel', 358, 700);
+      await layout('cdu-bezel', 358, 420);
+      expect(screen.queryByTestId('cdu-panel-scroll')).toBeNull();
+      const keys = screen.getByTestId('cdu-keys-scroll');
+      expect(within(keys).getByLabelText('K')).toBeTruthy();
+      expect(within(keys).queryByTestId('cdu-screen')).toBeNull();
+      // Reporting the same heights from the pinned structure keeps it pinned.
+      await layout('cdu-panel', 358, 700);
+      await layout('cdu-bezel', 358, 420);
+      expect(screen.getByTestId('cdu-keys-scroll')).toBeTruthy();
+      expect(screen.queryByTestId('cdu-panel-scroll')).toBeNull();
+    });
+  });
+
+  it('scrolls the no-keys states, which the fixed frame does not', async () => {
+    const blank: SessionSnapshot['telemetry'] = {};
+    for (let line = 0; line < CDU_LINE_COUNT; line += 1) {
+      blank[cduTextLine(1, line)] = { value: text(''), receivedAt: NOW };
+    }
+    await render(tree(live({ telemetry: blank })));
+    const scroll = screen.getByTestId('cdu-state-scroll');
+    expect(within(scroll).getByTestId('cdu-no-fms')).toBeTruthy();
+    expect(StyleSheet.flatten(scroll.props.style)).toEqual(expect.objectContaining({ flex: 1 }));
+  });
+});
+
+describe('CDU panel announcements', () => {
+  it('announces a new message and the missing-keys line outright, not only by live region', async () => {
+    const announce = jest
+      .spyOn(AccessibilityInfo, 'announceForAccessibility')
+      .mockImplementation(() => undefined);
+    try {
+      await render(tree(live({ overrides: { 'sim/FMS/key_Q': 'missing' } })));
+      expect(announce).toHaveBeenCalledWith("1 key isn't available on this aircraft.");
+      announce.mockClear();
+      await fireEvent.press(screen.getByLabelText('K'));
+      await resolveNext('failed');
+      const message = "X-Plane didn't take the K key.";
+      expect(screen.getByTestId('cdu-message')).toHaveTextContent(message);
+      expect(screen.getByTestId('cdu-message').props.accessibilityLiveRegion).toBe('polite');
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(announce).toHaveBeenCalledWith(message);
+    } finally {
+      announce.mockRestore();
+    }
   });
 });

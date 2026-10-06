@@ -1,5 +1,12 @@
-import React, { useState } from 'react';
-import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  AccessibilityInfo,
+  type LayoutChangeEvent,
+  ScrollView,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 
 import { type CompatibilitySnapshot, featureOf } from '@/application/compatibility';
 import {
@@ -42,6 +49,15 @@ const UNITS: readonly CduUnit[] = [1, 2];
 
 /** The glass's own border: its rows, and so the line-select keys, start this far down. */
 const GLASS_BORDER = 1;
+
+/**
+ * The narrow layout pins the bezel only while the frame leaves the keys at least two key rows
+ * (48 dp keys and their 8 dp spacing, twice) under it, after the 8 dp gap between them. Below that
+ * — a short phone, a link notice, a large system font — pinning would leave no reachable keys and
+ * push the scratchpad under the switcher, so bezel and keys scroll together instead.
+ */
+const MIN_PINNED_KEYS_HEIGHT = 112;
+const BEZEL_KEYS_GAP = 8;
 
 /** A blank glass row: drawn while waiting, so no half-arrived line is shown as if it were live. */
 const BLANK_ROW = { text: ' '.repeat(CDU_COLUMNS), style: '' };
@@ -94,10 +110,11 @@ const makeStyles = (theme: Theme) => ({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
-  root: { flex: 1, gap: theme.touch.spacing },
+  root: { flex: 1, gap: BEZEL_KEYS_GAP },
   wide: { flex: 1, flexDirection: 'row' as const, gap: theme.touch.spacing },
   column: { flex: 1 },
   scroll: { flex: 1 },
+  scrollContent: { gap: BEZEL_KEYS_GAP },
 });
 
 function screenUnavailable(compatibility: CompatibilitySnapshot, unit: CduUnit): boolean {
@@ -161,6 +178,23 @@ export function CduPanel() {
   const keys = useCduKeys(unit);
   // Until the first layout pass, assume the frame's padding; tests never run a layout pass.
   const [measured, setMeasured] = useState<number | null>(null);
+  // The panel root's height (H, the frame's space under the title, since the root is `flex: 1` in a
+  // fixed frame) and the bezel's (B). Both are the same elements in every narrow mode, so the
+  // pinned/scrolling choice below cannot flip-flop between them.
+  const [rootHeight, setRootHeight] = useState<number | null>(null);
+  const [bezelHeight, setBezelHeight] = useState<number | null>(null);
+  const onRootLayout = (event: LayoutChangeEvent) => {
+    setMeasured(event.nativeEvent.layout.width);
+    setRootHeight(event.nativeEvent.layout.height);
+  };
+
+  // A live region that mounts already holding its text is not reliably spoken on TalkBack, so a new
+  // message (or missing-keys line) is also announced outright.
+  useEffect(() => {
+    if (keys.message !== null) {
+      AccessibilityInfo.announceForAccessibility(keys.message);
+    }
+  }, [keys.message]);
 
   const gap = theme.touch.spacing;
   const hasKeys = screen.state === 'live' || screen.state === 'waiting';
@@ -180,6 +214,11 @@ export function CduPanel() {
   const rows = waiting ? screen.rows.map(() => BLANK_ROW) : screen.rows;
   const glassHeight = rows.length * rowHeight + 2 * GLASS_BORDER;
   const missing = missingKeysMessage(missingKeyCount(snapshot, unit));
+  useEffect(() => {
+    if (missing !== null) {
+      AccessibilityInfo.announceForAccessibility(missing);
+    }
+  }, [missing]);
 
   const lskColumn = (side: readonly CduKey[]) => (
     <View style={[styles.lskColumn, { height: glassHeight }]}>
@@ -286,15 +325,21 @@ export function CduPanel() {
   }
 
   const cdu = (
-    <AvionicsUnit label="CDU" labelAccessory={header} testID="cdu-unit">
-      {body}
-    </AvionicsUnit>
+    <View testID="cdu-bezel" onLayout={(event) => setBezelHeight(event.nativeEvent.layout.height)}>
+      <AvionicsUnit label="CDU" labelAccessory={header} testID="cdu-unit">
+        {body}
+      </AvionicsUnit>
+    </View>
   );
 
   if (!hasKeys) {
+    // The frame does not scroll this panel, so the states' own words scroll here (a small phone at
+    // a large font).
     return (
-      <View testID="cdu-panel" onLayout={(event) => setMeasured(event.nativeEvent.layout.width)}>
-        {cdu}
+      <View testID="cdu-panel" onLayout={onRootLayout} style={styles.root}>
+        <ScrollView testID="cdu-state-scroll" style={styles.scroll}>
+          {cdu}
+        </ScrollView>
       </View>
     );
   }
@@ -311,11 +356,7 @@ export function CduPanel() {
 
   if (wide) {
     return (
-      <View
-        testID="cdu-panel"
-        onLayout={(event) => setMeasured(event.nativeEvent.layout.width)}
-        style={styles.wide}
-      >
+      <View testID="cdu-panel" onLayout={onRootLayout} style={styles.wide}>
         <View testID="cdu-wide-left" style={styles.column}>
           <ScrollView testID="cdu-unit-scroll" style={styles.scroll}>
             {cdu}
@@ -331,13 +372,28 @@ export function CduPanel() {
   }
 
   // Narrow: the CDU stays put and only the keys scroll beneath it, in whatever height the frame
-  // leaves, so the scratchpad stays in view while typing (spec §4.7).
+  // leaves, so the scratchpad stays in view while typing (spec §4.7) — while that leaves two key
+  // rows. Pinned until both heights are known.
+  const pinned =
+    rootHeight === null ||
+    bezelHeight === null ||
+    rootHeight - bezelHeight - BEZEL_KEYS_GAP >= MIN_PINNED_KEYS_HEIGHT;
+  if (!pinned) {
+    return (
+      <View testID="cdu-panel" onLayout={onRootLayout} style={styles.root}>
+        <ScrollView
+          testID="cdu-panel-scroll"
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {cdu}
+          {keyboard}
+        </ScrollView>
+      </View>
+    );
+  }
   return (
-    <View
-      testID="cdu-panel"
-      onLayout={(event) => setMeasured(event.nativeEvent.layout.width)}
-      style={styles.root}
-    >
+    <View testID="cdu-panel" onLayout={onRootLayout} style={styles.root}>
       {cdu}
       <ScrollView testID="cdu-keys-scroll" style={styles.scroll}>
         {keyboard}

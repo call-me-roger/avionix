@@ -134,6 +134,7 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
               <PanelFrame
                 key={descriptor.id}
                 title={descriptor.title}
+                fillsFrame={descriptor.fillsFrame === true}
                 snapshot={{
                   ...snapshotFor(code),
                   operations: failedOperationsFor(code),
