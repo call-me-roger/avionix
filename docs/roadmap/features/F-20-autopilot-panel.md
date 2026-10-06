@@ -140,7 +140,7 @@ resolve are offered.
       protocol code; a mocked missing altitude selector leaves the rest of the panel working.
 - [ ] On a real sim, moving the heading bug in X-Plane updates the panel within 200 ms, and setting
       it from the panel moves the bug on the HSI.
-- [ ] Engaging HDG shows "engaged" only after the matching `autopilot_state` bit is observed.
+- [ ] Engaging HDG shows "engaged" only after `heading_status` reads 2.
 - [ ] Disconnecting marks values stale, disables controls, and a control pressed while disconnected
       produces no write after reconnect; logs contain no token, id or host address.
 

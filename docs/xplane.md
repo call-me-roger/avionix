@@ -231,14 +231,14 @@ writes it, since doing so would fight whatever is already in control.
 | `sim/cockpit2/autopilot/roll_status` | int | mode enum | no | Verified against `DataRefs.txt` |
 | `sim/cockpit2/autopilot/pitch_status` | int | mode enum | no | Verified against `DataRefs.txt` |
 | `sim/cockpit2/autopilot/flight_director_command_bars_pilot` | int | 0 or 1 | no | Verified against `DataRefs.txt` |
-| `sim/cockpit2/autopilot/autothrottle_enabled` | int | -1 disarmed, 0 armed, 1 engaged | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/autothrottle_enabled` | int | -1 disarmed, 0 armed, 1 engaged, 2 N1, 3 retard | no | Verified against `DataRefs.txt` |
 | `sim/cockpit2/autopilot/altitude_dial_ft` | float | feet | yes | Verified against `DataRefs.txt` |
 | `sim/cockpit2/autopilot/vvi_dial_fpm` | float | ft/min | yes | Verified against `DataRefs.txt` |
 | `sim/cockpit2/autopilot/airspeed_dial_kts_mach` | float | knots or Mach, per `airspeed_is_mach` | yes | Verified against `DataRefs.txt` |
 | `sim/cockpit2/autopilot/airspeed_is_mach` | int | 0 knots, 1 Mach | no | Verified against `DataRefs.txt` |
 | `sim/cockpit2/autopilot/heading_status` | int | 0 off, 2 captured | no | Verified against `DataRefs.txt` |
-| `sim/cockpit2/autopilot/nav_status` | int | 0 off, 1 armed | no | Verified against `DataRefs.txt` |
-| `sim/cockpit2/autopilot/approach_status` | int | 0 off, 1 armed | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/nav_status` | int | 0 off, 1 armed, 2 captured | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/autopilot/approach_status` | int | 0 off, 1 armed, 2 captured | no | Verified against `DataRefs.txt` |
 | `sim/cockpit2/autopilot/glideslope_status` | int | mode enum | no | Verified against `DataRefs.txt` |
 | `sim/cockpit2/autopilot/altitude_hold_status` | int | 0 off, 2 captured | no | Verified against `DataRefs.txt` |
 | `sim/cockpit2/autopilot/vvi_status` | int | 0 off, 2 captured | no | Verified against `DataRefs.txt` |
