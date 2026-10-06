@@ -41,8 +41,9 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
   setting is read and written in inches of mercury or hectopascals, with one-tap STD; a stale link
   marks every instrument with a red X and never zeroes or animates a value. The PFD also shows the
   autopilot's targets: cyan boxes and bugs for the selected altitude, heading and speed, and a cyan
-  bug for the selected vertical speed and on the six-pack's directional gyro, each shown only while
-  it is live or being flown to.
+  bug for the selected vertical speed and on the six-pack's directional gyro. The altitude and
+  heading targets are always shown; the speed only while FLC or the autothrottle is engaged, and the
+  vertical speed only while VS is engaged.
 - A **Units** section in Setup lets the pilot choose fuel (kg/lb), temperature (°C/°F), distance
   (nm/km) and altimeter pressure (inHg/hPa); the choice is shared by every panel and persisted.
   Speeds stay in knots.

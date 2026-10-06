@@ -193,7 +193,8 @@ are: availability, the pending state, confirm, quiet, notices and the accessibil
   `accessibilityLabel ?? label`.
 
 **`Keypad`** keys get the same key face, pressed style and haptic `press()`. Height stays at
-`KEY_HEIGHT` 56. Digits are set with `numeric(theme, true)` at `displaySize`.
+`KEY_HEIGHT` 56. Digits are set with `numeric(theme, true)` at `displaySize`; the word and symbol
+keys (Clear, ⌫, ±) with `avionicsText(theme, true)` at `legendSize`, so "Clear" fits a phone key.
 
 **`ActionButton`** (`src/theme/ActionButton.tsx`) is the app-chrome button.
 
@@ -244,7 +245,7 @@ diagnostics.
   `Reconnecting · attempt 2 of 5`, `Not connected`, `Waiting for the pairing code`.
 - **Right:** the age, in `numeric()` and muted, shown only when the bar is not live (for example
   "updated 4 s ago"). A live bar needs no age, which is the dark-cockpit principle: quiet while
-  normal.
+  normal. Before the first heartbeat there is no age to give, so none is shown.
 - **Accessibility:** the label keeps today's full sentence.
 - **Sizing:** minimum height 48 dp, a single row and no outer border card: a hairline bottom
   border on the `surface` background. This frees about 40 dp on a phone for the panel.
@@ -264,8 +265,10 @@ light and dark. At night it is capped at luminance 0.30, and it must also reach 
 
   An unknown panel id gets a plain dot.
 - The label goes under the icon in portrait and beside it in the landscape rail.
-- **Selected tab:** a 3 dp `primary` indicator bar on the edge facing the content, with the icon
-  and label in `primary` and the label bold. The full blue fill is gone.
+- **Selected tab:** a 3 dp `accent` indicator bar on the edge facing the content, with the icon
+  and label in `accent` and the label bold. The full blue fill is gone. `colors.accent` is the
+  text-and-indicator form of the app hue (4.5:1 on surface and background in every mode);
+  `colors.primary` stays a fill colour only, since night's is about 1.3:1 as text.
 - Targets stay at 48 dp or more, and roles and labels are unchanged.
 
 **Setup screen.**
@@ -276,7 +279,7 @@ light and dark. At night it is capped at luminance 0.30, and it must also reach 
 - **Connection card, at the top:**
   - A row of four steps shows where the pilot is: **Find → Connect → Pair → Live**.
   - Each step shows a small state glyph: ✓ done, ● current or ○ to come. Labels are text, so the
-    state is never colour alone.
+    state is never colour alone. The current step's glyph and label are in `accent`.
   - The steps come from a pure `connectionSteps(state, live, hasHost)` in
     `src/domain/connection/connection-steps.ts`, a total function over `ConnectionState`.
   - Its accessible label reads, for example, "Step 3 of 4, Pair: waiting for the pairing code".
@@ -285,7 +288,7 @@ light and dark. At night it is capped at luminance 0.30, and it must also reach 
 - **The pairing code is six visual digit boxes over the existing `TextInput`.**
   - The `TextInput` keeps `testID="pairing-code"` and its accessibility label. It is made
     full-size and transparent, so a tap anywhere on the boxes focuses it.
-  - The boxes use `numeric(theme, true)` at `displaySize`, and the current box has a `primary`
+  - The boxes use `numeric(theme, true)` at `displaySize`, and the current box has an `accent`
     border.
 - Host and port fields keep their labels and behaviour, under the subtitle "Or enter the address
   of the X-Plane PC".

@@ -136,6 +136,7 @@ Record results at the bottom.
 | 107 | Switch to the Night theme in a dark room | Nothing on any new surface glows; light bars, FMA text and display windows are all dim amber, green or cyan, never full brightness | |
 | 108 | On the smallest phone available, in portrait, engage VS with a steep rate (for example −1500 fpm) so the FMA shows "VS −1500FPM" | The whole string stays on one line in its column, shrinking to fit rather than wrapping or clipping | |
 | 109 | Time the AP disconnect's amber flash with a stopwatch or a slow-motion screen recording, on both iOS and Android | The flash cycles at about 2 Hz (on, then off, about every 250 ms each) | |
+| 110 | On a phone, open the Autopilot panel and look at the "A/T ARM" key; then open any keypad (a radio standby or a selector) | "A/T ARM" fits its key, wrapping to two lines acceptably but never clipped; the keypad's "Clear" fits its key | |
 
 Rows 44 and 45 verify the keep-awake hold, and row 53 the safe areas: behaviour no automated test
 can observe.

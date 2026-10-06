@@ -425,9 +425,11 @@ transition seen only because the link dropped and came back does not count — a
 `disconnectShowing` keeps it true for `AP_DISCONNECT_MS` (5 s). While it shows, the FMA's AP slot
 renders in reverse video (amber fill, dark text), flashing at 2 Hz through an `Animated` loop, or
 steady when `useReducedMotion` (`src/hooks/`, reading `AccessibilityInfo.isReduceMotionEnabled`
-and its change event) says motion is reduced; a tap on the FMA acknowledges it early and fires
-`haptics.failure()` once. `Fma`'s `compact` prop is the PFD's: smaller text and no "not live" line
-of its own, since the PFD already fades as a whole.
+and its change event) says motion is reduced. `haptics.failure()` fires once when the annunciation
+begins (guarded per disconnect, so a haptics-preference change mid-flash does not buzz again); a
+tap on the FMA only acknowledges it early. `Fma`'s `compact` prop is the PFD's: smaller text and no
+"not live" line of its own; `PfdView` instead wraps it at `NOT_LIVE_OPACITY` while values are not
+current, the same fade it gives its Mach, altimeter-setting and radio-altitude boxes.
 
 ## Error model
 
@@ -473,13 +475,22 @@ cockpit meanings (green engaged, white armed, cyan selected, amber caution, red 
 day and dark, with its own dimmer set for night), and `typography.fonts`, the B612 and B612 Mono
 family names. `AvionixApp` loads the fonts through `expo-font` without blocking the first render;
 until they load, and if a font ever fails to, the family tokens are `undefined`, so React Native
-falls back to the system font instead of logging a missing one. `numeric(theme, bold?)` is the one
+falls back to the system font instead of logging a missing one. The family-name strings live in
+`src/theme/font-families.ts`, which imports no package, so `typography.ts` can name them without
+pulling in `@expo-google-fonts` (and through it `expo-font`) ahead of `platform/fonts.ts`'s guarded
+`require`. `numeric(theme, bold?)` is the one
 helper every live number in the app sets for tabular digits. The hardware primitives in
 `src/features/panels/primitives/` — `AvionicsUnit` (the bezel), `DisplayWindow` (the glass value
 window), `LightBar` and `ControlButton`'s key face — read these tokens instead of holding colour
 literals, the same rule app chrome follows. A `DisplayWindow` also dims itself when the
 `ControlButton` it sits inside (if any) is disabled, so a pressable value never stays
-full-brightness once its key cannot be pressed.
+full-brightness once its key cannot be pressed; dimmed wins over the warning tone, so a stale 7700
+dims too while its "EMERG" caption stays. A `LightBar` inside a key dims its lit fill or armed
+outline to `legendDim` while values are not current, keyed to the link and not to the key's
+enabled state, so a pending or override-disabled key still shows X-Plane's current mode. A pad
+drawn on a bezel (`useOnBezel()`) takes avionics colours for its own title, Cancel and dashed
+border; off a bezel it keeps app colours, with `colors.accent` (not the fill colour `primary`)
+for text and thin indicators.
 
 **Haptics.** `src/platform/haptics.ts` loads `expo-haptics` through a guarded `require`, so an
 existing build without the native module, the web (`haptics.web.ts`) and Jest all get a silent
