@@ -240,10 +240,13 @@ describe('useCduScreen / CduScreen', () => {
     const smallText = within(smallCell).getByText('☐');
     expect(StyleSheet.flatten(smallText.props.style).fontSize).toBe(geometry.smallFontSize);
 
-    // I2 / spec §4.3 "on the same baseline": the large and small glyph share a line height, so
-    // neither one's shorter line box centres it higher than the other.
-    expect(StyleSheet.flatten(amberText.props.style).lineHeight).toBe(geometry.rowHeight);
-    expect(StyleSheet.flatten(smallText.props.style).lineHeight).toBe(geometry.rowHeight);
+    // I2 / spec §4.3 "on the same baseline": the small glyph is shifted down by the geometry's own
+    // smallBaselineShift so it lands on the large glyph's baseline once both are centred in the
+    // cell; the large glyph itself carries no such shift.
+    expect(StyleSheet.flatten(amberText.props.style).transform).toBeUndefined();
+    expect(StyleSheet.flatten(smallText.props.style).transform).toEqual([
+      { translateY: geometry.smallBaselineShift },
+    ]);
 
     expect(screen.getByTestId('cdu-underline-2-3')).toBeTruthy();
 

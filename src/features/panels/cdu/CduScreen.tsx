@@ -87,13 +87,18 @@ function CduCellView({
   // fill of the cell's own colour; a plain cell draws both in its own colour.
   const textColour = cell.reverse ? theme.cdu.glass : glyphColour;
   const fontSize = cell.large ? geometry.fontSize : geometry.smallFontSize;
-  // Spec §4.3: "small font is 80 % of it, on the same baseline". Giving both sizes the same line
-  // height — the cell's own row height — puts both glyphs' baselines at the same place regardless
-  // of font size, rather than centring each one in its own (size-dependent) line box.
+  // Spec §4.3: "small font is 80 % of it, on the same baseline". The cell centres each Text's own
+  // (font-size-dependent) ascent+descent box, which puts a smaller glyph's baseline higher than a
+  // larger one's by `smallBaselineShift`; shifting the small glyph down by that amount (derived
+  // from the font's own ascent/descent in cdu-geometry.ts) lands both on the same baseline. A
+  // shared `lineHeight` does not do this: Android centres within the line box exactly as plain
+  // centring already does, and iOS only offsets when `lineHeight` is at least the font's own line
+  // height, which the large glyph's natural height already exceeds.
   const textStyle: StyleProp<TextStyle> = [
     numeric(theme),
     styles.text,
-    { fontSize, lineHeight: geometry.rowHeight, color: textColour },
+    { fontSize, color: textColour },
+    cell.large ? null : { transform: [{ translateY: geometry.smallBaselineShift }] },
   ];
   return (
     <View
@@ -141,6 +146,7 @@ interface RowProps {
   fontSize: number;
   smallFontSize: number;
   rowHeight: number;
+  smallBaselineShift: number;
 }
 
 /**
@@ -155,6 +161,7 @@ const CduRow = React.memo(function CduRow({
   fontSize,
   smallFontSize,
   rowHeight,
+  smallBaselineShift,
 }: RowProps) {
   countCduRowRender();
   const styles = useThemedStyles(makeStyles);
@@ -166,7 +173,13 @@ const CduRow = React.memo(function CduRow({
   const hidden = blank && !isScratchpad;
   const spoken = spokenLine(chars);
   const label = isScratchpad ? (blank ? 'Scratchpad empty' : `Scratchpad, ${spoken}`) : spoken;
-  const geometry: CduGeometry = { cellWidth, fontSize, smallFontSize, rowHeight };
+  const geometry: CduGeometry = {
+    cellWidth,
+    fontSize,
+    smallFontSize,
+    rowHeight,
+    smallBaselineShift,
+  };
 
   return (
     <View
@@ -230,6 +243,7 @@ export function CduScreen(props: {
             fontSize={props.geometry.fontSize}
             smallFontSize={props.geometry.smallFontSize}
             rowHeight={props.geometry.rowHeight}
+            smallBaselineShift={props.geometry.smallBaselineShift}
           />
         ))}
       </CduBlinkContext.Provider>
