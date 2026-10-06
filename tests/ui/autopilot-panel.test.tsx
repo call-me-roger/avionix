@@ -121,6 +121,25 @@ describe('Autopilot panel', () => {
     ).toBeTruthy();
   });
 
+  it('disables a mode button while its own watch is still waiting, so a double tap cannot toggle twice', async () => {
+    const view = await render(tree(live()));
+    await fireEvent.press(screen.getByLabelText('HDG mode, engaged'));
+    expect(actions.activate).toHaveBeenCalledTimes(1);
+    await view.rerender(tree(live({ operations: ok(C.modeHeading) })));
+    expect(screen.getByLabelText('HDG mode, engaged').props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(screen.getByLabelText('HDG mode, engaged'));
+    expect(actions.activate).toHaveBeenCalledTimes(1);
+    await view.rerender(
+      tree(
+        live({
+          operations: ok(C.modeHeading),
+          telemetry: telemetry({ ...VALUES, [D.headingStatus]: 0 }),
+        }),
+      ),
+    );
+    expect(screen.getByLabelText('HDG mode, off').props.accessibilityState.disabled).toBe(false);
+  });
+
   it('says nothing when the mode changed', async () => {
     const view = await render(tree(live()));
     await fireEvent.press(screen.getByLabelText('HDG mode, engaged'));

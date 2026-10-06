@@ -40,7 +40,7 @@ export function ModeButtons({ readBack, blocked }: { readBack: ReadBack; blocked
         featureId={spec.featureId}
         target={spec.command}
         selected={state === 'engaged'}
-        invalid={blocked}
+        invalid={blocked || readBack.pendingExpected(`mode-${spec.key}`) !== null}
         onPress={() => {
           void activate(spec.featureId, spec.command);
           readBack.watch({

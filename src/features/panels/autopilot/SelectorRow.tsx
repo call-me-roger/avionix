@@ -134,7 +134,7 @@ export function SelectorRow({
             featureId={spec.featureId}
             target={C.knotsMachToggle}
             quiet
-            invalid={blocked}
+            invalid={blocked || readBack.pendingExpected('speed-unit') !== null}
             onPress={switchUnit}
           />
         ) : null}

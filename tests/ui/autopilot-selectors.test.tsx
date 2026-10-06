@@ -234,6 +234,19 @@ describe('autopilot selectors', () => {
     expect(screen.queryByText(/did not take airspeed 130 kt/)).toBeNull();
   });
 
+  it('disables Use Mach while its own watch is still waiting, so a double tap cannot toggle twice', async () => {
+    const view = await render(tree(live()));
+    await fireEvent.press(screen.getByLabelText('Use Mach'));
+    expect(actions.activate).toHaveBeenCalledTimes(1);
+    await view.rerender(tree(live({ operations: ok(C.knotsMachToggle) })));
+    expect(screen.getByLabelText('Use Mach').props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(screen.getByLabelText('Use Mach'));
+    expect(actions.activate).toHaveBeenCalledTimes(1);
+    const mach = telemetry({ ...VALUES, [D.airspeedIsMach]: 1 });
+    await view.rerender(tree(live({ telemetry: mach, operations: ok(C.knotsMachToggle) })));
+    expect(screen.getByLabelText('Use knots').props.accessibilityState.disabled).toBe(false);
+  });
+
   it('hides the knots/Mach button when the aircraft lacks the command', async () => {
     const snapshot = live();
     await render(
