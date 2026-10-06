@@ -466,13 +466,15 @@ the card's top edge by design, like the radio-altitude box on the PFD) are all d
 
 **The NAV control unit** (`NavControls.tsx`) is an `AvionicsUnit` below the HSI: three source keys
 (NAV1, NAV2, GPS) that write `HSI_source_select_pilot` with read-back, a caption `SRC GPS2` with no
-key lit when X-Plane reports source 3, a `DisplayWindow` course window (role `selected`, caption
-`CRS`) that opens `CoursePad.tsx`'s keypad through `useCourseEntry` (modelled on the autopilot's
+key lit when X-Plane reports source 3 (`SRC ?` for a value it does not name), a `DisplayWindow`
+course window (role `selected`, caption `CRS`) whose course is spoken by its own summary ("Course
+270°", plus ", not live" when the link is stale, as the autopilot's `SelectorRow` does) and that opens `CoursePad.tsx`'s keypad through `useCourseEntry` (modelled on the autopilot's
 `useSelectorEntry`, but with no `target`/`kind` to track since the course is always the `heading`
 selector kind), four steppers (−10, −1, +1, +10) that write `hsi_obs_deg_mag_pilot` directly rather
 than activating `sim/radios/obs_HSI_up`/`down` (`docs/xplane.md`), and CTR, which activates
 `sim/radios/obs_HSI_direct` and is disabled while the lateral signal is invalid, since there is no
-station to centre on. Read-back for both the source and the course uses the same `useReadBack`,
+station to centre on; on an aircraft without `obs_HSI_direct` the key stays, disabled, with the
+reason under it. Read-back for both the source and the course uses the same `useReadBack`,
 `READ_BACK_MS` (3 s) window the radios and autopilot panels use, not a window of its own.
 
 **The Navigation panel** (`NavigationPanel.tsx`) is fourth in the switcher, after Autopilot and

@@ -9,7 +9,7 @@ import {
   GENERIC_DATAREFS as D,
   GENERIC_PROFILE,
 } from '@/domain/aircraft/profiles/generic';
-import { NavControls } from '@/features/panels/navigation/NavControls';
+import { CTR_MISSING_REASON, NavControls } from '@/features/panels/navigation/NavControls';
 import { useCourseEntry } from '@/features/panels/navigation/useCourseEntry';
 import { PanelScope } from '@/features/panels/primitives/PanelFrame';
 import { useReadBack } from '@/features/panels/primitives/useReadBack';
@@ -121,6 +121,8 @@ beforeEach(() => {
   (actions.activate as jest.Mock).mockClear();
 });
 
+const CTR = 'Centre the CDI, course direct to station';
+
 const type = async (keys: string) => {
   for (const key of keys) {
     await fireEvent.press(screen.getByLabelText(key));
@@ -202,15 +204,47 @@ describe('NAV control unit', () => {
 
   it('disables CTR without a from/to flag, and activates hsiDirect once one is present', async () => {
     const view = await render(tree(live({ [D.hsiFromTo]: 0 })));
-    expect(screen.getByLabelText('Centre on station').props.accessibilityState.disabled).toBe(true);
+    expect(screen.getByLabelText(CTR).props.accessibilityState.disabled).toBe(true);
     await view.rerender(tree(live({ [D.hsiFromTo]: 1 })));
-    await fireEvent.press(screen.getByLabelText('Centre on station'));
+    await fireEvent.press(screen.getByLabelText(CTR));
     expect(actions.activate).toHaveBeenCalledWith('nav-course', C.hsiDirect);
   });
 
-  it('hides CTR when the aircraft lacks obs_HSI_direct', async () => {
+  it('shows CTR disabled, with the reason, when the aircraft lacks obs_HSI_direct', async () => {
     await render(tree(liveWithBindings({ [C.hsiDirect]: 'missing' })));
-    expect(screen.queryByLabelText('Centre on station')).toBeNull();
+    expect(screen.getByLabelText(CTR).props.accessibilityState.disabled).toBe(true);
+    expect(screen.getByText(CTR_MISSING_REASON)).toBeTruthy();
+    expect(CTR_MISSING_REASON).toBe('Course direct-to (CTR) is not available on this aircraft.');
+    await fireEvent.press(screen.getByLabelText(CTR));
+    expect(actions.activate).not.toHaveBeenCalled();
+  });
+
+  it('says no CTR reason while the aircraft has obs_HSI_direct', async () => {
+    await render(tree(live()));
+    expect(screen.queryByText(CTR_MISSING_REASON)).toBeNull();
+  });
+
+  it('speaks the course in its own summary, keeping "Enter course" on the window', async () => {
+    const view = await render(tree(live()));
+    expect(screen.getByLabelText('Course 270°')).toBeTruthy();
+    expect(screen.getByLabelText('Enter course')).toBeTruthy();
+    expect(screen.queryByText('not live')).toBeNull();
+    await view.rerender(tree(live({}, { state: 'reconnecting' })));
+    expect(screen.getByLabelText('Course 270°, not live')).toBeTruthy();
+    expect(screen.getByText('not live')).toBeTruthy();
+  });
+
+  it('speaks no course and claims no staleness without a course value', async () => {
+    await render(tree(liveWithBindings({ [D.hsiCourse]: 'missing' })));
+    expect(screen.getByLabelText('Course —')).toBeTruthy();
+  });
+
+  it('shows SRC ? with no key lit for a source value it does not know', async () => {
+    await render(tree(live({ [D.hsiSource]: 7 })));
+    expect(screen.getByText('SRC ?')).toBeTruthy();
+    expect(screen.getByLabelText('NAV1').props.accessibilityState.selected).toBe(false);
+    expect(screen.getByLabelText('NAV2').props.accessibilityState.selected).toBe(false);
+    expect(screen.getByLabelText('GPS').props.accessibilityState.selected).toBe(false);
   });
 
   it('disables the source keys with a reason when hsiSource is read-only', async () => {

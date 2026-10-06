@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { featureOf } from '@/application/compatibility';
 import {
@@ -39,9 +39,29 @@ import type { Theme } from '@/theme/tokens';
 
 const KIND = 'heading';
 const STEPS: readonly number[] = [-10, -1, 1, 10];
+/** `obs_HSI_direct` is an optional binding, so `controlAvailability` cannot name its lack. */
+export const CTR_MISSING_REASON = 'Course direct-to (CTR) is not available on this aircraft.';
 
 const makeStyles = (theme: Theme) => ({
   wrap: { gap: theme.spacing.xs, paddingVertical: theme.spacing.sm },
+  head: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    alignItems: 'center' as const,
+    gap: theme.spacing.sm,
+  },
+  summary: {
+    flexDirection: 'row' as const,
+    alignItems: 'baseline' as const,
+    gap: theme.spacing.sm,
+    flexGrow: 1,
+  },
+  name: {
+    // On the "NAV" bezel (R-01): the avionics legend colour, as the autopilot's selector names.
+    color: theme.avionics.legend,
+    fontSize: theme.typography.titleSize,
+    fontWeight: 'bold' as const,
+  },
   sources: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: theme.touch.spacing },
   steppers: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: theme.spacing.sm },
   flex1: { flex: 1 },
@@ -66,15 +86,18 @@ export function NavControls({ readBack, entry }: { readBack: ReadBack; entry: Co
 
   const sourcePending = readBack.pendingExpected(NAV_SOURCE_READBACK_KEY) !== null;
   const sourceMessage = readBack.messageFor(NAV_SOURCE_READBACK_KEY);
-  // A source X-Plane reports that has no key of its own (GPS2): a caption, never a lit key.
+  // A source X-Plane reports that has no key of its own (GPS2): a caption, never a lit key. One it
+  // does not name at all reads `SRC ?`, as the HSI's corner does.
   const outOfRange = source !== null && !NAV_SOURCE_KEYS.some((key) => key.value === source);
-  const outOfRangeLabel = outOfRange ? sourceLabel(source) : null;
+  const outOfRangeLabel = outOfRange ? (sourceLabel(source) ?? '?') : null;
 
   const base = readBack.pendingExpected(NAV_COURSE_READBACK_KEY) ?? course;
   const text = course === null ? '—' : formatSelector(KIND, course);
   const courseMessage = readBack.messageFor(NAV_COURSE_READBACK_KEY);
+  const notLive = !link.valuesCurrent && course !== null;
 
-  const ctrHidden = snapshot.compatibility.bindings[C.hsiDirect]?.status === 'missing';
+  // Spec §7: an aircraft without `obs_HSI_direct` keeps the key, disabled, and says why.
+  const ctrMissing = snapshot.compatibility.bindings[C.hsiDirect]?.status === 'missing';
 
   const sendSource = (value: number, label: string) => {
     void write(FEATURE_NAV_SOURCE, D.hsiSource, value);
@@ -124,17 +147,28 @@ export function NavControls({ readBack, entry }: { readBack: ReadBack; entry: Co
         <OperationNotice target={D.hsiSource} />
         {sourceMessage === null ? null : <BodyText tone="danger">{sourceMessage}</BodyText>}
 
-        <ControlButton
-          label={text}
-          accessibilityLabel="Enter course"
-          featureId={FEATURE_NAV_COURSE}
-          target={D.hsiCourse}
-          quiet
-          style={styles.flex1}
-          onPress={entry.open}
-        >
-          <DisplayWindow text={text} role="selected" caption="CRS" stale={!link.valuesCurrent} />
-        </ControlButton>
+        <View style={styles.head}>
+          {/* The window's button says what it does, so the course itself is spoken here. */}
+          <View
+            style={styles.summary}
+            accessible
+            accessibilityLabel={`Course ${text}${notLive ? ', not live' : ''}`}
+          >
+            <Text style={styles.name}>Course</Text>
+            {notLive ? <BodyText muted>not live</BodyText> : null}
+          </View>
+          <ControlButton
+            label={text}
+            accessibilityLabel="Enter course"
+            featureId={FEATURE_NAV_COURSE}
+            target={D.hsiCourse}
+            quiet
+            style={styles.flex1}
+            onPress={entry.open}
+          >
+            <DisplayWindow text={text} role="selected" caption="CRS" stale={!link.valuesCurrent} />
+          </ControlButton>
+        </View>
         {entry.isOpen ? <CoursePad entry={entry} readBack={readBack} /> : null}
         <View style={styles.steppers}>
           {STEPS.map((delta) => {
@@ -163,20 +197,17 @@ export function NavControls({ readBack, entry }: { readBack: ReadBack; entry: Co
         <OperationNotice target={D.hsiCourse} />
         {courseMessage === null ? null : <BodyText tone="danger">{courseMessage}</BodyText>}
 
-        {ctrHidden ? null : (
-          <>
-            <ControlButton
-              label="CTR"
-              accessibilityLabel="Centre on station"
-              featureId={FEATURE_NAV_COURSE}
-              target={C.hsiDirect}
-              quiet
-              invalid={!lateral.valid}
-              onPress={() => void activate(FEATURE_NAV_COURSE, C.hsiDirect)}
-            />
-            <OperationNotice target={C.hsiDirect} />
-          </>
-        )}
+        <ControlButton
+          label="CTR"
+          accessibilityLabel="Centre the CDI, course direct to station"
+          featureId={FEATURE_NAV_COURSE}
+          target={C.hsiDirect}
+          quiet
+          invalid={ctrMissing || !lateral.valid}
+          onPress={() => void activate(FEATURE_NAV_COURSE, C.hsiDirect)}
+        />
+        {ctrMissing ? <BodyText muted>{CTR_MISSING_REASON}</BodyText> : null}
+        <OperationNotice target={C.hsiDirect} />
       </View>
     </AvionicsUnit>
   );
