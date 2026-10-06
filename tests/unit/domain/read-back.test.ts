@@ -52,3 +52,33 @@ describe('read-back verdict', () => {
     expect(readsAs(undefined, 3)).toBe(false);
   });
 });
+
+describe('readBackVerdict with a predicate', () => {
+  const ok = { status: 'ok' as const, at: 1000 };
+  it('lets a predicate decide adoption instead of half-unit equality', () => {
+    const near = (value: unknown) => typeof value === 'number' && Math.abs(value - 0.78) < 0.005;
+    expect(
+      readBackVerdict({
+        current: 0.781,
+        expected: 0.78,
+        matches: near,
+        operation: ok,
+        startedAt: 900,
+        valuesCurrent: true,
+        now: 1500,
+      }),
+    ).toBe('adopted');
+    // Without the predicate 0.5 would read as 0.78 (within half a unit); with it, it does not.
+    expect(
+      readBackVerdict({
+        current: 0.5,
+        expected: 0.78,
+        matches: near,
+        operation: ok,
+        startedAt: 900,
+        valuesCurrent: true,
+        now: 4100,
+      }),
+    ).toBe('notAdopted');
+  });
+});

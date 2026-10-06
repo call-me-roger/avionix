@@ -12,6 +12,11 @@ export interface ReadBackRequest {
   /** The binding whose operation outcome counts: the DataRef written, or the command activated. */
   operation: string;
   expected: number;
+  /**
+   * Decides adoption instead of `readsAs(current, expected)`: for values where half a unit is the
+   * whole range (Mach), that wrap (a heading of 0 read back as 359.9), or a change of state.
+   */
+  matches?: (value: DataRefValue | undefined) => boolean;
   /** The sentence when X-Plane did not take it, given the value it reports instead. */
   failure: (current: DataRefValue | undefined) => string;
 }
@@ -19,6 +24,8 @@ export interface ReadBackRequest {
 export interface ReadBack {
   watch: (request: ReadBackRequest) => void;
   messageFor: (key: string) => string | null;
+  /** The value a still-waiting watch expects: what the panel last sent and X-Plane has not shown. */
+  pendingExpected: (key: string) => number | null;
 }
 
 type Watch =
@@ -44,6 +51,7 @@ export function useReadBack(): ReadBack {
     const verdict = readBackVerdict({
       current,
       expected: watch.request.expected,
+      matches: watch.request.matches,
       operation: snapshot.operations[watch.request.operation],
       startedAt: watch.startedAt,
       valuesCurrent: link.valuesCurrent,
@@ -71,6 +79,11 @@ export function useReadBack(): ReadBack {
     messageFor: (key) => {
       const watch = watches[key];
       return watch?.kind === 'settled' ? watch.message : null;
+    },
+    pendingExpected: (key) => {
+      // `settled` holds this render's verdicts before React applies them.
+      const watch = (settled ?? watches)[key];
+      return watch?.kind === 'watching' ? watch.request.expected : null;
     },
   };
 }

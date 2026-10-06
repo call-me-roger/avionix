@@ -4,6 +4,7 @@ import { Pressable, Text, View } from 'react-native';
 import { isEightThirtyThreeOnly } from '@/domain/radios/channels';
 import {
   MAX_DIGITS,
+  entryDigits,
   entryText,
   parseEntry,
   shouldExplain,
@@ -12,9 +13,9 @@ import {
 import { isEmergencySquawk } from '@/domain/radios/squawk';
 import { firstNumber } from '@/features/panels/instruments/useInstrumentValues';
 import { ControlButton } from '@/features/panels/primitives/ControlButton';
+import { Keypad } from '@/features/panels/primitives/Keypad';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
-import { Keypad } from '@/features/panels/radios/Keypad';
 import { type EntryTarget, formatFrequency } from '@/features/panels/radios/radios';
 import type { RadioEntry } from '@/features/panels/radios/useRadioEntry';
 import { BodyText } from '@/theme/primitives';
@@ -147,7 +148,7 @@ export function EntryPad({ entry, readBack }: { entry: RadioEntry; readBack: Rea
         <BodyText tone="danger">{parsed.message}</BodyText>
       ) : null}
       <Keypad
-        kind={target.kind}
+        digits={entryDigits(target.kind)}
         onDigit={entry.digit}
         onErase={entry.erase}
         onClear={entry.clear}

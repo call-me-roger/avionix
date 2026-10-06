@@ -27,13 +27,8 @@ function snapshot(
   overrides: Partial<SessionSnapshot> = {},
   heartbeatAt = NOW,
 ): SessionSnapshot {
-  return {
-    ...base,
-    state: 'connected',
-    health: { ...base.health, activity: 'running', live: true, lastHeartbeatAt: heartbeatAt },
-    telemetry: { [D.com1Active]: { value: active, receivedAt: NOW } },
-    ...overrides,
-  };
+  const live = liveWith({ [D.com1Active]: active }, overrides);
+  return { ...live, health: { ...live.health, lastHeartbeatAt: heartbeatAt } };
 }
 
 function Harness() {
@@ -58,11 +53,26 @@ function Harness() {
   );
 }
 
-function tree(s: SessionSnapshot, now: number) {
+function liveWith(
+  values: Record<string, number | number[] | string>,
+  overrides: Partial<SessionSnapshot> = {},
+): SessionSnapshot {
+  return {
+    ...base,
+    state: 'connected',
+    health: { ...base.health, activity: 'running', live: true, lastHeartbeatAt: NOW },
+    telemetry: Object.fromEntries(
+      Object.entries(values).map(([name, value]) => [name, { value, receivedAt: NOW }]),
+    ),
+    ...overrides,
+  };
+}
+
+function probeTree(Component: () => React.JSX.Element, s: SessionSnapshot, now = NOW) {
   return (
     <ThemeProvider storage={createMemorySettingsStorage()} systemSchemeOverride="light">
       <PanelFrame title="Radios" snapshot={s} now={now} actions={actions}>
-        <Harness />
+        <Component />
       </PanelFrame>
     </ThemeProvider>
   );
@@ -74,49 +84,89 @@ const ok = (at: number) => ({
 
 describe('useReadBack', () => {
   it('says nothing when X-Plane adopts the value', async () => {
-    const view = await render(tree(snapshot(121_500), NOW));
+    const view = await render(probeTree(Harness, snapshot(121_500), NOW));
     await fireEvent.press(screen.getByLabelText('watch'));
-    await view.rerender(tree(snapshot(118_005, { operations: ok(NOW) }), NOW + 500));
+    await view.rerender(probeTree(Harness, snapshot(118_005, { operations: ok(NOW) }), NOW + 500));
     await view.rerender(
-      tree(snapshot(118_005, { operations: ok(NOW) }), NOW + READ_BACK_MS + 1000),
+      probeTree(Harness, snapshot(118_005, { operations: ok(NOW) }), NOW + READ_BACK_MS + 1000),
     );
     expect(screen.getByText('no message')).toBeTruthy();
   });
 
   it('says so when the value has not changed after the window', async () => {
-    const view = await render(tree(snapshot(121_500), NOW));
+    const view = await render(probeTree(Harness, snapshot(121_500), NOW));
     await fireEvent.press(screen.getByLabelText('watch'));
-    await view.rerender(tree(snapshot(121_500, { operations: ok(NOW) }), NOW + 1000));
+    await view.rerender(probeTree(Harness, snapshot(121_500, { operations: ok(NOW) }), NOW + 1000));
     expect(screen.getByText('no message')).toBeTruthy();
-    await view.rerender(tree(snapshot(121_500, { operations: ok(NOW) }), NOW + READ_BACK_MS));
+    await view.rerender(
+      probeTree(Harness, snapshot(121_500, { operations: ok(NOW) }), NOW + READ_BACK_MS),
+    );
     expect(screen.getByText('X-Plane did not swap COM1.')).toBeTruthy();
   });
 
   it('never gives a late sentence once adopted, even if the pilot then changes it in X-Plane', async () => {
-    const view = await render(tree(snapshot(121_500), NOW));
+    const view = await render(probeTree(Harness, snapshot(121_500), NOW));
     await fireEvent.press(screen.getByLabelText('watch'));
-    await view.rerender(tree(snapshot(118_005, { operations: ok(NOW) }), NOW + 500));
+    await view.rerender(probeTree(Harness, snapshot(118_005, { operations: ok(NOW) }), NOW + 500));
     await view.rerender(
-      tree(snapshot(122_800, { operations: ok(NOW) }), NOW + READ_BACK_MS + 1000),
+      probeTree(Harness, snapshot(122_800, { operations: ok(NOW) }), NOW + READ_BACK_MS + 1000),
     );
     expect(screen.getByText('no message')).toBeTruthy();
   });
 
   it('gives no verdict when the link drops during the window', async () => {
-    const view = await render(tree(snapshot(121_500), NOW));
+    const view = await render(probeTree(Harness, snapshot(121_500), NOW));
     await fireEvent.press(screen.getByLabelText('watch'));
     const dropped = snapshot(121_500, { operations: ok(NOW), state: 'reconnecting' });
-    await view.rerender(tree(dropped, NOW + READ_BACK_MS + 1000));
-    await view.rerender(tree(snapshot(121_500, { operations: ok(NOW) }, NOW + 9000), NOW + 9000));
+    await view.rerender(probeTree(Harness, dropped, NOW + READ_BACK_MS + 1000));
+    await view.rerender(
+      probeTree(Harness, snapshot(121_500, { operations: ok(NOW) }, NOW + 9000), NOW + 9000),
+    );
     expect(screen.getByText('no message')).toBeTruthy();
   });
 
   it('clears the old sentence when the same key is watched again', async () => {
-    const view = await render(tree(snapshot(121_500), NOW));
+    const view = await render(probeTree(Harness, snapshot(121_500), NOW));
     await fireEvent.press(screen.getByLabelText('watch'));
-    await view.rerender(tree(snapshot(121_500, { operations: ok(NOW) }), NOW + READ_BACK_MS));
+    await view.rerender(
+      probeTree(Harness, snapshot(121_500, { operations: ok(NOW) }), NOW + READ_BACK_MS),
+    );
     expect(screen.getByText('X-Plane did not swap COM1.')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('watch'));
     expect(screen.getByText('no message')).toBeTruthy();
   });
+});
+
+function PendingProbe() {
+  const readBack = useReadBack();
+  return (
+    <>
+      <Text testID="pending">{String(readBack.pendingExpected('alt'))}</Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="watch"
+        onPress={() =>
+          readBack.watch({
+            key: 'alt',
+            name: D.altitude,
+            operation: D.altitude,
+            expected: 5100,
+            failure: () => 'not taken',
+          })
+        }
+      />
+    </>
+  );
+}
+
+it('reports the value a waiting watch expects, and null once settled', async () => {
+  const view = await render(probeTree(PendingProbe, liveWith({ [D.altitude]: 5000 })));
+  expect(screen.getByTestId('pending').props.children).toBe('null');
+  await fireEvent.press(screen.getByLabelText('watch'));
+  expect(screen.getByTestId('pending').props.children).toBe('5100');
+  const ok = { [D.altitude]: { status: 'ok' as const, failure: null, refusal: null, at: NOW } };
+  await view.rerender(
+    probeTree(PendingProbe, liveWith({ [D.altitude]: 5100 }, { operations: ok }), NOW + 100),
+  );
+  expect(screen.getByTestId('pending').props.children).toBe('null');
 });
