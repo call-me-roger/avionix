@@ -55,6 +55,10 @@ describe('stepSelector', () => {
     expect(stepSelector('knots', 40, -1)).toBeNull();
     expect(stepSelector('mach', 0.99, 0.01)).toBeNull();
   });
+  it('rounds the base to whole feet first, so float noise cannot land a step one grid line low', () => {
+    expect(stepSelector('altitude', 4999.99, 100)).toBe(5100);
+    expect(stepSelector('altitude', 5000.01, -100)).toBe(4900);
+  });
   it('steps back into range from outside, landing on the limit', () => {
     expect(stepSelector('knots', 0, 1)).toBe(40);
     expect(stepSelector('knots', 0, -1)).toBeNull();

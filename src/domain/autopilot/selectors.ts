@@ -89,8 +89,10 @@ export function stepSelector(kind: SelectorKind, base: number, delta: number): n
       return normaliseHeading(Math.round(base) + delta);
     case 'altitude':
     case 'verticalSpeed': {
+      // Round to whole feet first, so float noise (4,999.99) cannot land a step one grid line low.
+      const whole = Math.round(base);
       const onGrid =
-        delta > 0 ? Math.floor(base / GRID_FT) * GRID_FT : Math.ceil(base / GRID_FT) * GRID_FT;
+        delta > 0 ? Math.floor(whole / GRID_FT) * GRID_FT : Math.ceil(whole / GRID_FT) * GRID_FT;
       return limited(kind, onGrid + delta, delta);
     }
     case 'knots':
