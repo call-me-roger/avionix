@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { Text, View, type LayoutChangeEvent } from 'react-native';
 
 import { featureOf } from '@/application/compatibility';
+import { formatDme } from '@/domain/navigation/hsi';
 import { controlAvailability } from '@/domain/panels/control-availability';
 import { decodeDataRefString } from '@/domain/simulator/dataref-string';
-import { type DistanceUnit, UNIT_LABEL, convertDistance } from '@/domain/units/units';
 import { firstNumber } from '@/features/panels/instruments/useInstrumentValues';
 import { AvionicsUnit } from '@/features/panels/primitives/AvionicsUnit';
 import { ControlButton, OperationNotice } from '@/features/panels/primitives/ControlButton';
@@ -43,12 +43,6 @@ const makeStyles = (theme: Theme) => ({
 function courseText(course: number): string {
   const whole = ((Math.round(course) % 360) + 360) % 360;
   return `CRS ${String(whole === 0 ? 360 : whole).padStart(3, '0')}°`;
-}
-
-/** A DME arc is flown by tenths at any range, so unlike `formatDistance` (tuned for the GPS
- * distance-to-go, which rounds whole from 10) this always shows one decimal. */
-function dmeText(nm: number, unit: DistanceUnit): string {
-  return `${convertDistance(nm, unit).toFixed(1)} ${UNIT_LABEL.distance[unit]}`;
 }
 
 /**
@@ -97,7 +91,7 @@ export function RadioRow({
   }
   const dme = read(radio.dme);
   if (read(radio.hasDme) === 1 && dme !== null) {
-    details.push(dmeText(dme, units.distance));
+    details.push(formatDme(dme, units.distance));
   }
   const course = read(radio.course);
   if (course !== null) {
