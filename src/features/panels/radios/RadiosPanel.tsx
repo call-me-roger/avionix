@@ -47,7 +47,9 @@ function RadiosContent() {
         alignItems: 'flex-start',
       }}
     >
-      <View style={wide ? { flex: 1 } : { alignSelf: 'stretch' }}>
+      <View
+        style={[{ gap: theme.spacing.md }, wide ? { flex: 1 } : { alignSelf: 'stretch' as const }]}
+      >
         {RADIOS.map((radio) => (
           <RadioRow
             key={radio.key}

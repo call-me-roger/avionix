@@ -8,13 +8,15 @@ import { AttitudeIndicator } from '@/features/panels/instruments/six-pack/Attitu
 import { HeadingIndicator } from '@/features/panels/instruments/six-pack/HeadingIndicator';
 import { TurnCoordinator } from '@/features/panels/instruments/six-pack/TurnCoordinator';
 import { VsiDial } from '@/features/panels/instruments/six-pack/VsiDial';
+import { useAutopilotTargets } from '@/features/panels/instruments/useAutopilotTargets';
 import { useInstrumentValues } from '@/features/panels/instruments/useInstrumentValues';
 import { useTheme } from '@/theme/theme-context';
 
 /**
  * The classic T in landscape (airspeed, attitude, altimeter / turn, heading, vertical speed). In
  * portrait's two columns the pairs stay related: speed beside attitude, the two vertical
- * instruments together, the two lateral ones together.
+ * instruments together, the two lateral ones together. The directional gyro carries the autopilot's
+ * heading bug; the other gauges show no autopilot target.
  */
 export function SixPackView({
   contentWidth,
@@ -28,6 +30,7 @@ export function SixPackView({
   const gap = useTheme().spacing.sm;
   const { size } = sixPackLayout(contentWidth, windowHeight, landscape, gap);
   const v = useInstrumentValues();
+  const { heading: headingBug } = useAutopilotTargets();
   const airspeed = (
     <AirspeedDial key="airspeed" size={size} {...v.airspeed} markings={v.markings} />
   );
@@ -44,7 +47,7 @@ export function SixPackView({
     />
   );
   const turn = <TurnCoordinator key="turn" size={size} {...v.turn} />;
-  const heading = <HeadingIndicator key="heading" size={size} {...v.heading} />;
+  const heading = <HeadingIndicator key="heading" size={size} {...v.heading} bug={headingBug} />;
   const verticalSpeed = <VsiDial key="vertical-speed" size={size} {...v.verticalSpeed} />;
   const order = landscape
     ? [airspeed, attitude, altitude, turn, heading, verticalSpeed]

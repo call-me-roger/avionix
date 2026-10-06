@@ -9,7 +9,7 @@ import {
   withStatus,
 } from '@/domain/instruments/labels';
 import { InstrumentFace } from '@/features/panels/instruments/InstrumentFace';
-import { DigitalWindow } from '@/features/panels/instruments/svg-parts';
+import { DigitalWindow, useSvgFonts } from '@/features/panels/instruments/svg-parts';
 import { useTheme } from '@/theme/theme-context';
 
 const VB = { width: 200, height: 200 };
@@ -35,6 +35,7 @@ export const VsiDial = React.memo(function VsiDial({
   fpm: number | null;
 }) {
   const ink = useTheme().instrument;
+  const fonts = useSvgFonts();
   const label = withStatus('Vertical speed', status, () => describeVerticalSpeed(fpm ?? 0));
   const scale = (
     <>
@@ -64,15 +65,30 @@ export const VsiDial = React.memo(function VsiDial({
             fontSize={14}
             fill={ink.marking}
             textAnchor="middle"
+            {...fonts.digits}
           >
             {thousands(tick.value)}
           </SvgText>
         );
       })}
-      <SvgText x={70} y={64} fontSize={14} fill={ink.marking} textAnchor="middle">
+      <SvgText
+        x={70}
+        y={64}
+        fontSize={14}
+        fill={ink.marking}
+        textAnchor="middle"
+        {...fonts.letters}
+      >
         UP
       </SvgText>
-      <SvgText x={70} y={146} fontSize={14} fill={ink.marking} textAnchor="middle">
+      <SvgText
+        x={70}
+        y={146}
+        fontSize={14}
+        fill={ink.marking}
+        textAnchor="middle"
+        {...fonts.letters}
+      >
         DN
       </SvgText>
     </>

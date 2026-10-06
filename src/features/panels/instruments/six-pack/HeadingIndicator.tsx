@@ -10,29 +10,42 @@ import {
 } from '@/domain/instruments/geometry';
 import { type InstrumentStatus, describeHeading, withStatus } from '@/domain/instruments/labels';
 import { InstrumentFace } from '@/features/panels/instruments/InstrumentFace';
-import { DigitalWindow } from '@/features/panels/instruments/svg-parts';
+import { DigitalWindow, cardLabelFont, useSvgFonts } from '@/features/panels/instruments/svg-parts';
 import { useTheme } from '@/theme/theme-context';
 
 const VB = { width: 200, height: 200 };
 const C = 100;
 const CARD_TICKS = scaleTicks(0, 355, 5, 10);
 const CARD_LABELS = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+/**
+ * The heading bug at north on the card: on the ring's outer edge, notched on its inner side so the
+ * card's tick at the selected heading reads between its two prongs. Rotated to its bearing.
+ */
+const BUG_POINTS = '94,3 106,3 106,13 100,9 94,13';
 
 /**
  * The card turns under a fixed lubber line, so the whole card is a child: with no heading there is
  * no card orientation to show, and a card drawn at north would be a default in the value's place.
+ * The heading bug is orange, as on a mechanical gyro, and is part of the card: it turns with it.
  */
 export const HeadingIndicator = React.memo(function HeadingIndicator({
   size,
   status,
   degrees,
+  bug,
 }: {
   size: number;
   status: InstrumentStatus;
   degrees: number | null;
+  /** The autopilot's heading bug, degrees. */
+  bug: number | null;
 }) {
   const ink = useTheme().instrument;
-  const label = withStatus('Heading', status, () => describeHeading(degrees ?? 0));
+  const fonts = useSvgFonts();
+  const label = withStatus('Heading', status, () => {
+    const words = describeHeading(degrees ?? 0);
+    return bug === null ? words : `${words}, heading bug ${headingText(bug)}`;
+  });
   return (
     <InstrumentFace
       testID="instrument-heading"
@@ -64,6 +77,7 @@ export const HeadingIndicator = React.memo(function HeadingIndicator({
             {CARD_LABELS.map((deg) => (
               <SvgText
                 key={deg}
+                testID={`dg-card-label-${deg}`}
                 x={C}
                 y={36}
                 fontSize={16}
@@ -71,10 +85,19 @@ export const HeadingIndicator = React.memo(function HeadingIndicator({
                 fill={ink.marking}
                 textAnchor="middle"
                 transform={`rotate(${deg} ${C} ${C})`}
+                {...cardLabelFont(headingTickLabel(deg), fonts)}
               >
                 {headingTickLabel(deg)}
               </SvgText>
             ))}
+            {bug === null ? null : (
+              <Polygon
+                testID="dg-heading-bug"
+                points={BUG_POINTS}
+                fill={ink.bug}
+                transform={`rotate(${bug} ${C} ${C})`}
+              />
+            )}
           </G>
           <Polygon points="100,4 94,16 106,16" fill={ink.pointer} />
           <Line x1={C} y1={78} x2={C} y2={122} stroke={ink.pointer} strokeWidth={4} />

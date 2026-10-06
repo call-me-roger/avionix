@@ -8,6 +8,7 @@ import { ThemeProvider, useTheme, useThemePreference } from '@/theme/theme-conte
 import { ThemeToggle } from '@/theme/ThemeToggle';
 import { THEME_STORAGE_KEY, saveThemePreference } from '@/theme/theme-preference';
 import { darkTheme, lightTheme } from '@/theme/tokens';
+import { numeric } from '@/theme/typography';
 
 function Probe() {
   const theme = useTheme();
@@ -18,6 +19,8 @@ function Probe() {
       <Text testID="preference">{preference}</Text>
       <Text testID="ready">{ready ? 'ready' : 'loading'}</Text>
       <Text testID="background">{theme.colors.background}</Text>
+      <Text testID="fonts">{JSON.stringify(theme.typography.fonts)}</Text>
+      <Text testID="numericFontFamily">{String(numeric(theme).fontFamily)}</Text>
     </>
   );
 }
@@ -55,6 +58,32 @@ describe('ThemeProvider', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  it('keeps the system font until the B612 families have loaded', async () => {
+    await render(
+      <ThemeProvider storage={createMemorySettingsStorage()} systemSchemeOverride="light">
+        <Probe />
+      </ThemeProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('ready'));
+    expect(screen.getByTestId('fonts')).toHaveTextContent('{}');
+    expect(screen.getByTestId('numericFontFamily')).toHaveTextContent('undefined');
+  });
+
+  it('names the B612 families once fontsLoaded is true', async () => {
+    await render(
+      <ThemeProvider
+        storage={createMemorySettingsStorage()}
+        systemSchemeOverride="light"
+        fontsLoaded
+      >
+        <Probe />
+      </ThemeProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('ready'));
+    expect(screen.getByTestId('fonts')).toHaveTextContent('B612Mono_400Regular', { exact: false });
+    expect(screen.getByTestId('numericFontFamily')).toHaveTextContent('B612Mono_400Regular');
   });
 });
 

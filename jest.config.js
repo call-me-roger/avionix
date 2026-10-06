@@ -21,8 +21,13 @@ module.exports = {
         '<rootDir>/tests/integration/**/*.test.ts',
       ],
       transform: {
+        // The B612 font packages ship .ttf files required straight from their ESM index (as jest-expo's
+        // own preset does for the 'expo' project); this project has no Metro, so the font file itself
+        // just needs a value, never to be parsed as JS.
+        '\\.(ttf|otf)$': require.resolve('jest-expo/src/preset/assetFileTransformer.js'),
         '^.+\\.[jt]sx?$': 'babel-jest',
       },
+      transformIgnorePatterns,
       moduleNameMapper,
     },
     {

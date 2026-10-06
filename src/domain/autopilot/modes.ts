@@ -27,20 +27,20 @@ export interface ModeStatuses {
 type StatusKey = keyof ModeStatuses;
 
 /** Precedence: the first engaged one is the axis's active mode. */
-const LATERAL: readonly (readonly [StatusKey, string])[] = [
+export const LATERAL: readonly (readonly [StatusKey, string])[] = [
   ['apr', 'APR'],
   ['nav', 'NAV'],
   ['hdg', 'HDG'],
   ['rol', 'ROL'],
 ];
-const VERTICAL: readonly (readonly [StatusKey, string])[] = [
+export const VERTICAL: readonly (readonly [StatusKey, string])[] = [
   ['gs', 'GS'],
   ['alt', 'ALT'],
   ['flc', 'FLC'],
   ['vs', 'VS'],
   ['pit', 'PIT'],
 ];
-const ARMABLE: readonly (readonly [StatusKey, string])[] = [
+export const ARMABLE: readonly (readonly [StatusKey, string])[] = [
   ['nav', 'NAV'],
   ['apr', 'APR'],
   ['alt', 'ALT'],

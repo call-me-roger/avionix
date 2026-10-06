@@ -162,6 +162,13 @@ named, is **not** in `DataRefs.txt` and is not used. The standard-rate turn defl
 `STANDARD_RATE_DEFLECTION_DEG`) and the sign of `slip_deg` (assumed positive = ball right) are
 unverified pending the device rows in `docs/testing/xplane-smoke-test.md`.
 
+The Instruments panel descriptor also declares the autopilot features documented under Autopilot
+(F-20) below: the selectors, the six mode features, and AP, flight director and autothrottle. This
+lets the PFD draw the selected-altitude, heading, speed and vertical-speed bugs and the flight-mode
+annunciator (FMA) while Instruments is the panel shown, using the same DataRefs the Autopilot panel
+already subscribes to; nothing new is added to the profile. A missing one leaves its cue off the
+PFD rather than making the panel unavailable, the same rule every other optional binding follows.
+
 ## Radios and transponder (F-21, F-22)
 
 Seven features in `GENERIC_PROFILE` 1.3.0: `com1`, `com2`, `nav1`, `nav2`, `transponder-code`,

@@ -16,7 +16,7 @@ import {
 } from '@/domain/instruments/labels';
 import { type SpeedMarkings, speedBands } from '@/domain/instruments/speed-markings';
 import { InstrumentFace } from '@/features/panels/instruments/InstrumentFace';
-import { ARC_COLOR, DigitalWindow } from '@/features/panels/instruments/svg-parts';
+import { ARC_COLOR, DigitalWindow, useSvgFonts } from '@/features/panels/instruments/svg-parts';
 import { useTheme } from '@/theme/theme-context';
 
 const VB = { width: 200, height: 200 };
@@ -36,6 +36,7 @@ export const AirspeedDial = React.memo(function AirspeedDial({
   markings: SpeedMarkings | null;
 }) {
   const ink = useTheme().instrument;
+  const fonts = useSvgFonts();
   const max = airspeedDialMax(markings?.vne ?? null);
   const angle = (value: number) => airspeedAngle(value, max);
   const ticks = scaleTicks(0, max, 10, max <= 200 ? 20 : 40);
@@ -93,12 +94,13 @@ export const AirspeedDial = React.memo(function AirspeedDial({
               fontSize={14}
               fill={ink.marking}
               textAnchor="middle"
+              {...fonts.digits}
             >
               {String(tick.value)}
             </SvgText>
           );
         })}
-      <SvgText x={C} y={78} fontSize={14} fill={ink.marking} textAnchor="middle">
+      <SvgText x={C} y={78} fontSize={14} fill={ink.marking} textAnchor="middle" {...fonts.letters}>
         KNOTS
       </SvgText>
     </>
@@ -118,7 +120,14 @@ export const AirspeedDial = React.memo(function AirspeedDial({
           {/* Windows first: the pointers pass over them, as on a real dial. */}
           <DigitalWindow x={C} y={136} width={64} text={String(Math.round(knots))} />
           {machShown(mach) ? (
-            <SvgText x={C} y={168} fontSize={14} fill={ink.marking} textAnchor="middle">
+            <SvgText
+              x={C}
+              y={168}
+              fontSize={14}
+              fill={ink.marking}
+              textAnchor="middle"
+              {...fonts.digits}
+            >
               {`M ${mach.toFixed(2)}`}
             </SvgText>
           ) : null}

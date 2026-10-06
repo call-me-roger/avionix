@@ -81,6 +81,9 @@ describe('theme tokens', () => {
         [colors.placeholder, colors.inputBackground],
         [colors.danger, colors.surface],
         [colors.success, colors.surface],
+        // Accent is text and thin indicators (selected tab, current step, next pairing box).
+        [colors.accent, colors.surface],
+        [colors.accent, colors.background],
       ];
       for (const [foreground, background] of pairs) {
         expect(contrastRatio(foreground, background)).toBeGreaterThanOrEqual(4.5);
@@ -134,5 +137,58 @@ describe('theme tokens', () => {
     expect(keyboardAppearanceFor('light')).toBe('light');
     expect(keyboardAppearanceFor('dark')).toBe('dark');
     expect(keyboardAppearanceFor('night')).toBe('dark');
+  });
+
+  it('defines the same avionics keys in every mode with hex values', () => {
+    const keys = Object.keys(lightTheme.avionics).sort();
+    for (const theme of ALL_THEMES) {
+      expect(Object.keys(theme.avionics).sort()).toEqual(keys);
+      for (const value of Object.values(theme.avionics)) {
+        expect(value).toMatch(HEX);
+      }
+    }
+  });
+
+  it('keeps every avionics colour dark at night', () => {
+    for (const [key, value] of Object.entries(nightTheme.avionics)) {
+      expect({ key, luminance: relativeLuminance(value) <= 0.3 }).toEqual({ key, luminance: true });
+    }
+  });
+
+  it('meets 4.5:1 for avionics text on glass and keys in every mode', () => {
+    for (const theme of ALL_THEMES) {
+      const a = theme.avionics;
+      const pairs: Array<[string, string]> = [
+        [a.legend, a.glass],
+        [a.engaged, a.glass],
+        [a.armed, a.glass],
+        [a.selected, a.glass],
+        [a.caution, a.glass],
+        [a.warning, a.glass],
+        [a.legend, a.keyFace],
+        [theme.instrument.selected, theme.instrument.tape],
+        [theme.colors.caution, theme.colors.surface],
+        [theme.colors.caution, theme.colors.background],
+      ];
+      for (const [foreground, background] of pairs) {
+        expect(contrastRatio(foreground, background)).toBeGreaterThanOrEqual(4.5);
+      }
+      expect(contrastRatio(a.legendDim, a.keyFace)).toBeGreaterThanOrEqual(3);
+      // Notices printed inside a unit (BodyText on a bezel) must stay readable.
+      for (const foreground of [a.legend, a.legendDim, a.warning, a.engaged]) {
+        expect(contrastRatio(foreground, a.bezel)).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it('keeps engaged, selected, caution and warning distinct in every mode', () => {
+    for (const theme of ALL_THEMES) {
+      const { engaged, selected, caution, warning } = theme.avionics;
+      expect(new Set([engaged, selected, caution, warning]).size).toBe(4);
+    }
+  });
+
+  it('shares one avionics palette between light and dark, as a real panel is dark in daylight', () => {
+    expect(darkTheme.avionics).toBe(lightTheme.avionics);
   });
 });

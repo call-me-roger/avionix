@@ -2,7 +2,8 @@ import React from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import type { Orientation } from '@/domain/panels/panel';
-import { useThemedStyles } from '@/theme/theme-context';
+import { PanelIcon } from '@/features/shell/PanelIcon';
+import { useTheme, useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
 const makeStyles = (theme: Theme) => ({
@@ -11,16 +12,40 @@ const makeStyles = (theme: Theme) => ({
   bar: { backgroundColor: theme.colors.surface },
   items: { padding: theme.touch.spacing / 2, gap: theme.touch.spacing },
   item: {
+    position: 'relative' as const,
     minHeight: theme.touch.minTarget,
     minWidth: theme.touch.minTarget,
-    paddingHorizontal: theme.spacing.md,
-    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
+    gap: theme.spacing.xs,
   },
-  selected: { backgroundColor: theme.colors.primary },
-  label: { color: theme.colors.text, fontSize: theme.typography.bodySize },
-  labelSelected: { color: theme.colors.onPrimary, fontWeight: 'bold' as const },
+  itemColumn: { flexDirection: 'column' as const },
+  itemRow: { flexDirection: 'row' as const },
+  // The selected indicator sits on the edge facing the content: the top in the portrait bottom
+  // bar, the right edge in the landscape rail. The full primary fill is gone (R-01); the bar, icon and
+  // label are drawn in `accent`, which stays readable on the surface in every mode.
+  indicatorTop: {
+    position: 'absolute' as const,
+    top: 0,
+    left: theme.spacing.sm,
+    right: theme.spacing.sm,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: theme.colors.accent,
+  },
+  indicatorRight: {
+    position: 'absolute' as const,
+    right: 0,
+    top: theme.spacing.xs,
+    bottom: theme.spacing.xs,
+    width: 3,
+    borderRadius: 2,
+    backgroundColor: theme.colors.accent,
+  },
+  label: { color: theme.colors.textMuted, fontSize: theme.typography.captionSize + 1 },
+  labelSelected: { color: theme.colors.accent, fontWeight: 'bold' as const },
 });
 
 /**
@@ -42,6 +67,7 @@ export function PanelSwitcher({
   onSelect: (id: string) => void;
 }) {
   const styles = useThemedStyles(makeStyles);
+  const theme = useTheme();
   const portrait = orientation === 'portrait';
   return (
     <View
@@ -61,6 +87,7 @@ export function PanelSwitcher({
       >
         {items.map((item) => {
           const selected = item.id === route;
+          const tint = selected ? theme.colors.accent : theme.colors.textMuted;
           return (
             <Pressable
               key={item.id}
@@ -69,8 +96,12 @@ export function PanelSwitcher({
               accessibilityLabel={item.title}
               accessibilityState={{ selected }}
               onPress={() => onSelect(item.id)}
-              style={[styles.item, selected ? styles.selected : null]}
+              style={[styles.item, portrait ? styles.itemColumn : styles.itemRow]}
             >
+              {selected ? (
+                <View style={portrait ? styles.indicatorTop : styles.indicatorRight} />
+              ) : null}
+              <PanelIcon id={item.id} color={tint} />
               <Text style={[styles.label, selected ? styles.labelSelected : null]}>
                 {item.title}
               </Text>

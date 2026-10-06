@@ -14,6 +14,7 @@ import { useUnits } from '@/features/units/UnitsProvider';
 import { BodyText } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
+import { numeric } from '@/theme/typography';
 
 const makeStyles = (theme: Theme) => ({
   wrap: { gap: theme.spacing.xs },
@@ -26,8 +27,7 @@ const makeStyles = (theme: Theme) => ({
   value: {
     color: theme.colors.text,
     fontSize: theme.typography.titleSize,
-    fontWeight: 'bold' as const,
-    fontVariant: ['tabular-nums' as const],
+    ...numeric(theme, true),
   },
   stale: { color: theme.colors.textMuted },
   steps: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: theme.touch.spacing },

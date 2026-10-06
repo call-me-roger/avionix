@@ -240,8 +240,13 @@ export const PFD_VIEW = { width: 360, height: 300 } as const;
 /** Instruments take at most this share of the window height, keeping the altimeter controls near. */
 const HEIGHT_SHARE = 0.7;
 
-export function pfdWidth(contentWidth: number, windowHeight: number): number {
-  const byHeight = (windowHeight * HEIGHT_SHARE * PFD_VIEW.width) / PFD_VIEW.height;
+/**
+ * `reservedHeight` (dp) is drawn above the PFD within the same height share, such as the FMA, so
+ * the two together still leave the altimeter controls near.
+ */
+export function pfdWidth(contentWidth: number, windowHeight: number, reservedHeight = 0): number {
+  const byHeight =
+    ((windowHeight * HEIGHT_SHARE - reservedHeight) * PFD_VIEW.width) / PFD_VIEW.height;
   return Math.max(0, Math.min(contentWidth, byHeight));
 }
 

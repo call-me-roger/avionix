@@ -13,16 +13,22 @@ import {
 import { isEmergencySquawk } from '@/domain/radios/squawk';
 import { firstNumber } from '@/features/panels/instruments/useInstrumentValues';
 import { ControlButton } from '@/features/panels/primitives/ControlButton';
+import { DisplayWindow } from '@/features/panels/primitives/DisplayWindow';
 import { Keypad } from '@/features/panels/primitives/Keypad';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
 import { type EntryTarget, formatFrequency } from '@/features/panels/radios/radios';
 import type { RadioEntry } from '@/features/panels/radios/useRadioEntry';
 import { BodyText } from '@/theme/primitives';
+import { useOnBezel } from '@/theme/surface-context';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
-/** Shared with `SelectorPad.tsx` so the dashed "New" box looks the same across panels. */
+/**
+ * Shared with `SelectorPad.tsx` so the dashed "New" box looks the same across panels. The
+ * `…OnBezel` variants apply when the pad sits inside an `AvionicsUnit` (always for SelectorPad,
+ * on narrow layouts for EntryPad): app colours would read dark-on-dark there in the light theme.
+ */
 export const entryPadStyles = (theme: Theme) => ({
   wrap: {
     gap: theme.spacing.sm,
@@ -30,7 +36,7 @@ export const entryPadStyles = (theme: Theme) => ({
     borderRadius: theme.radius.md,
     borderWidth: 2,
     borderStyle: 'dashed' as const,
-    borderColor: theme.colors.primary,
+    borderColor: theme.colors.accent,
     maxWidth: 420,
     width: '100%' as const,
   },
@@ -61,7 +67,10 @@ export const entryPadStyles = (theme: Theme) => ({
     justifyContent: 'center' as const,
     paddingHorizontal: theme.spacing.lg,
   },
-  cancelLabel: { color: theme.colors.primary, fontSize: theme.typography.titleSize },
+  cancelLabel: { color: theme.colors.accent, fontSize: theme.typography.titleSize },
+  wrapOnBezel: { borderColor: theme.avionics.selected },
+  titleOnBezel: { color: theme.avionics.legend },
+  cancelLabelOnBezel: { color: theme.avionics.selected },
 });
 
 function notTakenSentence(
@@ -93,6 +102,7 @@ function notTakenSentence(
  */
 export function EntryPad({ entry, readBack }: { entry: RadioEntry; readBack: ReadBack }) {
   const styles = useThemedStyles(entryPadStyles);
+  const onBezel = useOnBezel();
   const { write } = usePanel();
   const target = entry.target;
   if (target === null) {
@@ -127,16 +137,15 @@ export function EntryPad({ entry, readBack }: { entry: RadioEntry; readBack: Rea
     entry.sent();
   };
   return (
-    <View style={styles.wrap}>
-      <Text style={styles.title}>{target.title}</Text>
+    <View style={[styles.wrap, onBezel ? styles.wrapOnBezel : null]}>
+      <Text style={[styles.title, onBezel ? styles.titleOnBezel : null]}>{target.title}</Text>
       <View
         style={styles.display}
         accessible
         accessibilityLiveRegion="polite"
         accessibilityLabel={accessibilityLabel}
       >
-        <BodyText>New</BodyText>
-        <Text style={styles.draft}>{shown}</Text>
+        <DisplayWindow text={shown} role="selected" caption="NEW" />
       </View>
       {sets === null ? null : <BodyText muted>{`Sets ${sets}`}</BodyText>}
       {parsed.status === 'valid' && parsed.note !== null ? (
@@ -161,7 +170,9 @@ export function EntryPad({ entry, readBack }: { entry: RadioEntry; readBack: Rea
           onPress={entry.cancel}
           style={styles.cancel}
         >
-          <Text style={styles.cancelLabel}>Cancel</Text>
+          <Text style={[styles.cancelLabel, onBezel ? styles.cancelLabelOnBezel : null]}>
+            Cancel
+          </Text>
         </Pressable>
         <ControlButton
           label="Set"

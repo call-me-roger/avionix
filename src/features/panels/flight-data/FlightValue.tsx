@@ -28,7 +28,7 @@ export function FlightValue({
         accessible
         accessibilityLabel={`${label}: not available on this aircraft`}
       >
-        <BodyText>{label}</BodyText>
+        <Text style={styles.label}>{label}</Text>
         <BodyText muted>not available on this aircraft</BodyText>
       </View>
     );
@@ -39,7 +39,7 @@ export function FlightValue({
       accessible
       accessibilityLabel={`${label}: ${text}${current ? '' : ', not live'}`}
     >
-      <BodyText>{label}</BodyText>
+      <Text style={styles.label}>{label}</Text>
       <Text style={[styles.value, current ? null : styles.stale]}>{text}</Text>
       {current ? null : <BodyText muted>not live</BodyText>}
     </View>

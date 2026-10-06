@@ -15,6 +15,7 @@ import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { RadiosPanel } from '@/features/panels/radios/RadiosPanel';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
 import { ThemeProvider } from '@/theme/theme-context';
+import { lightTheme } from '@/theme/tokens';
 
 const NOW = 1_000_000;
 const base = initialSnapshot(GENERIC_PROFILE, 5);
@@ -118,12 +119,14 @@ describe('Radios panel', () => {
     expect(actions.activate).toHaveBeenCalledWith('nav1', C.nav1Flip);
   });
 
-  it('says when X-Plane did not swap', async () => {
+  it('says when X-Plane did not swap, in the avionics warning colour', async () => {
     const view = await render(tree(live()));
     await fireEvent.press(screen.getByLabelText('Swap COM1 active and standby'));
     const ok = { [C.com1Flip]: { status: 'ok' as const, failure: null, refusal: null, at: NOW } };
     await view.rerender(tree(live({ operations: ok }), NOW + 4000));
-    expect(screen.getByText('X-Plane did not swap COM1.')).toBeTruthy();
+    expect(screen.getByText('X-Plane did not swap COM1.')).toHaveStyle({
+      color: lightTheme.avionics.warning,
+    });
   });
 
   it('keeps the other radios working when NAV2 is missing, and says why once', async () => {
@@ -168,12 +171,55 @@ describe('Radios panel', () => {
     });
   });
 
+  it('dims the standby display window when its radio’s feature is unavailable', async () => {
+    const snapshot = live();
+    await render(
+      tree({
+        ...snapshot,
+        compatibility: {
+          ...snapshot.compatibility,
+          features: snapshot.compatibility.features.map((feature) =>
+            feature.id === 'nav2'
+              ? {
+                  ...feature,
+                  status: 'unavailable' as const,
+                  missing: [
+                    {
+                      name: D.nav2Standby,
+                      kind: 'dataref' as const,
+                      purpose: 'NAV2 standby frequency, written when you set one',
+                      status: 'missing' as const,
+                    },
+                  ],
+                }
+              : feature,
+          ),
+        },
+      }),
+    );
+    const standby = screen.getByLabelText('Enter NAV2 standby');
+    expect(standby.props.accessibilityState.disabled).toBe(true);
+    const value = within(standby).getByText('117.20');
+    expect(StyleSheet.flatten(value.props.style).color).toBe(lightTheme.avionics.legendDim);
+  });
+
   it('marks values not live and disables every control while the link is down', async () => {
     await render(tree(live({ state: 'reconnecting' })));
     expect(screen.getByLabelText('COM1: active 121.500, standby 118.005, not live')).toBeTruthy();
     expect(
       screen.getByLabelText('Swap COM1 active and standby').props.accessibilityState,
     ).toMatchObject({ disabled: true });
+  });
+
+  it('dims the ident, DME and course line once the values are not current', async () => {
+    const view = await render(tree(live()));
+    expect(screen.getByText('IBOS · 12.4 nm · CRS 247°')).toHaveStyle({
+      color: lightTheme.avionics.selected,
+    });
+    await view.rerender(tree(live({ state: 'reconnecting' })));
+    expect(screen.getByText('IBOS · 12.4 nm · CRS 247°')).toHaveStyle({
+      color: lightTheme.avionics.legendDim,
+    });
   });
 
   it('shows no values with no flight loaded', async () => {
@@ -264,5 +310,35 @@ describe('Radios panel', () => {
         Dimensions.set({ window: original });
       });
     }
+  });
+
+  describe('as an avionics hardware unit', () => {
+    it('engraves the radio label at the top of its unit', async () => {
+      await render(tree(live()));
+      expect(screen.getByText('COM1')).toBeTruthy();
+      expect(screen.getByText('NAV1')).toBeTruthy();
+    });
+
+    it('shows the active value in a display window, in the engaged colour', async () => {
+      await render(tree(live()));
+      const activeWindow = screen.getByTestId('radio-active-com1');
+      expect(within(activeWindow).getByText('121.500')).toHaveStyle({
+        color: lightTheme.avionics.engaged,
+      });
+    });
+
+    it('draws the standby window, with its tuning frame, inside the standby button', async () => {
+      await render(tree(live()));
+      const standbyButton = screen.getByLabelText('Enter COM1 standby');
+      expect(within(standbyButton).getByTestId('display-window-tuning')).toBeTruthy();
+      expect(within(standbyButton).getByText('118.005')).toBeTruthy();
+    });
+
+    it('colours the ident, DME and course line with the selected colour', async () => {
+      await render(tree(live()));
+      expect(screen.getByText('IBOS · 12.4 nm · CRS 247°')).toHaveStyle({
+        color: lightTheme.avionics.selected,
+      });
+    });
   });
 });

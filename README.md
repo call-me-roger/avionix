@@ -25,11 +25,25 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
   on every other panel and opens Flight data when tapped; a Setup toggle turns it off. The WebSocket
   subscribes only the visible panel's DataRefs (plus the strip's, while shown), identification and
   connection health, and follows a panel switch within one update cycle.
+- A **cockpit look and feel**: dark bezels, glass display windows, the B612 and B612 Mono fonts
+  (Airbus's own cockpit-legibility research, open licence) for every live number, and cockpit colour
+  meanings throughout (green engaged, white armed, cyan selected, amber caution, red warning).
+  Every key press gives a haptic tick, and a refused change gives an error buzz, through a Setup →
+  Display "Haptic feedback" toggle; haptics need a new development build (the only new native
+  module this adds), and the app runs silently without one.
+- A **flight-mode annunciator (FMA)** on the Autopilot panel and across the top of the PFD: four
+  columns (autothrottle, lateral, AP/FD, vertical) in the G1000's own layout, a box around a mode
+  for 10 s after it engages, and an amber, flashing "AP" for 5 s when the autopilot disconnects
+  (steady under iOS Reduce Motion), acknowledged with a tap.
 - An **Instruments** panel: airspeed, attitude, altitude, vertical speed, heading, and turn and slip,
   drawn on the device from the simulator's own values (no streamed images), in a PFD or a six-pack
   presentation the pilot picks; the choice persists and is remembered per aircraft. The altimeter
   setting is read and written in inches of mercury or hectopascals, with one-tap STD; a stale link
-  marks every instrument with a red X and never zeroes or animates a value.
+  marks every instrument with a red X and never zeroes or animates a value. The PFD also shows the
+  autopilot's targets: cyan boxes and bugs for the selected altitude, heading and speed, and a cyan
+  bug for the selected vertical speed and on the six-pack's directional gyro. The altitude and
+  heading targets are always shown; the speed only while FLC or the autothrottle is engaged, and the
+  vertical speed only while VS is engaged.
 - A **Units** section in Setup lets the pilot choose fuel (kg/lb), temperature (°C/°F), distance
   (nm/km) and altimeter pressure (inHg/hPa); the choice is shared by every panel and persisted.
   Speeds stay in knots.
@@ -121,6 +135,8 @@ emulator specifics and `docs/testing/xplane-smoke-test.md` for the manual verifi
   a development build must confirm the `NSAllowsLocalNetworking` setting in `app.json`.
 - Connector discovery needs the development build (`react-native-zeroconf` is a native module);
   in Expo Go and on the web the host must be typed.
+- Haptics need the development build (`expo-haptics` is a native module); Expo Go, the web and an
+  existing build without it run with haptics silent, never an error.
 - Base64 `data` DataRefs are decoded to text (this is how the aircraft is identified).
 - `npm run build:validate` prints an informational "Using src/app as the root directory for Expo
   Router" line; this is a cosmetic log from the Expo CLI noticing the `src/app` folder name,

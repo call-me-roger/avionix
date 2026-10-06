@@ -10,7 +10,7 @@ import {
   withStatus,
 } from '@/domain/instruments/labels';
 import { InstrumentFace } from '@/features/panels/instruments/InstrumentFace';
-import { DigitalWindow } from '@/features/panels/instruments/svg-parts';
+import { DigitalWindow, useSvgFonts } from '@/features/panels/instruments/svg-parts';
 import { useTheme } from '@/theme/theme-context';
 
 const VB = { width: 200, height: 200 };
@@ -38,6 +38,7 @@ export const AltimeterDial = React.memo(function AltimeterDial({
   radioAltitude: number | null;
 }) {
   const ink = useTheme().instrument;
+  const { digits } = useSvgFonts();
   const label = withStatus('Altitude', status, () =>
     describeAltitude(feet ?? 0, baroWords, radioAltitude),
   );
@@ -71,6 +72,7 @@ export const AltimeterDial = React.memo(function AltimeterDial({
             fontWeight="bold"
             fill={ink.marking}
             textAnchor="middle"
+            {...digits}
           >
             {String(tick.value / 100)}
           </SvgText>
@@ -97,7 +99,7 @@ export const AltimeterDial = React.memo(function AltimeterDial({
             <DigitalWindow x={134} y={C} width={48} text={baroShort} fontSize={14} />
           )}
           {radioAltitudeShown(radioAltitude) ? (
-            <SvgText x={C} y={62} fontSize={14} fill={ink.marking} textAnchor="middle">
+            <SvgText x={C} y={62} fontSize={14} fill={ink.marking} textAnchor="middle" {...digits}>
               {`RA ${Math.round(radioAltitude)}`}
             </SvgText>
           ) : null}

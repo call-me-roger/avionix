@@ -1,4 +1,5 @@
 import type { Theme } from '@/theme/tokens';
+import { numeric } from '@/theme/typography';
 
 /**
  * The label/value row shape `FlightValue` and `DestinationBlock` share (itself a copy of
@@ -11,11 +12,16 @@ export const makeRowStyles = (theme: Theme) => ({
     alignItems: 'baseline' as const,
     gap: theme.spacing.sm,
   },
+  label: {
+    fontSize: theme.typography.captionSize,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    color: theme.colors.textMuted,
+  },
   value: {
     color: theme.colors.text,
     fontSize: theme.typography.titleSize,
-    fontWeight: 'bold' as const,
-    fontVariant: ['tabular-nums' as const],
+    ...numeric(theme, true),
   },
   stale: { color: theme.colors.textMuted },
 });

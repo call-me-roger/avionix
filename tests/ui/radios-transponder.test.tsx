@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, within } from '@testing-library/react-native';
 import React from 'react';
 import { StyleSheet } from 'react-native';
 
@@ -14,6 +14,10 @@ import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { RadiosPanel } from '@/features/panels/radios/RadiosPanel';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
 import { ThemeProvider } from '@/theme/theme-context';
+import { lightTheme } from '@/theme/tokens';
+
+// LightBar is hidden from accessibility (the mode button's own label already speaks its state).
+const HIDDEN = { includeHiddenElements: true };
 
 const NOW = 1_000_000;
 const base = initialSnapshot(GENERIC_PROFILE, 5);
@@ -90,12 +94,40 @@ describe('Radios transponder', () => {
   it('shows the code and mode X-Plane reports', async () => {
     await render(tree(live()));
     expect(screen.getByLabelText('Transponder: squawk 7000, mode ALT')).toBeTruthy();
+    expect(within(screen.getByTestId('xpdr-code')).getByText('7000')).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Transponder altitude' }).props.accessibilityState,
     ).toMatchObject({ selected: true });
     expect(
       screen.getByRole('button', { name: 'Transponder standby' }).props.accessibilityState,
     ).toMatchObject({ selected: false });
+  });
+
+  it('shows the engaged light bar on the selected mode and the off bar on the others', async () => {
+    await render(tree(live()));
+    expect(
+      within(screen.getByRole('button', { name: 'Transponder altitude' })).getByTestId(
+        'light-bar-engaged',
+        HIDDEN,
+      ),
+    ).toBeTruthy();
+    for (const name of ['off', 'standby', 'on']) {
+      expect(
+        within(screen.getByRole('button', { name: `Transponder ${name}` })).getByTestId(
+          'light-bar-off',
+          HIDDEN,
+        ),
+      ).toBeTruthy();
+    }
+  });
+
+  it('draws an emergency squawk in the warning colour, with EMERG in the caption', async () => {
+    await render(tree(live({ telemetry: telemetry({ ...VALUES, [D.transponderCode]: 7700 }) })));
+    const codeWindow = screen.getByTestId('xpdr-code');
+    expect(within(codeWindow).getByText('7700')).toHaveStyle({
+      color: lightTheme.avionics.warning,
+    });
+    expect(within(codeWindow).getByText(/EMERG/)).toBeTruthy();
   });
 
   it('writes the selected mode and checks it', async () => {
@@ -199,7 +231,7 @@ describe('Radios transponder', () => {
     expect(actions.write).toHaveBeenCalledWith('transponder-code', D.transponderCode, 7700);
   });
 
-  it('IDENT activates the command and says it was sent, and Identing follows X-Plane', async () => {
+  it('IDENT activates the command and says it was sent, and the IDENT annunciation follows X-Plane', async () => {
     const view = await render(tree(live()));
     await fireEvent.press(screen.getByRole('button', { name: 'IDENT' }));
     expect(actions.activate).toHaveBeenCalledWith('transponder-ident', C.transponderIdent);
@@ -208,13 +240,26 @@ describe('Radios transponder', () => {
     };
     await view.rerender(tree(live({ operations: ok }), NOW + 1000));
     expect(screen.getByText('IDENT sent')).toBeTruthy();
-    expect(screen.queryByText('Identing')).toBeNull();
+    expect(screen.queryByTestId('xpdr-ident')).toBeNull();
     await view.rerender(tree(live({ operations: ok }), NOW + 6000));
     expect(screen.queryByText('IDENT sent')).toBeNull();
     await view.rerender(
       tree(live({ telemetry: telemetry({ ...VALUES, [D.transponderIdenting]: 1 }) })),
     );
-    expect(screen.getByText('Identing')).toBeTruthy();
+    expect(screen.getByTestId('xpdr-ident')).toHaveTextContent('IDENT');
+    expect(screen.getByTestId('xpdr-ident')).toHaveStyle({ color: lightTheme.avionics.engaged });
+  });
+
+  it('dims a last-known IDENT annunciation once the values are not current', async () => {
+    await render(
+      tree(
+        live({
+          state: 'reconnecting',
+          telemetry: telemetry({ ...VALUES, [D.transponderIdenting]: 1 }),
+        }),
+      ),
+    );
+    expect(screen.getByTestId('xpdr-ident')).toHaveStyle({ color: lightTheme.avionics.legendDim });
   });
 
   it('shows the ATC-assigned code, and offers to squawk it when it differs', async () => {

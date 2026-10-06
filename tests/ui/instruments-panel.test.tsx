@@ -1,11 +1,21 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import React from 'react';
+import { Dimensions, StyleSheet } from 'react-native';
 
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
-import { GENERIC_DATAREFS as D, GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
+import {
+  FEATURE_ALTIMETER_SETTING,
+  FEATURE_FLIGHT_INSTRUMENTS,
+  GENERIC_DATAREFS as D,
+  GENERIC_PROFILE,
+} from '@/domain/aircraft/profiles/generic';
+import { AUTOPILOT_PANEL } from '@/features/panels/autopilot/autopilot';
 import { InstrumentPreferencesProvider } from '@/features/panels/instruments/InstrumentPreferencesProvider';
-import { InstrumentsPanel } from '@/features/panels/instruments/InstrumentsPanel';
+import {
+  INSTRUMENTS_PANEL,
+  InstrumentsPanel,
+} from '@/features/panels/instruments/InstrumentsPanel';
 import type { PanelActions } from '@/features/panels/primitives/PanelContext';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
@@ -57,6 +67,14 @@ function live(overrides: Partial<SessionSnapshot> = {}): SessionSnapshot {
   };
 }
 
+function withMissing(snapshot: SessionSnapshot, ...names: string[]): SessionSnapshot {
+  const bindings = { ...snapshot.compatibility.bindings };
+  for (const name of names) {
+    bindings[name] = { name, kind: 'dataref', status: 'missing' };
+  }
+  return { ...snapshot, compatibility: { ...snapshot.compatibility, bindings } };
+}
+
 function withIdentity(snapshot: SessionSnapshot, icaoType: string | null): SessionSnapshot {
   return {
     ...snapshot,
@@ -87,6 +105,14 @@ function tree(snapshot: SessionSnapshot, storage = createMemorySettingsStorage()
 }
 
 describe('Instruments panel', () => {
+  it('asks for the instruments, the altimeter setting and every autopilot feature', () => {
+    // tests/integration/flight-instruments.test.ts streams this same set from the mock X-Plane.
+    expect([...INSTRUMENTS_PANEL.features].sort()).toEqual(
+      [FEATURE_FLIGHT_INSTRUMENTS, FEATURE_ALTIMETER_SETTING, ...AUTOPILOT_PANEL.features].sort(),
+    );
+    expect(INSTRUMENTS_PANEL.features).toHaveLength(15);
+  });
+
   it('opens a piston single on the six-pack by default', async () => {
     await render(tree(withIdentity(live(), 'C172')));
     expect(screen.getByTestId('six-pack')).toBeTruthy();
@@ -105,6 +131,50 @@ describe('Instruments panel', () => {
       }),
     );
     expect(screen.getByTestId('pfd')).toBeTruthy();
+  });
+
+  it('makes room for the FMA in the PFD height budget on a landscape phone', async () => {
+    const jet = withIdentity(live(), 'B738');
+    const flying = {
+      ...jet,
+      telemetry: { ...jet.telemetry, ...telemetry({ [D.engineType]: [7, 7] }) },
+    };
+    const noAutopilot = withMissing(
+      flying,
+      D.autopilotServos,
+      D.flightDirectorBars,
+      D.autothrottle,
+      D.headingBug,
+      D.altitudeDial,
+      D.verticalSpeedDial,
+      D.airspeedDial,
+      D.headingStatus,
+      D.navStatus,
+      D.approachStatus,
+      D.altitudeStatus,
+      D.verticalSpeedStatus,
+      D.speedStatus,
+    );
+    const pfdWidthNow = () =>
+      Number(StyleSheet.flatten(screen.getByTestId('pfd').props.style).width);
+    const original = Dimensions.get('window');
+    Dimensions.set({ window: { width: 800, height: 360, scale: 1, fontScale: 1 } });
+    try {
+      const view = await render(tree(noAutopilot));
+      expect(screen.queryByTestId('autopilot-fma')).toBeNull();
+      const without = pfdWidthNow();
+      await view.rerender(tree(flying));
+      expect(screen.getByTestId('autopilot-fma')).toBeTruthy();
+      const withFma = pfdWidthNow();
+      // 360 × 0.7 = 252 tall without the FMA (302.4 wide); 252 − 48 = 204 with it (244.8 wide).
+      expect(without).toBeCloseTo(302.4);
+      expect(withFma).toBeCloseTo(244.8);
+      expect(withFma).toBeLessThan(without);
+    } finally {
+      await act(async () => {
+        Dimensions.set({ window: original });
+      });
+    }
   });
 
   it('remembers the choice per aircraft type', async () => {

@@ -161,4 +161,12 @@ describe('FlightDataStrip', () => {
     const strip = screen.getByTestId('flight-data-strip');
     expect(strip.props.accessibilityLabel).not.toContain('X-Plane is');
   });
+
+  it('renders cockpit typography: tabular-nums values and small caption labels', async () => {
+    await renderStrip(live());
+    const valueStyle = StyleSheet.flatten(screen.getByText('142 kt').props.style);
+    expect(valueStyle.fontVariant).toEqual(['tabular-nums']);
+    const labelStyle = StyleSheet.flatten(screen.getByText('GS').props.style);
+    expect(labelStyle.fontSize).toBe(12);
+  });
 });

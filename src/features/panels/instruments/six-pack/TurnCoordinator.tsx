@@ -9,6 +9,7 @@ import {
 } from '@/domain/instruments/geometry';
 import { type InstrumentStatus, describeTurn, withStatus } from '@/domain/instruments/labels';
 import { InstrumentFace } from '@/features/panels/instruments/InstrumentFace';
+import { useSvgFonts } from '@/features/panels/instruments/svg-parts';
 import { useTheme } from '@/theme/theme-context';
 
 const VB = { width: 200, height: 200 };
@@ -37,6 +38,7 @@ export const TurnCoordinator = React.memo(function TurnCoordinator({
   slip: number | null;
 }) {
   const ink = useTheme().instrument;
+  const { letters } = useSvgFonts();
   const label = withStatus('Turn', status, () => describeTurn(rate, slip));
   const scale = (
     <>
@@ -56,13 +58,27 @@ export const TurnCoordinator = React.memo(function TurnCoordinator({
           />
         );
       })}
-      <SvgText x={left.x} y={left.y + 5} fontSize={14} fill={ink.marking} textAnchor="middle">
+      <SvgText
+        x={left.x}
+        y={left.y + 5}
+        fontSize={14}
+        fill={ink.marking}
+        textAnchor="middle"
+        {...letters}
+      >
         L
       </SvgText>
-      <SvgText x={right.x} y={right.y + 5} fontSize={14} fill={ink.marking} textAnchor="middle">
+      <SvgText
+        x={right.x}
+        y={right.y + 5}
+        fontSize={14}
+        fill={ink.marking}
+        textAnchor="middle"
+        {...letters}
+      >
         R
       </SvgText>
-      <SvgText x={C} y={188} fontSize={14} fill={ink.marking} textAnchor="middle">
+      <SvgText x={C} y={188} fontSize={14} fill={ink.marking} textAnchor="middle" {...letters}>
         2 MIN
       </SvgText>
       <Rect

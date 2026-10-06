@@ -6,6 +6,7 @@ import { usePanel } from '@/features/panels/primitives/PanelContext';
 import { BodyText } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
+import { numeric } from '@/theme/typography';
 
 export function formatReading(value: DataRefValue): string {
   if (typeof value === 'number') {
@@ -24,11 +25,16 @@ const makeStyles = (theme: Theme) => ({
     alignItems: 'baseline' as const,
     gap: theme.spacing.sm,
   },
+  label: {
+    fontSize: theme.typography.captionSize,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    color: theme.colors.textMuted,
+  },
   value: {
     color: theme.colors.text,
     fontSize: theme.typography.titleSize,
-    fontWeight: 'bold' as const,
-    fontVariant: ['tabular-nums' as const],
+    ...numeric(theme, true),
   },
   stale: { color: theme.colors.textMuted },
 });
@@ -55,7 +61,7 @@ export function Readout({
         accessible
         accessibilityLabel={`${label}: not available on this aircraft`}
       >
-        <BodyText>{label}</BodyText>
+        <Text style={styles.label}>{label}</Text>
         <BodyText muted>not available on this aircraft</BodyText>
       </View>
     );
@@ -68,7 +74,7 @@ export function Readout({
       accessible
       accessibilityLabel={`${label}: ${text}${link.valuesCurrent ? '' : ', not live'}`}
     >
-      <BodyText>{label}</BodyText>
+      <Text style={styles.label}>{label}</Text>
       <Text style={[styles.value, link.valuesCurrent ? null : styles.stale]}>{text}</Text>
       {link.valuesCurrent ? null : <BodyText muted>not live</BodyText>}
     </View>

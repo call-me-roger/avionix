@@ -1,10 +1,11 @@
 import React from 'react';
 import { G, Line, Polygon, Rect, Text as SvgText } from 'react-native-svg';
 
+import { headingDelta, tapeBug } from '@/domain/instruments/bugs';
 import { headingText, headingTickLabel, headingTicks } from '@/domain/instruments/geometry';
 import { type InstrumentStatus, describeHeading, withStatus } from '@/domain/instruments/labels';
 import { InstrumentFace } from '@/features/panels/instruments/InstrumentFace';
-import { DigitalWindow } from '@/features/panels/instruments/svg-parts';
+import { DigitalWindow, cardLabelFont, useSvgFonts } from '@/features/panels/instruments/svg-parts';
 import { useTheme } from '@/theme/theme-context';
 
 const VB = { width: 200, height: 40 };
@@ -14,19 +15,34 @@ const PX = 100 / 30;
 // The readout's box is 22 tall: centred at 12 it spans y 1 to 23, its stroke inside the tape.
 const READOUT_Y = 12;
 
+/**
+ * The heading bug is a cyan notch on the tape's bottom edge, the short way round from the lubber
+ * line and parked half-visible at either end beyond ±30°; the lubber line is drawn over it.
+ */
 export const HeadingTape = React.memo(function HeadingTape({
   width,
   height,
   status,
   degrees,
+  bug,
 }: {
   width: number;
   height: number;
   status: InstrumentStatus;
   degrees: number | null;
+  /** The autopilot's heading bug, degrees. */
+  bug: number | null;
 }) {
   const ink = useTheme().instrument;
-  const label = withStatus('Heading', status, () => describeHeading(degrees ?? 0));
+  const fonts = useSvgFonts();
+  const label = withStatus('Heading', status, () => {
+    const words = describeHeading(degrees ?? 0);
+    return bug === null ? words : `${words}, heading bug ${headingText(bug)}`;
+  });
+  const bugX =
+    degrees === null || bug === null
+      ? null
+      : CX + tapeBug(headingDelta(bug, degrees), 0, PX, CX).offset;
   return (
     <InstrumentFace
       testID="instrument-heading"
@@ -52,7 +68,14 @@ export const HeadingTape = React.memo(function HeadingTape({
                   strokeWidth={2}
                 />
                 {tick.labelled ? (
-                  <SvgText x={x} y={30} fontSize={14} fill={ink.marking} textAnchor="middle">
+                  <SvgText
+                    x={x}
+                    y={30}
+                    fontSize={14}
+                    fill={ink.marking}
+                    textAnchor="middle"
+                    {...cardLabelFont(headingTickLabel(tick.value), fonts)}
+                  >
                     {headingTickLabel(tick.value)}
                   </SvgText>
                 ) : null}
@@ -67,6 +90,13 @@ export const HeadingTape = React.memo(function HeadingTape({
             text={headingText(degrees)}
             fontSize={14}
           />
+          {bugX === null ? null : (
+            <Polygon
+              testID="pfd-heading-tape-bug"
+              points={`${bugX - 6},40 ${bugX - 6},34 ${bugX + 6},34 ${bugX + 6},40 ${bugX},37`}
+              fill={ink.selected}
+            />
+          )}
           <Polygon points="100,32 95,40 105,40" fill={ink.pointer} />
         </>
       )}

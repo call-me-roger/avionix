@@ -108,6 +108,28 @@ describe('autopilot selectors', () => {
     expect(screen.getByLabelText('Airspeed selector: 120 kt')).toBeTruthy();
   });
 
+  it('shows the selector value in a cyan display window, captioned by the selector', async () => {
+    await render(tree(live()));
+    const enter = screen.getByLabelText('Enter heading');
+    expect(within(enter).getByText('HDG')).toBeTruthy();
+    const value = within(enter).getByText('270°');
+    const style = StyleSheet.flatten(value.props.style);
+    expect(style.color).toBe(lightTheme.avionics.selected);
+  });
+
+  it('captions airspeed IAS in knots and MACH in Mach', async () => {
+    const view = await render(tree(live()));
+    expect(within(screen.getByLabelText('Enter airspeed')).getByText('IAS')).toBeTruthy();
+    const mach = telemetry({ ...VALUES, [D.airspeedIsMach]: 1, [D.airspeedDial]: 0.78 });
+    await view.rerender(tree(live({ telemetry: mach })));
+    expect(within(screen.getByLabelText('Enter airspeed')).getByText('MACH')).toBeTruthy();
+  });
+
+  it('shows the unit-switch key as IAS⇄M, keeping its spoken label', async () => {
+    await render(tree(live()));
+    expect(within(screen.getByLabelText('Use Mach')).getByText('IAS⇄M')).toBeTruthy();
+  });
+
   it('sends one write per stepper press', async () => {
     await render(tree(live()));
     await fireEvent.press(screen.getByLabelText('Altitude plus 100 feet'));
@@ -169,6 +191,16 @@ describe('autopilot selectors', () => {
     expect(screen.getByText('Sets 12,000 ft')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('Set altitude'));
     expect(actions.write).toHaveBeenCalledWith('altitude-select', D.altitudeDial, 12000);
+  });
+
+  it('draws the keypad title and Cancel in avionics colours inside the SELECTORS unit', async () => {
+    await render(tree(live()));
+    await fireEvent.press(screen.getByLabelText('Enter altitude'));
+    // The light theme's app text (#111417) would be dark on the dark bezel.
+    expect(screen.getByText('Altitude selector')).toHaveStyle({
+      color: lightTheme.avionics.legend,
+    });
+    expect(screen.getByText('Cancel')).toHaveStyle({ color: lightTheme.avionics.selected });
   });
 
   it('explains an out-of-range altitude and keeps Set disabled', async () => {
@@ -297,6 +329,17 @@ describe('autopilot selectors', () => {
     );
   });
 
+  it('dims the selector value while the override is active, even though the link is live', async () => {
+    const view = await render(tree(live()));
+    await view.rerender(
+      tree(live({ telemetry: telemetry({ ...VALUES, [D.autopilotOverride]: 1 }) })),
+    );
+    const button = screen.getByLabelText('Enter altitude');
+    expect(button.props.accessibilityState.disabled).toBe(true);
+    const value = within(button).getByText('5,000 ft');
+    expect(StyleSheet.flatten(value.props.style).color).toBe(lightTheme.avionics.legendDim);
+  });
+
   it('opens the keypad under the selector being edited on a phone', async () => {
     await render(tree(live()));
     await fireEvent.press(screen.getByLabelText('Enter altitude'));
@@ -317,6 +360,6 @@ describe('autopilot selectors', () => {
     expect(button.props.accessibilityState.disabled).toBe(true);
     const label = within(button).getByText('5,000 ft');
     const style = StyleSheet.flatten(label.props.style);
-    expect(style.color).toBe(lightTheme.colors.textMuted);
+    expect(style.color).toBe(lightTheme.avionics.legendDim);
   });
 });

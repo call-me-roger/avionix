@@ -12,34 +12,58 @@ import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
 const makeStyles = (theme: Theme) => ({
-  row: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: theme.spacing.sm },
+  rowPhone: { flexDirection: 'row' as const, gap: theme.touch.spacing },
+  rowWide: { flexDirection: 'row' as const, gap: theme.spacing.sm },
+  flex1: { flex: 1 },
 });
 
-/** Lateral modes on the first row, vertical on the second, as on most autopilot heads. */
-const ROWS: readonly (readonly string[])[] = [
-  ['hdg', 'nav', 'apr'],
-  ['alt', 'vs', 'flc'],
-];
+type ModeGroup = 'lateral' | 'vertical';
 
 /**
- * Each mode's state comes only from X-Plane's status (R5): ● engaged, ○ armed, plain off — told
- * apart by shape and in the spoken label, never by colour alone (R2). A press sends X-Plane's own
- * command for the mode; adoption is any change from the state shown at the press.
+ * Lateral modes on the left/top, vertical on the right/bottom, as on most autopilot heads. Each
+ * group carries its own `testID`, so the panel can place the engage keys between them for the
+ * GMC-507 wide layout (spec section 6) while the phone layout still stacks engage, lateral, vertical.
  */
-export function ModeButtons({ readBack, blocked }: { readBack: ReadBack; blocked: boolean }) {
+const GROUPS: Readonly<Record<ModeGroup, { testID: string; keys: readonly string[] }>> = {
+  lateral: { testID: 'ap-row-lateral', keys: ['hdg', 'nav', 'apr'] },
+  vertical: { testID: 'ap-row-vertical', keys: ['alt', 'vs', 'flc'] },
+};
+
+/**
+ * Each mode's state comes only from X-Plane's status (R5): the light bar's shape (engaged, armed,
+ * off) and the spoken label carry it, never colour alone (R2). A press sends X-Plane's own command
+ * for the mode; adoption is any change from the state shown at the press.
+ *
+ * Without `group`, both groups render stacked (the phone layout). With `group`, only that one
+ * renders, so the panel can interleave the engage keys between them when wide.
+ */
+export function ModeButtons({
+  readBack,
+  blocked,
+  layout = 'phone',
+  group,
+}: {
+  readBack: ReadBack;
+  blocked: boolean;
+  layout?: 'phone' | 'wide';
+  group?: ModeGroup;
+}) {
   const { snapshot, activate } = usePanel();
   const styles = useThemedStyles(makeStyles);
+  const rowStyle = layout === 'phone' ? styles.rowPhone : styles.rowWide;
 
   const button = (spec: ModeSpec) => {
     const state = modeState(autopilotNumber(snapshot, spec.status));
     return (
       <ControlButton
         key={spec.key}
-        label={state === 'armed' ? `○ ${spec.label}` : spec.label}
+        label={spec.label}
         accessibilityLabel={`${spec.label} mode, ${state}`}
         featureId={spec.featureId}
         target={spec.command}
         selected={state === 'engaged'}
+        annunciation={state}
+        style={layout === 'phone' ? styles.flex1 : undefined}
         invalid={blocked || readBack.pendingExpected(`mode-${spec.key}`) !== null}
         onPress={() => {
           void activate(spec.featureId, spec.command);
@@ -56,22 +80,29 @@ export function ModeButtons({ readBack, blocked }: { readBack: ReadBack; blocked
     );
   };
 
+  const groups: readonly ModeGroup[] = group === undefined ? ['lateral', 'vertical'] : [group];
+
   return (
     <View>
-      {ROWS.map((row) => (
-        <View key={row.join()} style={styles.row}>
-          {row.map((key) => {
-            const spec = MODES.find((mode) => mode.key === key);
-            return spec === undefined ? null : button(spec);
-          })}
-        </View>
-      ))}
-      {MODES.map((spec) => {
-        const message = readBack.messageFor(`mode-${spec.key}`);
-        return message === null ? null : (
-          <BodyText key={spec.key} tone="danger">
-            {message}
-          </BodyText>
+      {groups.map((name) => {
+        const { testID, keys } = GROUPS[name];
+        return (
+          <View key={name}>
+            <View testID={testID} style={rowStyle}>
+              {keys.map((key) => {
+                const spec = MODES.find((mode) => mode.key === key);
+                return spec === undefined ? null : button(spec);
+              })}
+            </View>
+            {keys.map((key) => {
+              const message = readBack.messageFor(`mode-${key}`);
+              return message === null ? null : (
+                <BodyText key={key} tone="danger">
+                  {message}
+                </BodyText>
+              );
+            })}
+          </View>
         );
       })}
     </View>

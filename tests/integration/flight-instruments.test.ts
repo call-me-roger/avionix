@@ -7,6 +7,7 @@ import {
   FEATURE_FLIGHT_INSTRUMENTS,
   GENERIC_DATAREFS as D,
 } from '@/domain/aircraft/profiles/generic';
+import { AUTOPILOT_PANEL } from '@/features/panels/autopilot/autopilot';
 import { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
@@ -49,6 +50,16 @@ async function until(predicate: () => boolean, timeoutMs = 3000): Promise<void> 
   }
 }
 
+/**
+ * The instruments panel's demand. `INSTRUMENTS_PANEL` itself lives in a React Native module this
+ * node project cannot load; tests/ui/instruments-panel.test.tsx pins it to this same set.
+ */
+const INSTRUMENTS_DEMAND = [
+  FEATURE_FLIGHT_INSTRUMENTS,
+  FEATURE_ALTIMETER_SETTING,
+  ...AUTOPILOT_PANEL.features,
+];
+
 describe('flight instruments against the mock X-Plane', () => {
   let server: MockXPlaneServer;
   beforeEach(async () => {
@@ -60,7 +71,7 @@ describe('flight instruments against the mock X-Plane', () => {
 
   async function connected(): Promise<SimulatorSession> {
     const session = createSession();
-    session.setDemand([FEATURE_FLIGHT_INSTRUMENTS, FEATURE_ALTIMETER_SETTING]);
+    session.setDemand(INSTRUMENTS_DEMAND);
     await session.connect(server.host, server.port);
     return session;
   }
@@ -84,6 +95,35 @@ describe('flight instruments against the mock X-Plane', () => {
     const { compatibility } = session.store.getSnapshot();
     expect(featureStatus(compatibility, FEATURE_FLIGHT_INSTRUMENTS)).toBe('available');
     expect(featureStatus(compatibility, FEATURE_ALTIMETER_SETTING)).toBe('available');
+    session.disconnect();
+  });
+
+  it('streams the autopilot targets and modes the PFD draws', async () => {
+    const session = await connected();
+    await until(() => valueOf(session, D.altitudeDial) !== undefined);
+    await until(() => valueOf(session, D.speedStatus) !== undefined);
+    expect(valueOf(session, D.altitudeDial)).toBe(5000);
+    expect(valueOf(session, D.headingBug)).toBe(270);
+    expect(valueOf(session, D.airspeedDial)).toBe(120);
+    expect(valueOf(session, D.airspeedIsMach)).toBe(0);
+    expect(valueOf(session, D.verticalSpeedDial)).toBe(0);
+    for (const name of [
+      D.autopilotServos,
+      D.flightDirectorBars,
+      D.autothrottle,
+      D.headingStatus,
+      D.navStatus,
+      D.approachStatus,
+      D.altitudeStatus,
+      D.verticalSpeedStatus,
+      D.speedStatus,
+    ]) {
+      await until(() => valueOf(session, name) !== undefined);
+    }
+    const { compatibility } = session.store.getSnapshot();
+    for (const id of AUTOPILOT_PANEL.features) {
+      expect(featureStatus(compatibility, id)).toBe('available');
+    }
     session.disconnect();
   });
 

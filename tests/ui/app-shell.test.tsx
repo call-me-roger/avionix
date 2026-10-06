@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -128,13 +128,19 @@ describe('AppShell', () => {
     expect(await screen.findByTestId('panel-instruments')).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Instruments' })).toBeSelected();
     expect(screen.getByTestId('pfd')).toBeTruthy();
-    // The strip is docked here too, so its DataRefs join the instruments' own.
+    // The strip is docked here too, so its DataRefs join the instruments' own, which include the
+    // autopilot's for the PFD's targets and FMA.
     await waitFor(() =>
-      expect(session.setDemand).toHaveBeenLastCalledWith([
-        FEATURE_ALTIMETER_SETTING,
-        FEATURE_FLIGHT_DATA,
-        FEATURE_FLIGHT_INSTRUMENTS,
-      ]),
+      expect(session.setDemand).toHaveBeenLastCalledWith(
+        [
+          ...new Set([
+            FEATURE_ALTIMETER_SETTING,
+            FEATURE_FLIGHT_DATA,
+            FEATURE_FLIGHT_INSTRUMENTS,
+            ...AUTOPILOT_PANEL.features,
+          ]),
+        ].sort(),
+      ),
     );
   });
 
@@ -159,6 +165,18 @@ describe('AppShell', () => {
     await render(tree(services));
     expect(await screen.findByTestId('panel-flight-data')).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Flight data' })).toBeSelected();
+  });
+
+  it('draws the selected tab’s label in accent, the others muted', async () => {
+    const { services } = makeServices({}, await seeded('flight-data'));
+    await render(tree(services));
+    const selected = await screen.findByRole('tab', { name: 'Flight data' });
+    expect(within(selected).getByText('Flight data')).toHaveStyle({
+      color: lightTheme.colors.accent,
+    });
+    expect(
+      within(screen.getByRole('tab', { name: 'Autopilot' })).getByText('Autopilot'),
+    ).toHaveStyle({ color: lightTheme.colors.textMuted });
   });
 
   it('asks the session for exactly what the visible panel reads', async () => {
@@ -291,8 +309,12 @@ describe('AppShell', () => {
       await screen.findByTestId('setup-screen');
       const statusBarWrap = StyleSheet.flatten(screen.getByTestId('status-bar-wrap').props.style);
       expect(statusBarWrap.paddingTop).toBe(insets.top + lightTheme.spacing.sm);
-      expect(statusBarWrap.paddingLeft).toBe(insets.left + lightTheme.spacing.lg);
-      expect(statusBarWrap.paddingRight).toBe(insets.right + lightTheme.spacing.lg);
+      // The bar itself spans full width now (no card margin); it carries the side insets instead.
+      expect(statusBarWrap.paddingLeft ?? 0).toBe(0);
+      expect(statusBarWrap.paddingRight ?? 0).toBe(0);
+      const statusBar = StyleSheet.flatten(screen.getByTestId('link-status-bar').props.style);
+      expect(statusBar.paddingLeft).toBe(insets.left + lightTheme.spacing.lg);
+      expect(statusBar.paddingRight).toBe(insets.right + lightTheme.spacing.lg);
       const switcher = StyleSheet.flatten(screen.getByTestId('panel-switcher').props.style);
       expect(switcher.paddingBottom).toBe(insets.bottom);
       expect(switcher.paddingLeft ?? 0).toBe(0);
@@ -308,6 +330,15 @@ describe('AppShell', () => {
       expect(rail.paddingBottom ?? 0).toBe(0);
       const content = StyleSheet.flatten(screen.getByTestId('shell-content').props.style);
       expect(content.paddingRight).toBe(insets.right);
+    });
+
+    it('keeps the flight data strip clear of the notch on both sides, like the status bar above it', async () => {
+      const { services } = makeServices(liveSnapshot(), await seeded('autopilot'));
+      await renderInset(services);
+      await screen.findByTestId('panel-autopilot');
+      const strip = StyleSheet.flatten(screen.getByTestId('flight-data-strip').props.style);
+      expect(strip.paddingLeft).toBe(insets.left + lightTheme.spacing.lg);
+      expect(strip.paddingRight).toBe(insets.right + lightTheme.spacing.lg);
     });
   });
 

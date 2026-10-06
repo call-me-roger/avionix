@@ -8,6 +8,7 @@ import {
   type ViewProps,
 } from 'react-native';
 
+import { useOnBezel } from '@/theme/surface-context';
 import { useTheme, useThemedStyles } from '@/theme/theme-context';
 import { keyboardAppearanceFor, type Theme } from '@/theme/tokens';
 
@@ -30,6 +31,11 @@ const makeStyles = (theme: Theme) => ({
   muted: { color: theme.colors.textMuted },
   danger: { color: theme.colors.danger },
   success: { color: theme.colors.success },
+  // On a bezel (R-01): the avionics palette, so text stays readable on a dark unit in every theme.
+  bezelPlain: { color: theme.avionics.legend },
+  bezelMuted: { color: theme.avionics.legendDim },
+  bezelDanger: { color: theme.avionics.warning },
+  bezelSuccess: { color: theme.avionics.engaged },
   input: {
     color: theme.colors.text,
     backgroundColor: theme.colors.inputBackground,
@@ -59,13 +65,15 @@ export interface BodyTextProps extends TextProps {
 
 export function BodyText({ muted = false, tone, style, ...rest }: BodyTextProps) {
   const styles = useThemedStyles(makeStyles);
+  const onBezel = useOnBezel();
   return (
     <Text
       style={[
         styles.body,
-        muted ? styles.muted : null,
-        tone === 'danger' ? styles.danger : null,
-        tone === 'success' ? styles.success : null,
+        onBezel ? styles.bezelPlain : null,
+        muted ? (onBezel ? styles.bezelMuted : styles.muted) : null,
+        tone === 'danger' ? (onBezel ? styles.bezelDanger : styles.danger) : null,
+        tone === 'success' ? (onBezel ? styles.bezelSuccess : styles.success) : null,
         style,
       ]}
       {...rest}

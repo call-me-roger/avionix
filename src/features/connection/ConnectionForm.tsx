@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
-import { Button, View } from 'react-native';
+import { View } from 'react-native';
 
 import type { ConnectionState } from '@/domain/connection/connection-state';
+import { ConnectionSteps } from '@/features/connection/ConnectionSteps';
+import { PairingCodeBoxes } from '@/features/connection/PairingCodeBoxes';
+import { ActionButton } from '@/theme/ActionButton';
 import { BodyText, Section, SectionTitle, ThemedTextInput } from '@/theme/primitives';
-import { useTheme, useThemedStyles } from '@/theme/theme-context';
+import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
 interface Props {
   host: string;
   port: string;
   state: ConnectionState;
+  /** Whether live telemetry is flowing (SessionHealth.live): the fourth connection step. */
+  live: boolean;
   connectorName: string | null;
   onHostChange: (value: string) => void;
   onPortChange: (value: string) => void;
@@ -22,7 +27,17 @@ interface Props {
 const CODE_LENGTH = 6;
 
 const makeStyles = (theme: Theme) => ({
-  row: { flexDirection: 'row' as const, gap: theme.spacing.md },
+  row: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: theme.spacing.sm },
+  codeContainer: { alignSelf: 'flex-start' as const, marginBottom: theme.spacing.sm },
+  codeInput: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    opacity: 0.02,
+    color: 'transparent',
+  },
 });
 
 /**
@@ -36,7 +51,6 @@ function PairingFields(props: {
   onPair: (code: string) => Promise<void>;
   onCancel: () => void;
 }) {
-  const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -58,39 +72,47 @@ function PairingFields(props: {
         {props.connectorName ?? 'This connector'} needs pairing. Enter the code shown in the
         connector window.
       </BodyText>
-      <ThemedTextInput
-        testID="pairing-code"
-        accessibilityLabel="Pairing code"
-        value={code}
-        onChangeText={(value) => setCode(value.replace(/\D/g, '').slice(0, CODE_LENGTH))}
-        keyboardType="number-pad"
-        maxLength={CODE_LENGTH}
-        autoFocus
-        editable={!busy}
-      />
+      <View style={styles.codeContainer}>
+        <PairingCodeBoxes code={code} length={CODE_LENGTH} />
+        <ThemedTextInput
+          testID="pairing-code"
+          accessibilityLabel="Pairing code"
+          value={code}
+          onChangeText={(value) => setCode(value.replace(/\D/g, '').slice(0, CODE_LENGTH))}
+          keyboardType="number-pad"
+          maxLength={CODE_LENGTH}
+          autoFocus
+          editable={!busy}
+          caretHidden
+          style={styles.codeInput}
+        />
+      </View>
       <View style={styles.row}>
-        <Button
+        <ActionButton
           title="Pair"
           onPress={submit}
-          disabled={busy || code.length !== CODE_LENGTH}
-          color={theme.colors.primary}
+          disabled={code.length !== CODE_LENGTH}
+          busy={busy}
         />
-        <Button title="Cancel" onPress={props.onCancel} color={theme.colors.primary} />
+        <ActionButton title="Cancel" onPress={props.onCancel} variant="secondary" />
       </View>
     </>
   );
 }
 
 export function ConnectionForm(props: Props) {
-  const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
   const isPairingState = props.state === 'pairing';
   const busy = props.state === 'connecting' || props.state === 'reconnecting' || isPairingState;
   const connected = props.state === 'connected' || busy;
 
+  const hasHost = props.host.trim() !== '';
+
   return (
     <Section>
       <SectionTitle>Connection</SectionTitle>
+      <ConnectionSteps state={props.state} live={props.live} hasHost={hasHost} />
+      <BodyText muted>Or enter the address of the X-Plane PC</BodyText>
       <BodyText>X-Plane host (IP or hostname on your LAN)</BodyText>
       <ThemedTextInput
         accessibilityLabel="X-Plane host"
@@ -118,17 +140,12 @@ export function ConnectionForm(props: Props) {
         />
       ) : (
         <View style={styles.row}>
-          <Button
-            title="Connect"
-            onPress={props.onConnect}
-            disabled={connected}
-            color={theme.colors.primary}
-          />
-          <Button
+          <ActionButton title="Connect" onPress={props.onConnect} disabled={connected} />
+          <ActionButton
             title="Disconnect"
             onPress={props.onDisconnect}
             disabled={props.state === 'disconnected'}
-            color={theme.colors.primary}
+            variant="destructive"
           />
         </View>
       )}

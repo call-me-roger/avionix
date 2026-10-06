@@ -166,6 +166,14 @@ describe('instrument geometry', () => {
     expect(pfdWidth(-10, 400)).toBe(0);
   });
 
+  it('takes a height reserved above the PFD out of its 70% share', () => {
+    // 400 × 0.7 = 280, less 48 for the FMA, is 232 tall: 278.4 wide at 360 × 300.
+    expect(pfdWidth(1000, 400, 48)).toBeCloseTo(278.4);
+    expect(pfdWidth(1000, 400, 48)).toBeLessThan(pfdWidth(1000, 400));
+    expect(pfdWidth(340, 2000, 48)).toBe(340);
+    expect(pfdWidth(1000, 50, 48)).toBe(0);
+  });
+
   it('lays the six-pack out 2 × 3 in portrait and 3 × 2 in landscape', () => {
     expect(sixPackLayout(400, 2000, false, 8)).toEqual({ columns: 2, size: 196 });
     expect(sixPackLayout(2000, 400, true, 8)).toEqual({ columns: 3, size: 136 });

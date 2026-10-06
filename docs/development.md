@@ -85,10 +85,13 @@ development and only warnings and errors in production builds. Categories: `conn
 ## Development builds (EAS)
 
 Connector discovery (`_avionix._tcp` over mDNS) is the first feature that needs a development
-build: `react-native-zeroconf` is a native module that Expo Go does not contain. A development
-build is also the way to verify the native LAN settings in `app.json` (iOS App Transport Security
-local networking, `NSBonjourServices`, Android cleartext traffic and the Wi-Fi multicast
-permission) and to test on iOS without the Expo Go login requirement.
+build: `react-native-zeroconf` is a native module that Expo Go does not contain. Haptics
+(`expo-haptics`) are the second: an existing development build made before this native module was
+added runs the app normally, with haptics silent, because `src/platform/haptics.ts` loads it
+through a guarded `require`; feeling the tick and the buzz needs a new development build. A
+development build is also the way to verify the native LAN settings in `app.json` (iOS App
+Transport Security local networking, `NSBonjourServices`, Android cleartext traffic and the Wi-Fi
+multicast permission) and to test on iOS without the Expo Go login requirement.
 
 Prerequisites: an Expo account (`npx eas-cli@latest login`) with access to the project
 (`extra.eas.projectId` in `app.json`). The `eas.json` `development` profile builds a dev client

@@ -1,12 +1,14 @@
-import React from 'react';
-import { Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { Text, View, type LayoutChangeEvent } from 'react-native';
 
 import { featureOf } from '@/application/compatibility';
 import { controlAvailability } from '@/domain/panels/control-availability';
 import { decodeDataRefString } from '@/domain/simulator/dataref-string';
 import { type DistanceUnit, UNIT_LABEL, convertDistance } from '@/domain/units/units';
 import { firstNumber } from '@/features/panels/instruments/useInstrumentValues';
+import { AvionicsUnit } from '@/features/panels/primitives/AvionicsUnit';
 import { ControlButton, OperationNotice } from '@/features/panels/primitives/ControlButton';
+import { DisplayWindow } from '@/features/panels/primitives/DisplayWindow';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
 import { type RadioSpec, formatFrequency } from '@/features/panels/radios/radios';
@@ -14,39 +16,28 @@ import { useUnits } from '@/features/units/UnitsProvider';
 import { BodyText } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
+import { numeric } from '@/theme/typography';
+
+/** Below this content width, the active/swap/standby line stacks vertically (a narrow phone). */
+const NARROW_ROW_WIDTH = 360;
 
 const makeStyles = (theme: Theme) => ({
-  wrap: {
-    gap: theme.spacing.xs,
-    paddingVertical: theme.spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
   row: {
     flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
     alignItems: 'center' as const,
     gap: theme.spacing.sm,
   },
-  summary: {
-    flexDirection: 'row' as const,
-    alignItems: 'baseline' as const,
-    gap: theme.spacing.sm,
-    flexGrow: 1,
+  rowNarrow: {
+    flexDirection: 'column' as const,
+    alignItems: 'stretch' as const,
   },
-  name: {
-    color: theme.colors.text,
+  flex1: { flex: 1 },
+  details: {
+    ...numeric(theme),
     fontSize: theme.typography.titleSize,
-    fontWeight: 'bold' as const,
-    minWidth: 56,
+    color: theme.avionics.selected,
   },
-  active: {
-    color: theme.colors.text,
-    fontSize: theme.typography.headingSize,
-    fontWeight: 'bold' as const,
-    fontVariant: ['tabular-nums' as const],
-  },
-  stale: { color: theme.colors.textMuted },
+  stale: { color: theme.avionics.legendDim },
 });
 
 function courseText(course: number): string {
@@ -61,9 +52,10 @@ function dmeText(nm: number, unit: DistanceUnit): string {
 }
 
 /**
- * One radio (F-21): X-Plane's active and standby values, a swap, and the standby as the button that
- * opens the keypad. Its controls are quiet, so the feature's reason and the swap's failure are
- * printed once, under the row, instead of under each button (C5).
+ * One radio (F-21) as an avionics hardware unit: X-Plane's active and standby values in glass
+ * display windows, a swap key between them, and the standby window inside the button that opens
+ * the keypad (spec section 5). Its controls are quiet, so the feature's reason and the swap's
+ * failure are printed once, under the row, instead of under each button (C5).
  */
 export function RadioRow({
   radio,
@@ -80,6 +72,10 @@ export function RadioRow({
   const { snapshot, link, activate } = usePanel();
   const { units } = useUnits();
   const styles = useThemedStyles(makeStyles);
+  const [narrow, setNarrow] = useState(false);
+  const onLayout = (event: LayoutChangeEvent) => {
+    setNarrow(event.nativeEvent.layout.width < NARROW_ROW_WIDTH);
+  };
   const noFlight = snapshot.state === 'connected' && snapshot.health.activity === 'noFlight';
   const read = (name: string | undefined) =>
     noFlight || name === undefined ? null : firstNumber(snapshot.telemetry[name]?.value);
@@ -124,18 +120,20 @@ export function RadioRow({
   };
 
   return (
-    <View style={styles.wrap} testID={`radio-row-${radio.key}`}>
-      <View style={styles.row}>
+    <AvionicsUnit label={radio.label} testID={`radio-row-${radio.key}`}>
+      <View style={[styles.row, narrow ? styles.rowNarrow : null]} onLayout={onLayout}>
         <View
-          style={styles.summary}
+          style={styles.flex1}
           accessible
           accessibilityLabel={`${radio.label}: active ${text(active)}, standby ${text(standby)}${notLive ? ', not live' : ''}`}
         >
-          <Text style={styles.name}>{radio.label}</Text>
-          <Text style={[styles.active, link.valuesCurrent ? null : styles.stale]}>
-            {text(active)}
-          </Text>
-          {notLive ? <BodyText muted>not live</BodyText> : null}
+          <DisplayWindow
+            text={text(active)}
+            role="active"
+            caption="ACT"
+            stale={!link.valuesCurrent}
+            testID={`radio-active-${radio.key}`}
+          />
         </View>
         <ControlButton
           label="⇄"
@@ -151,14 +149,28 @@ export function RadioRow({
           featureId={radio.featureId}
           target={radio.standby}
           quiet
+          style={styles.flex1}
           onPress={onEnterStandby}
-        />
+        >
+          <DisplayWindow
+            text={text(standby)}
+            role="standby"
+            caption="STBY"
+            tuning
+            stale={!link.valuesCurrent}
+          />
+        </ControlButton>
       </View>
+      {notLive ? <BodyText muted>not live</BodyText> : null}
       {entry}
-      {details.length === 0 ? null : <BodyText muted>{details.join(' · ')}</BodyText>}
+      {details.length === 0 ? null : (
+        <Text style={[styles.details, link.valuesCurrent ? null : styles.stale]}>
+          {details.join(' · ')}
+        </Text>
+      )}
       {availability.reason === null ? null : <BodyText muted>{availability.reason}</BodyText>}
       <OperationNotice target={radio.flip} />
       {message === null ? null : <BodyText tone="danger">{message}</BodyText>}
-    </View>
+    </AvionicsUnit>
   );
 }

@@ -10,10 +10,18 @@ import {
   GENERIC_PROFILE,
 } from '@/domain/aircraft/profiles/generic';
 import { READ_BACK_MS } from '@/domain/panels/read-back';
+import { HapticsProvider, useHapticsPreference } from '@/features/haptics/HapticsProvider';
 import type { PanelActions } from '@/features/panels/primitives/PanelContext';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { useReadBack } from '@/features/panels/primitives/useReadBack';
+import { haptics } from '@/platform/haptics';
 import { ThemeProvider } from '@/theme/theme-context';
+
+jest.mock('@/platform/haptics', () => ({ haptics: { press: jest.fn(), failure: jest.fn() } }));
+
+afterEach(() => {
+  jest.clearAllMocks();
+});
 
 const NOW = 1_000_000;
 const base = initialSnapshot(GENERIC_PROFILE, 5);
@@ -102,6 +110,48 @@ describe('useReadBack', () => {
       probeTree(Harness, snapshot(121_500, { operations: ok(NOW) }), NOW + READ_BACK_MS),
     );
     expect(screen.getByText('X-Plane did not swap COM1.')).toBeTruthy();
+  });
+
+  it('fires a haptic failure exactly once when a watch settles notAdopted, across later re-renders', async () => {
+    const view = await render(probeTree(Harness, snapshot(121_500), NOW));
+    expect(haptics.failure).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByLabelText('watch'));
+    await view.rerender(probeTree(Harness, snapshot(121_500, { operations: ok(NOW) }), NOW + 1000));
+    expect(haptics.failure).not.toHaveBeenCalled();
+    await view.rerender(
+      probeTree(Harness, snapshot(121_500, { operations: ok(NOW) }), NOW + READ_BACK_MS),
+    );
+    expect(screen.getByText('X-Plane did not swap COM1.')).toBeTruthy();
+    expect(haptics.failure).toHaveBeenCalledTimes(1);
+    await view.rerender(
+      probeTree(Harness, snapshot(121_500, { operations: ok(NOW) }), NOW + READ_BACK_MS + 2000),
+    );
+    expect(haptics.failure).toHaveBeenCalledTimes(1);
+  });
+
+  it('buzzes once per failure, even when the haptics preference changes afterwards', async () => {
+    function HapticsToggle() {
+      const { enabled, setEnabled } = useHapticsPreference();
+      return <Pressable accessibilityLabel="Toggle haptics" onPress={() => setEnabled(!enabled)} />;
+    }
+    const storage = createMemorySettingsStorage();
+    const withHaptics = (s: SessionSnapshot, now: number) => (
+      <HapticsProvider storage={storage}>
+        <HapticsToggle />
+        {probeTree(Harness, s, now)}
+      </HapticsProvider>
+    );
+    const view = await render(withHaptics(snapshot(121_500), NOW));
+    await fireEvent.press(screen.getByLabelText('watch'));
+    await view.rerender(
+      withHaptics(snapshot(121_500, { operations: ok(NOW) }), NOW + READ_BACK_MS),
+    );
+    expect(screen.getByText('X-Plane did not swap COM1.')).toBeTruthy();
+    expect(haptics.failure).toHaveBeenCalledTimes(1);
+    // Off and on again: `failure` is a new function each time, the failure count is unchanged.
+    await fireEvent.press(screen.getByLabelText('Toggle haptics'));
+    await fireEvent.press(screen.getByLabelText('Toggle haptics'));
+    expect(haptics.failure).toHaveBeenCalledTimes(1);
   });
 
   it('never gives a late sentence once adopted, even if the pilot then changes it in X-Plane', async () => {

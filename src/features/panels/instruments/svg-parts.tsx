@@ -1,6 +1,7 @@
 import React from 'react';
 import { Rect, Text as SvgText } from 'react-native-svg';
 
+import { tapeBug } from '@/domain/instruments/bugs';
 import { useTheme } from '@/theme/theme-context';
 
 /** Test hook: how many times each instrument face rendered (the memoisation test reads it). */
@@ -12,6 +13,56 @@ export function countRender(testID: string): void {
 
 /** Which instrument colour draws each speed band, shared by the airspeed dial and the tape. */
 export const ARC_COLOR = { white: 'arcWhite', green: 'arcGreen', yellow: 'arcYellow' } as const;
+
+type SvgFont = { fontFamily?: string };
+
+/** A family prop only once named: until the fonts load the system font draws, with no warning. */
+const family = (name: string | undefined): SvgFont =>
+  name === undefined ? {} : { fontFamily: name };
+
+/**
+ * The cockpit faces for SVG text, spread onto each `SvgText`: B612 Mono for numbers, B612 for
+ * letters such as the cardinals N, E, S and W.
+ */
+export function useSvgFonts(): { digits: SvgFont; letters: SvgFont } {
+  const { fonts } = useTheme().typography;
+  return { digits: family(fonts.monoBold), letters: family(fonts.avionicsBold) };
+}
+
+/** A heading card's label: a number of tens, or a cardinal letter. */
+export function cardLabelFont(
+  label: string,
+  fonts: { digits: SvgFont; letters: SvgFont },
+): SvgFont {
+  return /^\d+$/.test(label) ? fonts.digits : fonts.letters;
+}
+
+/**
+ * A PFD target bug on a vertical tape: 6 wide and 12 tall against the tape's edge at `edge`,
+ * notched at the edge so the target's line reads through it. `inward` is +1 for a left edge, −1 for
+ * a right one.
+ */
+export function tapeBugPoints(edge: number, inward: 1 | -1, y: number): string {
+  const body = edge + 6 * inward;
+  const notch = edge + 3 * inward;
+  return `${edge},${y - 6} ${body},${y - 6} ${body},${y + 6} ${edge},${y + 6} ${notch},${y}`;
+}
+
+/**
+ * The y of a target bug on a vertical tape centred on `centre` with a selected box `boxHeight` tall
+ * across its top. Off the scale it parks half-visible: above, half under the box; below, half off
+ * the tape's bottom edge (spec section 7), so a parked bug never reads as an on-scale target.
+ */
+export function tapeTargetY(
+  target: number,
+  current: number,
+  unitsPerValue: number,
+  centre: number,
+  boxHeight: number,
+): number {
+  const { offset } = tapeBug(target, current, unitsPerValue, centre);
+  return centre - Math.min(offset, centre - boxHeight);
+}
 
 /** A boxed number, centred on `x`, baseline-centred on `y`. */
 export function DigitalWindow({
@@ -28,6 +79,7 @@ export function DigitalWindow({
   fontSize?: number;
 }) {
   const ink = useTheme().instrument;
+  const { digits } = useSvgFonts();
   const height = fontSize + 8;
   return (
     <>
@@ -48,6 +100,7 @@ export function DigitalWindow({
         fontWeight="bold"
         fill={ink.marking}
         textAnchor="middle"
+        {...digits}
       >
         {text}
       </SvgText>

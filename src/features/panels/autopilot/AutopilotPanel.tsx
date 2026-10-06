@@ -3,13 +3,14 @@ import { View, useWindowDimensions } from 'react-native';
 
 import { GENERIC_DATAREFS as D } from '@/domain/aircraft/profiles/generic';
 import { TWO_COLUMN_MIN_WIDTH } from '@/domain/panels/device-layout';
-import { Annunciator } from '@/features/panels/autopilot/Annunciator';
+import { Fma } from '@/features/panels/autopilot/Fma';
 import { OVERRIDE_NOTICE, SELECTORS, autopilotNumber } from '@/features/panels/autopilot/autopilot';
 import { EngageRow } from '@/features/panels/autopilot/EngageRow';
 import { ModeButtons } from '@/features/panels/autopilot/ModeButtons';
 import { SelectorPad } from '@/features/panels/autopilot/SelectorPad';
 import { SelectorRow } from '@/features/panels/autopilot/SelectorRow';
 import { useSelectorEntry } from '@/features/panels/autopilot/useSelectorEntry';
+import { AvionicsUnit } from '@/features/panels/primitives/AvionicsUnit';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import { useReadBack } from '@/features/panels/primitives/useReadBack';
 import { BodyText } from '@/theme/primitives';
@@ -37,6 +38,7 @@ function AutopilotContent() {
   const [measured, setMeasured] = useState<number | null>(null);
   const contentWidth = measured ?? window.width - theme.spacing.lg * 2;
   const wide = contentWidth >= TWO_COLUMN_MIN_WIDTH;
+  const layout = wide ? 'wide' : 'phone';
   // R10: never written, only obeyed. A missing binding reads as no override.
   const blocked = autopilotNumber(snapshot, D.autopilotOverride) === 1;
   return (
@@ -50,26 +52,44 @@ function AutopilotContent() {
       }}
     >
       <View style={[{ gap: theme.touch.spacing }, wide ? { flex: 1 } : { alignSelf: 'stretch' }]}>
-        <Annunciator />
+        <Fma />
         {blocked ? <BodyText tone="danger">{OVERRIDE_NOTICE}</BodyText> : null}
-        <EngageRow readBack={readBack} blocked={blocked} />
-        <ModeButtons readBack={readBack} blocked={blocked} />
+        <AvionicsUnit label="AUTOPILOT">
+          {wide ? (
+            // The GMC-507 layout: lateral keys left, engage keys centre, vertical keys right.
+            <View
+              testID="ap-controller-wide"
+              style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.lg }}
+            >
+              <ModeButtons readBack={readBack} blocked={blocked} layout={layout} group="lateral" />
+              <EngageRow readBack={readBack} blocked={blocked} layout={layout} />
+              <ModeButtons readBack={readBack} blocked={blocked} layout={layout} group="vertical" />
+            </View>
+          ) : (
+            <>
+              <EngageRow readBack={readBack} blocked={blocked} layout={layout} />
+              <ModeButtons readBack={readBack} blocked={blocked} layout={layout} />
+            </>
+          )}
+        </AvionicsUnit>
       </View>
       <View style={wide ? { flex: 1 } : { alignSelf: 'stretch' }}>
-        {SELECTORS.map((spec) => (
-          <SelectorRow
-            key={spec.id}
-            spec={spec}
-            readBack={readBack}
-            blocked={blocked}
-            onEnter={() => entry.open(spec.id)}
-            entry={
-              entry.target?.spec.id === spec.id ? (
-                <SelectorPad entry={entry} readBack={readBack} blocked={blocked} />
-              ) : null
-            }
-          />
-        ))}
+        <AvionicsUnit label="SELECTORS">
+          {SELECTORS.map((spec) => (
+            <SelectorRow
+              key={spec.id}
+              spec={spec}
+              readBack={readBack}
+              blocked={blocked}
+              onEnter={() => entry.open(spec.id)}
+              entry={
+                entry.target?.spec.id === spec.id ? (
+                  <SelectorPad entry={entry} readBack={readBack} blocked={blocked} />
+                ) : null
+              }
+            />
+          ))}
+        </AvionicsUnit>
       </View>
     </View>
   );
