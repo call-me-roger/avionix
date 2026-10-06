@@ -313,6 +313,15 @@ describe('AppShell', () => {
       const content = StyleSheet.flatten(screen.getByTestId('shell-content').props.style);
       expect(content.paddingRight).toBe(insets.right);
     });
+
+    it('keeps the flight data strip clear of the notch on both sides, like the status bar above it', async () => {
+      const { services } = makeServices(liveSnapshot(), await seeded('autopilot'));
+      await renderInset(services);
+      await screen.findByTestId('panel-autopilot');
+      const strip = StyleSheet.flatten(screen.getByTestId('flight-data-strip').props.style);
+      expect(strip.paddingLeft).toBe(insets.left + lightTheme.spacing.lg);
+      expect(strip.paddingRight).toBe(insets.right + lightTheme.spacing.lg);
+    });
   });
 
   it('announces why the panel is blank when it needs a rotation', async () => {

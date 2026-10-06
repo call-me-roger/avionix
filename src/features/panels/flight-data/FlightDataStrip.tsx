@@ -13,7 +13,7 @@ import { type PanelActions, usePanel } from '@/features/panels/primitives/PanelC
 import { PanelScope } from '@/features/panels/primitives/PanelFrame';
 import { useUnits } from '@/features/units/UnitsProvider';
 import { BodyText } from '@/theme/primitives';
-import { useThemedStyles } from '@/theme/theme-context';
+import { useTheme, useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
 /** R11: the strip only reads. No feature here ever writes or activates. */
@@ -77,10 +77,23 @@ function StripCell({ label, text, current }: { label: string; text: string; curr
  * The four values inside `PanelScope`: `useFlightValue` needs the panel context the scope
  * publishes. One accessible name covers the whole row (R7: freshness is the link's, said once).
  */
-function StripBody({ onOpen }: { onOpen: (() => void) | null }) {
+function StripBody({
+  onOpen,
+  safeArea,
+}: {
+  onOpen: (() => void) | null;
+  safeArea?: { left?: number; right?: number };
+}) {
   const { units } = useUnits();
   const { snapshot } = usePanel();
+  const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
+  // Matches LinkStatusBar's own gutter directly above: the same side inset plus the same base
+  // spacing, now that neither of them gets it for free from a shared wrap padding any more.
+  const gutter = {
+    paddingLeft: (safeArea?.left ?? 0) + theme.spacing.lg,
+    paddingRight: (safeArea?.right ?? 0) + theme.spacing.lg,
+  };
   const groundSpeed = useFlightValue([D.groundSpeed], one(formatSpeed));
   const wind = useFlightValue([D.windDirection, D.windSpeed], ([direction = 0, speed = 0]) =>
     formatWind(direction, speed),
@@ -138,7 +151,7 @@ function StripBody({ onOpen }: { onOpen: (() => void) | null }) {
       testID="flight-data-strip"
       accessible
       accessibilityLabel={label}
-      style={[styles.row, styles.target]}
+      style={[styles.row, styles.target, gutter]}
     >
       {cells}
       {trailer}
@@ -149,7 +162,7 @@ function StripBody({ onOpen }: { onOpen: (() => void) | null }) {
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onOpen}
-      style={[styles.row, styles.target]}
+      style={[styles.row, styles.target, gutter]}
     >
       {cells}
       {trailer}
@@ -165,14 +178,17 @@ export function FlightDataStrip({
   snapshot,
   now,
   onOpen,
+  safeArea,
 }: {
   snapshot: SessionSnapshot;
   now: number;
   onOpen: (() => void) | null;
+  /** The system-area inset on each side, matching LinkStatusBar's own gutter above it. */
+  safeArea?: { left?: number; right?: number };
 }) {
   return (
     <PanelScope snapshot={snapshot} now={now} actions={STRIP_ACTIONS}>
-      <StripBody onOpen={onOpen} />
+      <StripBody onOpen={onOpen} safeArea={safeArea} />
     </PanelScope>
   );
 }

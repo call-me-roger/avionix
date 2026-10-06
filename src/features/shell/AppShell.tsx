@@ -141,7 +141,12 @@ export function AppShell({ panels = PANELS }: { panels?: readonly RegisteredPane
                 safeArea={{ left: insets.left, right: insets.right }}
               />
               {stripVisible ? (
-                <FlightDataStrip snapshot={snapshot} now={now} onOpen={onOpenFlightData} />
+                <FlightDataStrip
+                  snapshot={snapshot}
+                  now={now}
+                  onOpen={onOpenFlightData}
+                  safeArea={{ left: insets.left, right: insets.right }}
+                />
               ) : null}
             </View>
             {ready ? (
