@@ -345,6 +345,19 @@ describe('HSI glideslope', () => {
     expect(screen.getByTestId('hsi-cdi')).toBeTruthy();
   });
 
+  it('calls a GPS vertical path a glidepath and flags it GP', async () => {
+    const view = await render(
+      tree(live({ [D.hsiSource]: 2, [D.hsiVertical]: 1, [D.hsiVdef]: -0.5 })),
+    );
+    expect(label()).toContain('glidepath 0.5 dots down');
+    expect(label()).not.toContain('glideslope');
+    await view.rerender(tree(live({ [D.hsiSource]: 2, [D.hsiVertical]: 1, [D.hsiGsFlag]: 1 })));
+    expect(svgText('hsi-gs-flag')).toBe('GP');
+    expect(label()).toContain('glidepath flagged');
+    await view.rerender(tree(withMissing(live({ [D.hsiSource]: 2 }), D.hsiVertical)));
+    expect(label()).toContain('glidepath not available on this aircraft');
+  });
+
   it('draws no scale at all when no glideslope is expected', async () => {
     await render(tree(live({ [D.hsiVertical]: 0, [D.hsiGsFlag]: 0 })));
     expect(screen.queryByTestId('hsi-gs-scale')).toBeNull();

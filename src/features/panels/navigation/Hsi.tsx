@@ -3,13 +3,20 @@ import { Circle, G, Line, Path, Polygon, Rect, Text as SvgText } from 'react-nat
 
 import { headingText, headingTickLabel, polar, scaleTicks } from '@/domain/instruments/geometry';
 import { withStatus } from '@/domain/instruments/labels';
-import { type Marker, sourceKind, sourceLabel } from '@/domain/navigation/hsi';
+import { sourceLabel } from '@/domain/navigation/hsi';
 import { cardAngle, deviationOffset } from '@/domain/navigation/hsi-geometry';
 import { InstrumentFace } from '@/features/panels/instruments/InstrumentFace';
 import { cardLabelFont, useSvgFonts } from '@/features/panels/instruments/svg-parts';
+import { Flag } from '@/features/panels/navigation/NavFlag';
+import {
+  MARKER_LETTER,
+  deviationWords,
+  markerColour,
+  needleColour,
+  verticalName,
+} from '@/features/panels/navigation/nav-presentation';
 import { type NavValues, useNavValues } from '@/features/panels/navigation/useNavValues';
 import { useTheme } from '@/theme/theme-context';
-import type { Theme } from '@/theme/tokens';
 
 const VB = { width: 240, height: 240 };
 const C = 120;
@@ -39,45 +46,6 @@ const LINE_STEP = 14;
  */
 const BUG_POINTS = `${C - 8},${C - CARD_R} ${C + 8},${C - CARD_R} ${C + 8},${C - CARD_R + 9} ${C},${C - CARD_R + 4} ${C - 8},${C - CARD_R + 9}`;
 
-export const MARKER_LETTER: Record<Marker, string> = { outer: 'O', middle: 'M', inner: 'I' };
-
-export function markerColour(marker: Marker, theme: Theme): string {
-  switch (marker) {
-    case 'outer':
-      return theme.instrument.selected;
-    case 'middle':
-      return theme.avionics.caution;
-    case 'inner':
-      return theme.avionics.legend;
-  }
-}
-
-/**
- * Garmin's convention: NAV guidance green, GPS magenta. A source X-Plane reports that Avionix does
- * not know claims neither colour, so a needle is never labelled by a colour it may not have.
- */
-export function needleColour(source: number | null, theme: Theme): string {
-  const kind = sourceKind(source);
-  if (kind === 'nav') {
-    return theme.instrument.navNeedle;
-  }
-  return kind === 'gps' ? theme.instrument.gpsNeedle : theme.instrument.marking;
-}
-
-/** Where a needle sits, in words (R2): the dots are spoken, so the unit is never in doubt. */
-export function deviationWords(
-  deviation: { dots: number; pegged: boolean },
-  positive: string,
-  negative: string,
-): string {
-  const side = deviation.dots > 0 ? positive : negative;
-  if (deviation.pegged) {
-    return `full scale ${side}`;
-  }
-  const tenths = Math.round(Math.abs(deviation.dots) * 10) / 10;
-  return tenths === 0 ? 'centred' : `${tenths.toFixed(1)} dots ${side}`;
-}
-
 /** One sentence, in the order the eye reads the face; a flagged part says so (U5). */
 function describeHsi(v: NavValues): string {
   const parts = ['HSI'];
@@ -102,12 +70,13 @@ function describeHsi(v: NavValues): string {
   } else if (!v.lateral.valid) {
     parts.push('no NAV signal');
   }
+  const vertical = verticalName(v.source).word;
   if (v.glideslope.state === 'unavailable') {
-    parts.push('glideslope not available on this aircraft');
+    parts.push(`${vertical} not available on this aircraft`);
   } else if (v.glideslope.state === 'flagged') {
-    parts.push('glideslope flagged');
+    parts.push(`${vertical} flagged`);
   } else if (v.glideslope.dots !== null) {
-    parts.push(`glideslope ${deviationWords(v.glideslope.dots, 'up', 'down')}`);
+    parts.push(`${vertical} ${deviationWords(v.glideslope.dots, 'up', 'down')}`);
   }
   if (v.dmeSpoken !== null) {
     parts.push(`DME ${v.dmeSpoken}`);
@@ -119,48 +88,6 @@ function describeHsi(v: NavValues): string {
     parts.push(`heading bug ${headingText(v.headingBug)}`);
   }
   return parts.join(', ');
-}
-
-/** A red flag box with its word, centred on (x, y): failure flags are words on red (U2). */
-export function Flag({
-  testID,
-  x,
-  y,
-  word,
-}: {
-  testID: string;
-  x: number;
-  y: number;
-  word: string;
-}) {
-  const ink = useTheme().instrument;
-  const { letters } = useSvgFonts();
-  const width = word.length * 9 + 10;
-  return (
-    <>
-      <Rect
-        testID={`${testID}-box`}
-        x={x - width / 2}
-        y={y - 8}
-        width={width}
-        height={16}
-        rx={2}
-        fill={ink.flag}
-      />
-      <SvgText
-        testID={testID}
-        x={x}
-        y={y + 4.5}
-        fontSize={CORNER_SIZE}
-        fontWeight="bold"
-        fill={ink.flagText}
-        textAnchor="middle"
-        {...letters}
-      >
-        {word}
-      </SvgText>
-    </>
-  );
 }
 
 /**
@@ -425,7 +352,7 @@ export function Hsi({ size }: { size: number }) {
                 />
               )}
               {v.glideslope.state === 'flagged' ? (
-                <Flag testID="hsi-gs-flag" x={GS_X - 1} y={C} word="GS" />
+                <Flag testID="hsi-gs-flag" x={GS_X - 1} y={C} word={verticalName(v.source).flag} />
               ) : null}
             </G>
           ) : null}

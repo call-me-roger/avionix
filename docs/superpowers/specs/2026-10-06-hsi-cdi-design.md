@@ -257,10 +257,10 @@ Read-back sentences:
 
 - **O**, **M** or **I** in the marker colour while lit.
 
-**Data and accessibility**
+**Data and accessibility** (terminology: a GPS vertical path is a glidepath, flagged GP; a radio one is a glideslope, flagged GS)
 
 - These read the same `hsi_*` names, through the new features added to `INSTRUMENTS_PANEL.features`. A missing feature drops only its cue.
-- The PFD's accessible attitude label adds ", localizer 1.2 dots right, glideslope 0.5 dots down", but only while each is shown.
+- The PFD's accessible attitude label adds ", NAV1 course 1.2 dots right, glideslope 0.5 dots down" ("GPS course … glidepath …" for a GPS source), but only while each is shown. A small source word (NAV1, NAV2, GPS) in the needle colour sits beside the lateral scale while it shows, so the source is never colour alone.
 
 ### 7. Profile 1.5.0 (`generic.ts`)
 
