@@ -5,7 +5,7 @@
 | ID | `F-30` |
 | Stage | `2` |
 | Category | Navigation |
-| Status | Proposed |
+| Status | Done |
 | Depends on | `F-21`, `F-10` |
 | Competitor prevalence | Matrix count 3 of 12 representative products (`research/competitors.md`). Wider set: 5 of 8 panel/remote products researched offer it (XpRemotePanel Navigation Pack, Simionic G1000 PFD, Air Manager community instruments, RemoteFlight COCKPIT HD / RADIO HD, Flight Deck ONE) |
 
@@ -66,8 +66,9 @@ R4. Glideslope deviation is shown only while the glideslope flag indicates a usa
 otherwise the glideslope is shown as unavailable.
 
 R5. The pilot can set the course/OBS to a whole degree in 0-359. The write is confirmed by the
-value returning on the subscription; if nothing changes within 2 s the control reverts to the
-simulator value and the panel says the change was not accepted.
+value returning on the subscription; if nothing changes within the app-wide read-back window
+(`READ_BACK_MS`, 3 s, the same window the radios and autopilot panels use) the control reverts to
+the simulator value and the panel says the change was not accepted.
 
 R6. The pilot can change the HSI source where that dataref is writable; where it is not, the
 source is read-only and the control is disabled with a stated reason.
@@ -94,23 +95,30 @@ R13. A write rejected as read-only produces one non-blocking message and reverts
 ## X-Plane Web API mapping
 
 All values are ordinary datarefs, so REST reads, subscription and writes apply; the documented
-~10 Hz rate is adequate because needles move slowly. Names marked (unverified) come from a
-community mirror of `DataRefs.txt`, not a Laminar page, and must be confirmed against the
-`DataRefs.txt` shipped with the simulator.
+~10 Hz rate is adequate because needles move slowly. Every name below is checked against Laminar's
+`DataRefs.txt` and `Commands.txt` for X-Plane 12 (the design spec's Verified names table), replacing
+this table's earlier community-sourced, unverified rows. Pilot side only, as in F-20; the copilot
+HSI source and course are not read or written.
 
 | Purpose | DataRef / command | Type, units | Read/Write | Source |
 |---|---|---|---|---|
-| HSI source select | `sim/cockpit2/radios/actuators/HSI_source_select_pilot`, `..._copilot` | int enum: 0 NAV1, 1 NAV2, 2 GPS | R/W | [1] |
-| Selected course | `sim/cockpit2/radios/actuators/nav1_course_deg_mag_pilot`, `nav2_...` (unverified) | float, degrees magnetic | R/W | [2] |
-| OBS setting | `sim/cockpit2/radios/actuators/hsi_obs_deg_mag_pilot`, `nav1_obs_deg_mag_pilot` (unverified) | float, degrees magnetic | R/W | [2] |
-| Lateral / vertical deviation | `sim/cockpit2/radios/indicators/hsi_hdef_dots_pilot`, `hsi_vdef_dots_pilot` (unverified) | float, dots | R | [2] |
-| TO/FROM | `sim/cockpit2/radios/indicators/hsi_flag_from_to_pilot` (unverified) | int enum: 0 flag, 1 to, 2 from | R | [2] |
-| Signal validity | `sim/cockpit2/radios/indicators/nav1_display_horizontal`, `nav1_flag_glideslope` (unverified) | int boolean | R | [2] |
-| Bearing pointers | `sim/cockpit2/radios/indicators/nav1_bearing_deg_mag`, `adf1_`, `gps_`, `hsi_bearing_deg_mag_pilot` (unverified) | float, degrees magnetic | R | [2] |
-| DME present / distance / time | `sim/cockpit2/radios/indicators/hsi_has_dme_pilot`, `hsi_dme_distance_nm_pilot`, `nav1_dme_time_min` (unverified) | int boolean; float nm, minutes | R | [2] |
-| Navaid identifier | `sim/cockpit2/radios/indicators/navN_nav_id`, `navN_dme_id` | string | R | [3] |
-| Marker beacons | `sim/cockpit2/radios/indicators/over_outer_marker`, `over_middle_marker`, `over_inner_marker` (unverified) | int boolean | R | [2] |
-| Course step commands | not identified; verify in `Commands.txt` | command | Activate | — |
+| HSI source select | `sim/cockpit2/radios/actuators/HSI_source_select_pilot` | int enum: 0 NAV1, 1 NAV2, 2 GPS1, 3 GPS2 | R/W | [1] |
+| HSI course (the OBS of the selected source) | `sim/cockpit2/radios/actuators/hsi_obs_deg_mag_pilot` | float, degrees magnetic | R/W | [2] |
+| Lateral / vertical deviation | `sim/cockpit2/radios/indicators/hsi_hdef_dots_pilot`, `hsi_vdef_dots_pilot` | float, dots | R | [2] |
+| TO/FROM | `sim/cockpit2/radios/indicators/hsi_flag_from_to_pilot` | int enum: 0 flag, 1 to, 2 from | R | [2] |
+| Signal validity | `sim/cockpit2/radios/indicators/hsi_display_horizontal_pilot`, `hsi_display_vertical_pilot`, `hsi_flag_glideslope_pilot` | int boolean | R | [2] |
+| Bearing pointers | `sim/cockpit2/radios/indicators/nav1_bearing_deg_mag`, `nav2_bearing_deg_mag`, gated by `nav1_display_horizontal`, `nav2_display_horizontal` | float, degrees magnetic | R | [2] |
+| DME present / distance / speed / time | `sim/cockpit2/radios/indicators/hsi_has_dme_pilot`, `hsi_dme_distance_nm_pilot`, `hsi_dme_speed_kts_pilot`, `hsi_dme_time_min_pilot` | int boolean; float nm, kt, min | R | [2] |
+| Navaid identifier | `sim/cockpit2/radios/indicators/nav1_nav_id`, `nav2_nav_id` (already in the radio profile, F-21) | string | R | [3] |
+| Marker beacons | `sim/cockpit2/radios/indicators/outer_marker_lit`, `middle_marker_lit`, `inner_marker_lit` | int boolean (flashes as X-Plane flashes it) | R | [2] |
+| Course direct-to (centre the CDI) | `sim/radios/obs_HSI_direct` | command | Activate | — |
+
+ADF bearing pointers and the GPS/FMS destination bearing are out of scope (Avionix has no ADF
+tuning, and X-Plane publishes no ADF signal flag; a pointer without a validity source is never
+drawn). The course-step commands are now known: `Commands.txt` defines `sim/radios/obs_HSI_up`,
+`obs_HSI_down` and `obs_HSI_direct`. Avionix uses only `obs_HSI_direct`, as CTR; the course steppers
+write `hsi_obs_deg_mag_pilot` directly instead of activating `_up`/`_down`, the same write the
+keypad uses (`docs/xplane.md`).
 
 ## Aircraft compatibility
 
@@ -150,12 +158,22 @@ changes between point releases; the 737 treatment is F-52, and F-03 selects the 
 
 1. The `hsi_*` and `nav*_*` names above come from a community mirror and are unconfirmed for
    X-Plane 12; each must be resolved against a live dataref query before it is relied on.
+   **Resolved:** the design spec's Verified names table confirmed every name against `DataRefs.txt`
+   and `Commands.txt`; see the mapping table above.
 2. Are the course/OBS datarefs writable in X-Plane 12, or must a course-step command be used? No
-   such command was identified in this pass.
+   such command was identified in this pass. **Resolved:** `hsi_obs_deg_mag_pilot` is writable and
+   is written directly, by the keypad, the steppers and `useCourseEntry`; `obs_HSI_direct` is used
+   only for CTR. Whether this one name truly follows the selected source (NAV1 vs. NAV2), rather
+   than needing a per-source fallback, is itself unconfirmed pending the device row in
+   `docs/testing/xplane-smoke-test.md` (see the "Unsettled" note in `docs/xplane.md`).
 3. Sign and full-scale conventions for the dots datarefs need checking on the sim so the needle
-   deflects correctly on a localizer back course.
+   deflects correctly on a localizer back course. **Kept open as a device row:** Avionix draws
+   `hsi_hdef_dots_pilot` and `hsi_vdef_dots_pilot` exactly as X-Plane reports them, pegged at ±2.5
+   dots on a two-dot scale, and never inverts the sign on its own; the smoke test's deviation-sign,
+   full-scale and back-course rows record whether that assumption holds on a real installation.
 4. Should the panel default to the pilot or copilot side, and should both be offered on one
-   device? A product question for F-04 and F-07.
+   device? A product question for F-04 and F-07. **Resolved:** pilot side only, as in F-20; the
+   copilot HSI source and course are out of scope.
 
 ## References
 

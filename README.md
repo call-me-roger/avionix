@@ -19,12 +19,15 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
   plus the transponder's squawk code, mode and IDENT), Autopilot (AP, FD and autothrottle
   engagement; HDG, NAV, APR, ALT, VS and FLC shown off, armed or engaged; heading, altitude,
   vertical speed and airspeed in knots or Mach set with steppers or the keypad, each change checked
-  against what X-Plane reports) and Flight data (ground speed, true airspeed, track, wind, OAT/TAT,
-  fuel remaining, sim zulu and local time, paused/replay, the GPS destination) round out the
-  switcher. A compact strip with ground speed, wind, fuel and sim zulu docks under the status bar
-  on every other panel and opens Flight data when tapped; a Setup toggle turns it off. The WebSocket
-  subscribes only the visible panel's DataRefs (plus the strip's, while shown), identification and
-  connection health, and follows a panel switch within one update cycle.
+  against what X-Plane reports), Navigation (a Garmin-style HSI standing on the heading alone, with
+  course, lateral and glideslope deviation in dots, TO/FROM, bearing pointers, DME and marker
+  beacons; a NAV control unit to pick the source, set the course by keypad or stepper, and centre it
+  with CTR, all in NAV green or GPS magenta, never colour alone) and Flight data (ground speed, true
+  airspeed, track, wind, OAT/TAT, fuel remaining, sim zulu and local time, paused/replay, the GPS
+  destination) round out the switcher. A compact strip with ground speed, wind, fuel and sim zulu
+  docks under the status bar on every other panel and opens Flight data when tapped; a Setup toggle
+  turns it off. The WebSocket subscribes only the visible panel's DataRefs (plus the strip's, while
+  shown), identification and connection health, and follows a panel switch within one update cycle.
 - A **cockpit look and feel**: dark bezels, glass display windows, the B612 and B612 Mono fonts
   (Airbus's own cockpit-legibility research, open licence) for every live number, and cockpit colour
   meanings throughout (green engaged, white armed, cyan selected, amber caution, red warning).
@@ -43,7 +46,9 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
   autopilot's targets: cyan boxes and bugs for the selected altitude, heading and speed, and a cyan
   bug for the selected vertical speed and on the six-pack's directional gyro. The altitude and
   heading targets are always shown; the speed only while FLC or the autothrottle is engaged, and the
-  vertical speed only while VS is engaged.
+  vertical speed only while VS is engaged. The PFD also overlays the Navigation panel's lateral and
+  glideslope deviation scales and a marker beacon box over the attitude display, so a missing pitch
+  or roll never removes them; they show only while the matching signal is valid.
 - A **Units** section in Setup lets the pilot choose fuel (kg/lb), temperature (°C/°F), distance
   (nm/km) and altimeter pressure (inHg/hPa); the choice is shared by every panel and persisted.
   Speeds stay in knots.
