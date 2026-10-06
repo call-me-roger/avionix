@@ -646,6 +646,7 @@ export function spokenLine(text: readonly string[]): string {
 ### Task 3: Framework touches — activation results, repeatable keys, the lit light bar, the CDU palette
 
 **Files:**
+- Create: `src/domain/panels/activation.ts` (`ActivationResult`; the domain never imports `@/application`, and Task 4's domain queue needs the type)
 - Modify: `src/application/simulator-session.ts` (`activate` returns `ActivationResult`)
 - Modify: `src/features/panels/primitives/PanelContext.tsx` (`PanelActions.activate` type)
 - Modify: `src/features/panels/primitives/ControlButton.tsx` (`repeatable` prop)
@@ -657,7 +658,7 @@ export function spokenLine(text: readonly string[]): string {
 **Interfaces produced:**
 
 ```ts
-// src/application/session-snapshot.ts (next to OperationOutcome)
+// src/domain/panels/activation.ts
 /** How a command activation ended: sent and acknowledged, sent and failed, or never sent. */
 export type ActivationResult = 'ok' | 'failed' | 'refused';
 
@@ -776,7 +777,7 @@ export function useCduKeys(unit: CduUnit): { press: (keyId: string) => void; mes
 
 ```ts
 import { CDU_QUEUE_LIMIT, CduKeyQueue, type CduQueueEvent } from '@/domain/cdu/key-queue';
-import type { ActivationResult } from '@/application/session-snapshot';
+import type { ActivationResult } from '@/domain/panels/activation';
 
 function deferred() {
   let resolve!: (result: ActivationResult) => void;
@@ -883,7 +884,7 @@ describe('CduKeyQueue', () => {
 
 ```ts
 // src/domain/cdu/key-queue.ts
-import type { ActivationResult } from '@/application/session-snapshot';
+import type { ActivationResult } from '@/domain/panels/activation';
 
 /** One scratchpad line of keys may wait; more means the link cannot keep up (spec §4.5). */
 export const CDU_QUEUE_LIMIT = 24;
