@@ -10,6 +10,7 @@ import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { RadiosPanel } from '@/features/panels/radios/RadiosPanel';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
 import { ThemeProvider } from '@/theme/theme-context';
+import { lightTheme } from '@/theme/tokens';
 
 const NOW = 1_000_000;
 const base = initialSnapshot(GENERIC_PROFILE, 5);
@@ -88,8 +89,8 @@ describe('Radios keypad entry', () => {
       await fireEvent.press(screen.getByLabelText(key));
     }
     expect(actions.write).not.toHaveBeenCalled();
-    expect(screen.getByText('New')).toBeTruthy();
-    expect(screen.getByText('132.005')).toBeTruthy();
+    expect(screen.getByText('NEW')).toBeTruthy();
+    expect(screen.getByText('132.005')).toHaveStyle({ color: lightTheme.avionics.selected });
     expect(screen.getByLabelText('COM1: active 121.500, standby 118.005')).toBeTruthy();
   });
 

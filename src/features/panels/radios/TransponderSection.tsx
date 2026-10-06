@@ -13,47 +13,39 @@ import { controlAvailability } from '@/domain/panels/control-availability';
 import { formatSquawk, isEmergencySquawk, isSquawk } from '@/domain/radios/squawk';
 import { MODE_POSITIONS, modeLabel } from '@/domain/radios/transponder-mode';
 import { firstNumber } from '@/features/panels/instruments/useInstrumentValues';
+import { AvionicsUnit } from '@/features/panels/primitives/AvionicsUnit';
 import { ControlButton, OperationNotice } from '@/features/panels/primitives/ControlButton';
+import { DisplayWindow } from '@/features/panels/primitives/DisplayWindow';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
 import { BodyText } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
+import { avionicsText } from '@/theme/typography';
 
 /** How long "IDENT sent" stays: the panel's own claim, kept short of a real ident's ~18 s. */
 export const IDENT_SENT_MS = 5000;
 
 const makeStyles = (theme: Theme) => ({
-  wrap: { gap: theme.spacing.xs, paddingVertical: theme.spacing.sm },
   row: {
     flexDirection: 'row' as const,
     flexWrap: 'wrap' as const,
     alignItems: 'center' as const,
     gap: theme.spacing.sm,
   },
-  summary: {
-    flexDirection: 'row' as const,
-    alignItems: 'baseline' as const,
-    gap: theme.spacing.sm,
-    flexGrow: 1,
+  summary: { flexGrow: 1 },
+  identAnnunciation: {
+    ...avionicsText(theme, true),
+    fontSize: theme.typography.legendSize,
+    color: theme.avionics.engaged,
   },
-  name: {
-    color: theme.colors.text,
-    fontSize: theme.typography.titleSize,
-    fontWeight: 'bold' as const,
-  },
-  mode: {
-    color: theme.colors.text,
-    fontSize: theme.typography.titleSize,
-    fontVariant: ['tabular-nums' as const],
-  },
-  stale: { color: theme.colors.textMuted },
 });
 
 /**
- * F-22. The code button opens the 0–7 keypad; the four mode positions write `transponder_mode`;
- * IDENT is a command. "Identing" is shown only while X-Plane reports it (T5), and the ATC-assigned
- * comparison is simply absent when X-Plane has no such value (T7).
+ * F-22 as an avionics hardware unit: the squawk code in a large glass window with the mode in its
+ * caption, the four mode keys as annunciated positions, and an IDENT annunciation inside the unit
+ * while X-Plane reports identing (T5; the ATC-assigned comparison is simply absent when X-Plane has
+ * no such value, T7).
  */
 export function TransponderSection({
   readBack,
@@ -85,6 +77,8 @@ export function TransponderSection({
   const codeText = code === null ? '—' : formatSquawk(code);
   const modeText = modeLabel(mode) ?? '—';
   const notLive = !link.valuesCurrent && (code !== null || mode !== null);
+  const emergency = code !== null && isEmergencySquawk(code);
+  const codeCaption = emergency ? `${modeText} · EMERG` : modeText;
 
   const identOutcome = snapshot.operations[C.transponderIdent];
   const identSent = identOutcome?.status === 'ok' && now - identOutcome.at < IDENT_SENT_MS;
@@ -120,17 +114,18 @@ export function TransponderSection({
   const modeMessage = readBack.messageFor('mode');
 
   return (
-    <View style={styles.wrap} testID="transponder-section">
+    <AvionicsUnit label="XPDR" testID="transponder-section">
       <View style={styles.row}>
         <View
           style={styles.summary}
           accessible
           accessibilityLabel={`Transponder: squawk ${codeText}, mode ${modeText}${identing ? ', identing' : ''}${notLive ? ', not live' : ''}`}
         >
-          <Text style={styles.name}>Transponder</Text>
-          <Text style={[styles.mode, link.valuesCurrent ? null : styles.stale]}>{modeText}</Text>
-          {identing ? <BodyText tone="success">Identing</BodyText> : null}
-          {notLive ? <BodyText muted>not live</BodyText> : null}
+          {identing ? (
+            <Text style={styles.identAnnunciation} testID="xpdr-ident">
+              IDENT
+            </Text>
+          ) : null}
         </View>
         <ControlButton
           label={codeText}
@@ -139,8 +134,19 @@ export function TransponderSection({
           target={D.transponderCode}
           quiet
           onPress={onEnterCode}
-        />
+        >
+          <DisplayWindow
+            text={codeText}
+            role="plain"
+            size="large"
+            caption={codeCaption}
+            tone={emergency ? 'warning' : undefined}
+            stale={!link.valuesCurrent}
+            testID="xpdr-code"
+          />
+        </ControlButton>
       </View>
+      {notLive ? <BodyText muted>not live</BodyText> : null}
       {entry}
       {codeAvailability.reason === null ? null : (
         <BodyText muted>{codeAvailability.reason}</BodyText>
@@ -190,6 +196,6 @@ export function TransponderSection({
         />
         {identSent ? <BodyText>IDENT sent</BodyText> : null}
       </View>
-    </View>
+    </AvionicsUnit>
   );
 }

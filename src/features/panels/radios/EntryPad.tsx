@@ -13,6 +13,7 @@ import {
 import { isEmergencySquawk } from '@/domain/radios/squawk';
 import { firstNumber } from '@/features/panels/instruments/useInstrumentValues';
 import { ControlButton } from '@/features/panels/primitives/ControlButton';
+import { DisplayWindow } from '@/features/panels/primitives/DisplayWindow';
 import { Keypad } from '@/features/panels/primitives/Keypad';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
@@ -135,8 +136,7 @@ export function EntryPad({ entry, readBack }: { entry: RadioEntry; readBack: Rea
         accessibilityLiveRegion="polite"
         accessibilityLabel={accessibilityLabel}
       >
-        <BodyText>New</BodyText>
-        <Text style={styles.draft}>{shown}</Text>
+        <DisplayWindow text={shown} role="selected" caption="NEW" />
       </View>
       {sets === null ? null : <BodyText muted>{`Sets ${sets}`}</BodyText>}
       {parsed.status === 'valid' && parsed.note !== null ? (
