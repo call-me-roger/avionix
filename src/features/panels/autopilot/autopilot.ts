@@ -75,6 +75,15 @@ export function selectorKind(id: SelectorId, isMach: boolean): SelectorKind {
   return id;
 }
 
+/**
+ * The read-back key for a selector: airspeed splits by kind, so a watch started in knots never
+ * answers for a step pressed after X-Plane flips to Mach (or back), and never supplies a pending
+ * base from the other unit.
+ */
+export function readBackKey(spec: SelectorSpec, kind: SelectorKind): string {
+  return spec.id === 'speed' ? `speed-${kind}` : spec.id;
+}
+
 export interface ModeSpec {
   key: string;
   label: string;

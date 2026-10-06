@@ -9,6 +9,7 @@ import {
   selectorDraftText,
 } from '@/domain/autopilot/selector-entry';
 import { selectorMatches, selectorNotTaken } from '@/domain/autopilot/selectors';
+import { readBackKey } from '@/features/panels/autopilot/autopilot';
 import type { SelectorEntry } from '@/features/panels/autopilot/useSelectorEntry';
 import { firstNumber } from '@/features/panels/instruments/useInstrumentValues';
 import { ControlButton } from '@/features/panels/primitives/ControlButton';
@@ -51,7 +52,7 @@ export function SelectorPad({
     const value = parsed.value;
     void write(spec.featureId, spec.name, value);
     readBack.watch({
-      key: spec.id,
+      key: readBackKey(spec, kind),
       name: spec.name,
       operation: spec.name,
       expected: value,

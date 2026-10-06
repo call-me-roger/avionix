@@ -220,6 +220,20 @@ describe('autopilot selectors', () => {
     expect(actions.activate).toHaveBeenCalledWith('airspeed-select', C.knotsMachToggle);
   });
 
+  it('bases an airspeed step on X-Plane’s current value, not a pending write in the other unit', async () => {
+    const view = await render(tree(live()));
+    await fireEvent.press(screen.getByLabelText('Airspeed plus 10 knots'));
+    expect(actions.write).toHaveBeenLastCalledWith('airspeed-select', D.airspeedDial, 130);
+    const mach = telemetry({ ...VALUES, [D.airspeedIsMach]: 1, [D.airspeedDial]: 0.42 });
+    await view.rerender(tree(live({ telemetry: mach })));
+    await fireEvent.press(screen.getByLabelText('Airspeed minus .01 Mach'));
+    expect(actions.write).toHaveBeenLastCalledWith('airspeed-select', D.airspeedDial, 0.41);
+    await view.rerender(
+      tree(live({ telemetry: mach, operations: ok(D.airspeedDial) }), NOW + 4000),
+    );
+    expect(screen.queryByText(/did not take airspeed 130 kt/)).toBeNull();
+  });
+
   it('hides the knots/Mach button when the aircraft lacks the command', async () => {
     const snapshot = live();
     await render(

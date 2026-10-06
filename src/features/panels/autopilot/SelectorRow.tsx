@@ -16,6 +16,7 @@ import { controlAvailability } from '@/domain/panels/control-availability';
 import {
   type SelectorSpec,
   autopilotNumber,
+  readBackKey,
   selectorKind,
 } from '@/features/panels/autopilot/autopilot';
 import { firstNumber } from '@/features/panels/instruments/useInstrumentValues';
@@ -74,7 +75,7 @@ export function SelectorRow({
   const current = autopilotNumber(snapshot, spec.name);
   const text = current === null ? '—' : formatSelector(kind, current);
   const availability = controlAvailability(featureOf(snapshot.compatibility, spec.featureId));
-  const base = readBack.pendingExpected(spec.id) ?? current;
+  const base = readBack.pendingExpected(readBackKey(spec, kind)) ?? current;
   const [small, large] = SELECTOR_STEPS[kind];
   const notLive = !link.valuesCurrent && current !== null;
   const showUnitSwitch =
@@ -83,7 +84,7 @@ export function SelectorRow({
   const send = (value: number) => {
     void write(spec.featureId, spec.name, value);
     readBack.watch({
-      key: spec.id,
+      key: readBackKey(spec, kind),
       name: spec.name,
       operation: spec.name,
       expected: value,
@@ -102,7 +103,7 @@ export function SelectorRow({
         `X-Plane did not switch the airspeed selector to ${isMach ? 'knots' : 'Mach'}.`,
     });
   };
-  const message = readBack.messageFor(spec.id);
+  const message = readBack.messageFor(readBackKey(spec, kind));
   const unitMessage = spec.id === 'speed' ? readBack.messageFor('speed-unit') : null;
 
   return (
