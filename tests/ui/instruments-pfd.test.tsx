@@ -375,9 +375,27 @@ describe('PFD autopilot targets', () => {
     expect(notchOf('pfd-altitude-bug')).toEqual({ x: 3, y: 180 });
   });
 
+  it('parks an off-scale altitude bug half-visible: under the box above, off the edge below', async () => {
+    const view = await render(tree(withAp({ [D.altitudeDial]: 3_000 })));
+    // 1,524 ft below: half off the tape's bottom edge, never where an on-scale target could be.
+    expect(notchOf('pfd-altitude-bug')).toEqual({ x: 3, y: 240 });
+    await view.rerender(tree(withAp({ [D.altitudeDial]: 12_000 })));
+    expect(notchOf('pfd-altitude-bug')).toEqual({ x: 3, y: 20 });
+  });
+
+  it('parks an off-scale speed bug half-visible: under the box above, off the edge below', async () => {
+    const view = await render(tree(withAp({ [D.speedStatus]: 2, [D.airspeedDial]: 40 })));
+    // 72 kt below at 3 a knot: half off the tape's bottom edge.
+    expect(notchOf('pfd-speed-bug')).toEqual({ x: 57, y: 240 });
+    await view.rerender(tree(withAp({ [D.speedStatus]: 2, [D.airspeedDial]: 200 })));
+    expect(notchOf('pfd-speed-bug')).toEqual({ x: 57, y: 20 });
+  });
+
   it('shows the heading bug box and the bug, and says it', async () => {
     await render(tree(withAp({ [D.headingBug]: 280 })));
-    expect(within(screen.getByTestId('pfd-heading-bug', HIDDEN)).getByText('HDG 280°', HIDDEN));
+    expect(
+      within(screen.getByTestId('pfd-heading-bug', HIDDEN)).getByText('HDG 280°', HIDDEN),
+    ).toBeTruthy();
     expect(screen.getByLabelText('Heading 270 degrees, heading bug 280')).toBeTruthy();
     // 9.8° right of the lubber line at 100/30 a degree.
     expect(notchOf('pfd-heading-tape-bug').x).toBeCloseTo(100 + 9.8 * (100 / 30));

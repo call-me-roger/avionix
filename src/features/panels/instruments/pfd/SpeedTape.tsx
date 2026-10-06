@@ -2,19 +2,23 @@ import React from 'react';
 import { G, Line, Polygon, Rect, Text as SvgText } from 'react-native-svg';
 
 import { formatMach } from '@/domain/autopilot/selectors';
-import { tapeBug } from '@/domain/instruments/bugs';
 import { clamp, tapeTicks } from '@/domain/instruments/geometry';
 import { type InstrumentStatus, describeAirspeed, withStatus } from '@/domain/instruments/labels';
 import { type SpeedMarkings, speedBands } from '@/domain/instruments/speed-markings';
 import { InstrumentFace } from '@/features/panels/instruments/InstrumentFace';
-import { ARC_COLOR, tapeBugPoints, useSvgFonts } from '@/features/panels/instruments/svg-parts';
+import {
+  ARC_COLOR,
+  tapeBugPoints,
+  tapeTargetY,
+  useSvgFonts,
+} from '@/features/panels/instruments/svg-parts';
 import { useTheme } from '@/theme/theme-context';
 
 const VB = { width: 60, height: 240 };
 const CY = 120;
 /** 3 units a knot: the tape shows ±40 kt around the readout. */
 const PX = 3;
-/** The selected-speed box across the top of the tape; the bug parks just below it. */
+/** The selected-speed box across the top of the tape; a bug above the scale parks half under it. */
 const SELECTED_HEIGHT = 20;
 
 /**
@@ -145,7 +149,7 @@ export const SpeedTape = React.memo(function SpeedTape({
               points={tapeBugPoints(
                 VB.width,
                 -1,
-                CY - tapeBug(selected.value, knots, PX, CY - SELECTED_HEIGHT).offset,
+                tapeTargetY(selected.value, knots, PX, CY, SELECTED_HEIGHT),
               )}
               fill={ink.selected}
             />

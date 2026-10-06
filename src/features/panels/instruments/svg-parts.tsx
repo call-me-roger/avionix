@@ -1,6 +1,7 @@
 import React from 'react';
 import { Rect, Text as SvgText } from 'react-native-svg';
 
+import { tapeBug } from '@/domain/instruments/bugs';
 import { useTheme } from '@/theme/theme-context';
 
 /** Test hook: how many times each instrument face rendered (the memoisation test reads it). */
@@ -45,6 +46,22 @@ export function tapeBugPoints(edge: number, inward: 1 | -1, y: number): string {
   const body = edge + 6 * inward;
   const notch = edge + 3 * inward;
   return `${edge},${y - 6} ${body},${y - 6} ${body},${y + 6} ${edge},${y + 6} ${notch},${y}`;
+}
+
+/**
+ * The y of a target bug on a vertical tape centred on `centre` with a selected box `boxHeight` tall
+ * across its top. Off the scale it parks half-visible: above, half under the box; below, half off
+ * the tape's bottom edge (spec section 7), so a parked bug never reads as an on-scale target.
+ */
+export function tapeTargetY(
+  target: number,
+  current: number,
+  unitsPerValue: number,
+  centre: number,
+  boxHeight: number,
+): number {
+  const { offset } = tapeBug(target, current, unitsPerValue, centre);
+  return centre - Math.min(offset, centre - boxHeight);
 }
 
 /** A boxed number, centred on `x`, baseline-centred on `y`. */

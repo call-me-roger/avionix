@@ -27,6 +27,8 @@ const MISSING = '—';
  * on a narrow phone, "VS −1500FPM" is wider than its column.
  */
 const ONE_LINE = { numberOfLines: 1, adjustsFontSizeToFit: true } as const;
+/** The strip's height, dp: a touch target, and what the PFD reserves above itself when it shows one. */
+export const FMA_HEIGHT = 48;
 
 const makeStyles = (theme: Theme) => ({
   wrap: {
@@ -37,7 +39,7 @@ const makeStyles = (theme: Theme) => ({
   glass: {
     flex: 1,
     flexDirection: 'row' as const,
-    minHeight: 48,
+    minHeight: FMA_HEIGHT,
     backgroundColor: theme.avionics.glass,
     borderWidth: 1,
     borderColor: theme.avionics.glassEdge,
