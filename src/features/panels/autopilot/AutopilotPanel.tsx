@@ -4,9 +4,12 @@ import { View, useWindowDimensions } from 'react-native';
 import { GENERIC_DATAREFS as D } from '@/domain/aircraft/profiles/generic';
 import { TWO_COLUMN_MIN_WIDTH } from '@/domain/panels/device-layout';
 import { Annunciator } from '@/features/panels/autopilot/Annunciator';
-import { OVERRIDE_NOTICE, autopilotNumber } from '@/features/panels/autopilot/autopilot';
+import { OVERRIDE_NOTICE, SELECTORS, autopilotNumber } from '@/features/panels/autopilot/autopilot';
 import { EngageRow } from '@/features/panels/autopilot/EngageRow';
 import { ModeButtons } from '@/features/panels/autopilot/ModeButtons';
+import { SelectorPad } from '@/features/panels/autopilot/SelectorPad';
+import { SelectorRow } from '@/features/panels/autopilot/SelectorRow';
+import { useSelectorEntry } from '@/features/panels/autopilot/useSelectorEntry';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import { useReadBack } from '@/features/panels/primitives/useReadBack';
 import { BodyText } from '@/theme/primitives';
@@ -28,6 +31,7 @@ function AutopilotContent() {
   const theme = useTheme();
   const { snapshot } = usePanel();
   const readBack = useReadBack();
+  const entry = useSelectorEntry();
   const window = useWindowDimensions();
   // Until the first layout pass, assume the frame's padding; tests never run a layout pass.
   const [measured, setMeasured] = useState<number | null>(null);
@@ -51,8 +55,22 @@ function AutopilotContent() {
         <EngageRow readBack={readBack} blocked={blocked} />
         <ModeButtons readBack={readBack} blocked={blocked} />
       </View>
-      {/* Task 5 renders the selector rows here. */}
-      <View style={wide ? { flex: 1 } : { alignSelf: 'stretch' }} />
+      <View style={wide ? { flex: 1 } : { alignSelf: 'stretch' }}>
+        {SELECTORS.map((spec) => (
+          <SelectorRow
+            key={spec.id}
+            spec={spec}
+            readBack={readBack}
+            blocked={blocked}
+            onEnter={() => entry.open(spec.id)}
+            entry={
+              entry.target?.spec.id === spec.id ? (
+                <SelectorPad entry={entry} readBack={readBack} blocked={blocked} />
+              ) : null
+            }
+          />
+        ))}
+      </View>
     </View>
   );
 }

@@ -22,7 +22,8 @@ import { BodyText } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
-const makeStyles = (theme: Theme) => ({
+/** Shared with `SelectorPad.tsx` so the dashed "New" box looks the same across panels. */
+export const entryPadStyles = (theme: Theme) => ({
   wrap: {
     gap: theme.spacing.sm,
     padding: theme.spacing.md,
@@ -91,7 +92,7 @@ function notTakenSentence(
  * and keeps Set disabled (C3, T3). An emergency squawk takes a second tap.
  */
 export function EntryPad({ entry, readBack }: { entry: RadioEntry; readBack: ReadBack }) {
-  const styles = useThemedStyles(makeStyles);
+  const styles = useThemedStyles(entryPadStyles);
   const { write } = usePanel();
   const target = entry.target;
   if (target === null) {
