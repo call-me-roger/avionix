@@ -5,6 +5,10 @@ import { SimulatorSession } from '@/application/simulator-session';
 import {
   FEATURE_ALTIMETER_SETTING,
   FEATURE_FLIGHT_INSTRUMENTS,
+  FEATURE_NAV_AIDS,
+  FEATURE_NAV_DEVIATION,
+  FEATURE_NAV_GLIDESLOPE,
+  FEATURE_NAV_SOURCE,
   GENERIC_DATAREFS as D,
 } from '@/domain/aircraft/profiles/generic';
 import { AUTOPILOT_PANEL } from '@/features/panels/autopilot/autopilot';
@@ -50,6 +54,14 @@ async function until(predicate: () => boolean, timeoutMs = 3000): Promise<void> 
   }
 }
 
+/** The PFD's localizer, glideslope and marker cues, and the source that colours them. */
+const PFD_NAV_FEATURES = [
+  FEATURE_NAV_DEVIATION,
+  FEATURE_NAV_GLIDESLOPE,
+  FEATURE_NAV_AIDS,
+  FEATURE_NAV_SOURCE,
+];
+
 /**
  * The instruments panel's demand. `INSTRUMENTS_PANEL` itself lives in a React Native module this
  * node project cannot load; tests/ui/instruments-panel.test.tsx pins it to this same set.
@@ -58,6 +70,7 @@ const INSTRUMENTS_DEMAND = [
   FEATURE_FLIGHT_INSTRUMENTS,
   FEATURE_ALTIMETER_SETTING,
   ...AUTOPILOT_PANEL.features,
+  ...PFD_NAV_FEATURES,
 ];
 
 describe('flight instruments against the mock X-Plane', () => {
@@ -122,6 +135,36 @@ describe('flight instruments against the mock X-Plane', () => {
     }
     const { compatibility } = session.store.getSnapshot();
     for (const id of AUTOPILOT_PANEL.features) {
+      expect(featureStatus(compatibility, id)).toBe('available');
+    }
+    session.disconnect();
+  });
+
+  it('streams the deviation, glideslope, marker and source values the PFD cues draw', async () => {
+    const session = await connected();
+    for (const name of [
+      D.hsiSource,
+      D.hsiHdef,
+      D.hsiFromTo,
+      D.hsiHorizontal,
+      D.hsiVdef,
+      D.hsiVertical,
+      D.hsiGsFlag,
+      D.outerMarker,
+      D.middleMarker,
+      D.innerMarker,
+    ]) {
+      await until(() => valueOf(session, name) !== undefined);
+    }
+    // The mock's ILS on NAV1: the localizer received 0.8 dots right, TO, no glideslope.
+    expect(valueOf(session, D.hsiSource)).toBe(0);
+    expect(valueOf(session, D.hsiHdef)).toBeCloseTo(0.8);
+    expect(valueOf(session, D.hsiFromTo)).toBe(1);
+    expect(valueOf(session, D.hsiHorizontal)).toBe(1);
+    expect(valueOf(session, D.hsiVertical)).toBe(0);
+    expect(valueOf(session, D.hsiGsFlag)).toBe(0);
+    const { compatibility } = session.store.getSnapshot();
+    for (const id of PFD_NAV_FEATURES) {
       expect(featureStatus(compatibility, id)).toBe('available');
     }
     session.disconnect();

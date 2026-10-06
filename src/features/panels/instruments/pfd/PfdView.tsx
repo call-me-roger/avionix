@@ -13,6 +13,8 @@ import { TurnRateScale } from '@/features/panels/instruments/pfd/TurnRateScale';
 import { VsiScale } from '@/features/panels/instruments/pfd/VsiScale';
 import { useAutopilotTargets } from '@/features/panels/instruments/useAutopilotTargets';
 import { useInstrumentValues } from '@/features/panels/instruments/useInstrumentValues';
+import { needleColour } from '@/features/panels/navigation/Hsi';
+import { useNavValues } from '@/features/panels/navigation/useNavValues';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import { useTheme } from '@/theme/theme-context';
 import { numeric } from '@/theme/typography';
@@ -29,13 +31,16 @@ const machText = (mach: number): string => `M ${mach.toFixed(3).replace(/^0/, ''
  * attitude with no value (whose face draws nothing of its own) still shows it, as the six-pack does.
  * The autopilot's FMA runs across the top, and its targets are drawn in cyan on the tapes; the
  * selected heading also has its own box low left, in the turn-rate row's empty slot, where the
- * G1000 puts it. The heading label reads it aloud.
+ * G1000 puts it. The heading label reads it aloud. The localizer, glideslope and marker cues come
+ * from `useNavValues`, the HSI's own reading, and are drawn on the attitude as part of its face.
  */
 export function PfdView({ width }: { width: number }) {
   const theme = useTheme();
   const ink = theme.instrument;
   const v = useInstrumentValues();
   const targets = useAutopilotTargets();
+  // The HSI's own source of truth, so the PFD and the HSI never disagree about a needle.
+  const nav = useNavValues();
   const { link } = usePanel();
   const k = width / PFD_VIEW.width;
   const box = (boxWidth: number) => ({
@@ -77,7 +82,19 @@ export function PfdView({ width }: { width: number }) {
           markings={v.markings}
           selected={targets.speed}
         />
-        <AttitudeDisplay width={200 * k} height={240 * k} {...v.attitude} slip={v.turn.slip} />
+        <AttitudeDisplay
+          width={200 * k}
+          height={240 * k}
+          {...v.attitude}
+          slip={v.turn.slip}
+          needle={needleColour(nav.source, theme)}
+          localizerDots={nav.lateral.dots?.dots ?? null}
+          localizerPegged={nav.lateral.dots?.pegged ?? false}
+          glideslope={nav.glideslope.state}
+          glideslopeDots={nav.glideslope.dots?.dots ?? null}
+          glideslopePegged={nav.glideslope.dots?.pegged ?? false}
+          marker={nav.marker}
+        />
         <AltitudeTape
           width={60 * k}
           height={240 * k}

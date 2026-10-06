@@ -7,6 +7,10 @@ import { type SettingsStorage, createMemorySettingsStorage } from '@/application
 import {
   FEATURE_ALTIMETER_SETTING,
   FEATURE_FLIGHT_INSTRUMENTS,
+  FEATURE_NAV_AIDS,
+  FEATURE_NAV_DEVIATION,
+  FEATURE_NAV_GLIDESLOPE,
+  FEATURE_NAV_SOURCE,
   GENERIC_DATAREFS as D,
   GENERIC_PROFILE,
 } from '@/domain/aircraft/profiles/generic';
@@ -105,12 +109,20 @@ function tree(snapshot: SessionSnapshot, storage = createMemorySettingsStorage()
 }
 
 describe('Instruments panel', () => {
-  it('asks for the instruments, the altimeter setting and every autopilot feature', () => {
+  it('asks for the instruments, the altimeter setting, every autopilot feature and the PFD nav cues', () => {
     // tests/integration/flight-instruments.test.ts streams this same set from the mock X-Plane.
     expect([...INSTRUMENTS_PANEL.features].sort()).toEqual(
-      [FEATURE_FLIGHT_INSTRUMENTS, FEATURE_ALTIMETER_SETTING, ...AUTOPILOT_PANEL.features].sort(),
+      [
+        FEATURE_FLIGHT_INSTRUMENTS,
+        FEATURE_ALTIMETER_SETTING,
+        ...AUTOPILOT_PANEL.features,
+        FEATURE_NAV_DEVIATION,
+        FEATURE_NAV_GLIDESLOPE,
+        FEATURE_NAV_AIDS,
+        FEATURE_NAV_SOURCE,
+      ].sort(),
     );
-    expect(INSTRUMENTS_PANEL.features).toHaveLength(15);
+    expect(INSTRUMENTS_PANEL.features).toHaveLength(19);
   });
 
   it('opens a piston single on the six-pack by default', async () => {

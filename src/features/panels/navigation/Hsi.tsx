@@ -39,9 +39,9 @@ const LINE_STEP = 14;
  */
 const BUG_POINTS = `${C - 8},${C - CARD_R} ${C + 8},${C - CARD_R} ${C + 8},${C - CARD_R + 9} ${C},${C - CARD_R + 4} ${C - 8},${C - CARD_R + 9}`;
 
-const MARKER_LETTER: Record<Marker, string> = { outer: 'O', middle: 'M', inner: 'I' };
+export const MARKER_LETTER: Record<Marker, string> = { outer: 'O', middle: 'M', inner: 'I' };
 
-function markerColour(marker: Marker, theme: Theme): string {
+export function markerColour(marker: Marker, theme: Theme): string {
   switch (marker) {
     case 'outer':
       return theme.instrument.selected;
@@ -56,7 +56,7 @@ function markerColour(marker: Marker, theme: Theme): string {
  * Garmin's convention: NAV guidance green, GPS magenta. A source X-Plane reports that Avionix does
  * not know claims neither colour, so a needle is never labelled by a colour it may not have.
  */
-function needleColour(source: number | null, theme: Theme): string {
+export function needleColour(source: number | null, theme: Theme): string {
   const kind = sourceKind(source);
   if (kind === 'nav') {
     return theme.instrument.navNeedle;
@@ -65,7 +65,7 @@ function needleColour(source: number | null, theme: Theme): string {
 }
 
 /** Where a needle sits, in words (R2): the dots are spoken, so the unit is never in doubt. */
-function deviationWords(
+export function deviationWords(
   deviation: { dots: number; pegged: boolean },
   positive: string,
   negative: string,
@@ -122,7 +122,17 @@ function describeHsi(v: NavValues): string {
 }
 
 /** A red flag box with its word, centred on (x, y): failure flags are words on red (U2). */
-function Flag({ testID, x, y, word }: { testID: string; x: number; y: number; word: string }) {
+export function Flag({
+  testID,
+  x,
+  y,
+  word,
+}: {
+  testID: string;
+  x: number;
+  y: number;
+  word: string;
+}) {
   const ink = useTheme().instrument;
   const { letters } = useSvgFonts();
   const width = word.length * 9 + 10;

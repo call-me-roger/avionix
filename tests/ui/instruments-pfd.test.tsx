@@ -512,3 +512,183 @@ describe('PFD autopilot targets', () => {
     expect(screen.getByTestId('pfd-altitude-selected').props.font).not.toHaveProperty('fontFamily');
   });
 });
+
+// An ILS on NAV1 as X-Plane reports it: localizer received, needle 1.2 dots right, TO, and the
+// glideslope received with its diamond half a dot down. No marker lit.
+const ILS: Record<string, number> = {
+  [D.hsiSource]: 0,
+  [D.hsiHdef]: 1.2,
+  [D.hsiFromTo]: 1,
+  [D.hsiHorizontal]: 1,
+  [D.hsiVdef]: -0.5,
+  [D.hsiVertical]: 1,
+  [D.hsiGsFlag]: 0,
+  [D.outerMarker]: 0,
+  [D.middleMarker]: 0,
+  [D.innerMarker]: 0,
+};
+
+function withNav(overrides: Record<string, number> = {}, snapshot = live()): SessionSnapshot {
+  return {
+    ...snapshot,
+    telemetry: { ...snapshot.telemetry, ...telemetry({ ...ILS, ...overrides }) },
+  };
+}
+
+const ATTITUDE = 'Attitude: pitch 3 degrees up, bank 15 degrees right';
+const NAV_CUES = [
+  'pfd-loc-scale',
+  'pfd-loc-diamond',
+  'pfd-gs-scale',
+  'pfd-gs-diamond',
+  'pfd-gs-flag',
+  'pfd-marker',
+  'pfd-marker-box',
+];
+
+/** The nearest drawn group above a node that sets an opacity: the face's not-live fade. */
+function opacityAbove(testID: string): unknown {
+  let node = screen.getByTestId(testID).parent;
+  while (node !== null) {
+    if (node.props.opacity !== undefined) {
+      return node.props.opacity;
+    }
+    node = node.parent;
+  }
+  return undefined;
+}
+
+describe('PFD navigation cues', () => {
+  it('draws no scale, no flag and no marker with no navaid tuned', async () => {
+    await render(tree(live()));
+    for (const id of NAV_CUES) {
+      expect(screen.queryByTestId(id)).toBeNull();
+    }
+    expect(screen.queryByText('NAV')).toBeNull();
+    expect(screen.getByLabelText(ATTITUDE)).toBeTruthy();
+  });
+
+  it('hides the localizer scale, never centred and with no flag, while X-Plane flags it', async () => {
+    const view = await render(tree(withNav({ [D.hsiHorizontal]: 0 })));
+    expect(screen.queryByTestId('pfd-loc-scale')).toBeNull();
+    expect(screen.queryByTestId('pfd-loc-diamond')).toBeNull();
+    expect(screen.queryByText('NAV')).toBeNull();
+    expect(screen.getByLabelText(`${ATTITUDE}, glideslope 0.5 dots down`)).toBeTruthy();
+    // Neither TO nor FROM: the course means nothing, so the needle is hidden too.
+    await view.rerender(tree(withNav({ [D.hsiFromTo]: 0 })));
+    expect(screen.queryByTestId('pfd-loc-diamond')).toBeNull();
+  });
+
+  it('shows nothing, not even N/A, when the aircraft lacks a deviation DataRef', async () => {
+    await render(tree(withMissing(withNav(), D.hsiHdef, D.hsiVdef)));
+    for (const id of NAV_CUES) {
+      expect(screen.queryByTestId(id)).toBeNull();
+    }
+    expect(within(screen.getByTestId('instrument-attitude')).queryByText(/N\/A/)).toBeNull();
+    expect(screen.getByLabelText(ATTITUDE)).toBeTruthy();
+  });
+
+  it('puts the localizer diamond at its dots from the centre, in the source colour', async () => {
+    const view = await render(tree(withNav()));
+    expect(screen.getByTestId('pfd-loc-scale')).toBeTruthy();
+    // 1.2 dots right at 18 a dot, from the attitude's centre at 100; its first vertex is the top.
+    expect(vertex('pfd-loc-diamond', 0).x).toBeCloseTo(100 + 1.2 * 18);
+    expect(fillOf('pfd-loc-diamond')).toBe(processColor(darkTheme.instrument.navNeedle));
+    await view.rerender(tree(withNav({ [D.hsiSource]: 2, [D.hsiHdef]: -0.4 })));
+    expect(vertex('pfd-loc-diamond', 0).x).toBeCloseTo(100 - 0.4 * 18);
+    expect(fillOf('pfd-loc-diamond')).toBe(processColor(darkTheme.instrument.gpsNeedle));
+  });
+
+  it('stops a full-scale needle at 2.5 dots and says so', async () => {
+    await render(tree(withNav({ [D.hsiHdef]: 4, [D.hsiVertical]: 0 })));
+    expect(vertex('pfd-loc-diamond', 0).x).toBeCloseTo(100 + 2.5 * 18);
+    expect(screen.getByLabelText(`${ATTITUDE}, localizer full scale right`)).toBeTruthy();
+  });
+
+  it('says the localizer and glideslope only while each is shown', async () => {
+    await render(tree(withNav()));
+    expect(
+      screen.getByLabelText(`${ATTITUDE}, localizer 1.2 dots right, glideslope 0.5 dots down`),
+    ).toBeTruthy();
+  });
+
+  it('shows the glideslope diamond only while X-Plane says it is valid', async () => {
+    await render(tree(withNav()));
+    expect(screen.getByTestId('pfd-gs-scale')).toBeTruthy();
+    // Half a dot down at 18 a dot, from the centre at 120; its first vertex is the top, 7 above.
+    expect(vertex('pfd-gs-diamond', 0).y).toBeCloseTo(120 + 0.5 * 18 - 7);
+    expect(screen.queryByTestId('pfd-gs-flag')).toBeNull();
+  });
+
+  it('shows a red GS flag and no diamond while the glideslope is flagged', async () => {
+    await render(tree(withNav({ [D.hsiGsFlag]: 1 })));
+    expect(svgText('pfd-gs-flag')).toBe('GS');
+    expect(fillOf('pfd-gs-flag')).toBe(processColor(darkTheme.instrument.flagText));
+    expect(fillOf('pfd-gs-flag-box')).toBe(processColor(darkTheme.instrument.flag));
+    expect(screen.queryByTestId('pfd-gs-diamond')).toBeNull();
+    expect(screen.queryByTestId('pfd-gs-scale')).toBeNull();
+    expect(
+      screen.getByLabelText(`${ATTITUDE}, localizer 1.2 dots right, glideslope flagged`),
+    ).toBeTruthy();
+  });
+
+  it('shows no glideslope scale and no flag when none is expected, as on a VOR', async () => {
+    await render(tree(withNav({ [D.hsiVertical]: 0 })));
+    expect(screen.queryByTestId('pfd-gs-scale')).toBeNull();
+    expect(screen.queryByTestId('pfd-gs-diamond')).toBeNull();
+    expect(screen.queryByTestId('pfd-gs-flag')).toBeNull();
+    expect(screen.getByLabelText(`${ATTITUDE}, localizer 1.2 dots right`)).toBeTruthy();
+  });
+
+  it.each([
+    ['outer', D.outerMarker, 'O', darkTheme.instrument.selected],
+    ['middle', D.middleMarker, 'M', darkTheme.avionics.caution],
+    ['inner', D.innerMarker, 'I', darkTheme.avionics.legend],
+  ])('shows the %s marker as its letter on its colour', async (word, name, letter, colour) => {
+    await render(tree(withNav({ [name]: 1 })));
+    expect(svgText('pfd-marker')).toBe(letter);
+    expect(fillOf('pfd-marker')).toBe(processColor(darkTheme.instrument.face));
+    expect(fillOf('pfd-marker-box')).toBe(processColor(colour));
+    expect(
+      screen.getByLabelText(
+        `${ATTITUDE}, localizer 1.2 dots right, glideslope 0.5 dots down, ${word} marker`,
+      ),
+    ).toBeTruthy();
+  });
+
+  it('fades every cue with the attitude when the link drops', async () => {
+    await render(tree(withNav({ [D.outerMarker]: 1 }, live({ state: 'reconnecting' }))));
+    for (const id of ['pfd-loc-diamond', 'pfd-gs-diamond', 'pfd-marker']) {
+      expect(opacityAbove(id)).toBe(NOT_LIVE_OPACITY);
+    }
+    expect(
+      screen.getByLabelText(
+        `${ATTITUDE}, localizer 1.2 dots right, glideslope 0.5 dots down, outer marker, not live`,
+      ),
+    ).toBeTruthy();
+  });
+
+  it('draws no cue with no flight loaded', async () => {
+    await render(tree(withNav({ [D.outerMarker]: 1, [D.hsiGsFlag]: 1 }, live(NO_FLIGHT))));
+    for (const id of NAV_CUES) {
+      expect(screen.queryByTestId(id)).toBeNull();
+    }
+  });
+
+  it('re-renders only the altitude tape when only the altitude changes, cues shown', async () => {
+    const storage = createMemorySettingsStorage();
+    const first = withNav({ [D.outerMarker]: 1 });
+    const view = await render(tree(first, storage));
+    resetRenders();
+    await view.rerender(
+      tree(
+        { ...first, telemetry: { ...first.telemetry, ...telemetry({ [D.altitude]: 4600 }) } },
+        storage,
+      ),
+    );
+    expect(instrumentRenders['instrument-altitude']).toBe(1);
+    for (const face of FACES.filter((face) => face !== 'instrument-altitude')) {
+      expect(instrumentRenders[face] ?? 0).toBe(0);
+    }
+  });
+});

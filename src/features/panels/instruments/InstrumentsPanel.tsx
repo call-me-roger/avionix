@@ -16,6 +16,10 @@ import {
   FEATURE_MODE_HDG,
   FEATURE_MODE_NAV,
   FEATURE_MODE_VS,
+  FEATURE_NAV_AIDS,
+  FEATURE_NAV_DEVIATION,
+  FEATURE_NAV_GLIDESLOPE,
+  FEATURE_NAV_SOURCE,
   FEATURE_VERTICAL_SPEED_SELECT,
   GENERIC_DATAREFS as D,
 } from '@/domain/aircraft/profiles/generic';
@@ -34,8 +38,9 @@ import { RadioChips, type RadioChipOption } from '@/theme/RadioChips';
 import { useTheme } from '@/theme/theme-context';
 
 /**
- * The autopilot features feed the PFD's targets and FMA. A missing one only leaves its cue out:
- * the panel never becomes unavailable for want of an autopilot.
+ * The autopilot features feed the PFD's targets and FMA, and the navigation features its
+ * localizer, glideslope and marker cues and the source colour they are drawn in. A missing one
+ * only leaves its cue out: the panel never becomes unavailable for want of an autopilot or a navaid.
  */
 export const INSTRUMENTS_PANEL: PanelDescriptor = {
   id: 'instruments',
@@ -56,6 +61,10 @@ export const INSTRUMENTS_PANEL: PanelDescriptor = {
     FEATURE_MODE_ALT,
     FEATURE_MODE_VS,
     FEATURE_MODE_FLC,
+    FEATURE_NAV_DEVIATION,
+    FEATURE_NAV_GLIDESLOPE,
+    FEATURE_NAV_AIDS,
+    FEATURE_NAV_SOURCE,
   ],
   supports: EVERYWHERE,
 };
