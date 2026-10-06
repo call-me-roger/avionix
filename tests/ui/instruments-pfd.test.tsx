@@ -711,6 +711,31 @@ describe('PFD navigation cues', () => {
     ).toBeTruthy();
   });
 
+  it('says the cues are not live with the link stale, whatever the attitude state', async () => {
+    const stale = live({ state: 'reconnecting' });
+    const cues = 'NAV1 course 1.2 dots right, glideslope 0.5 dots down, outer marker, not live';
+    // Unavailable: the aircraft lacks pitch.
+    const view = await render(tree(withMissing(withNav({ [D.outerMarker]: 1 }, stale), D.pitch)));
+    expect(screen.getByLabelText(`Attitude: not available on this aircraft, ${cues}`)).toBeTruthy();
+    // No value: pitch has not arrived.
+    const noPitch = withNav({ [D.outerMarker]: 1 }, stale);
+    const { [D.pitch]: _dropped, ...rest } = noPitch.telemetry;
+    await view.rerender(tree({ ...noPitch, telemetry: rest }));
+    expect(screen.getByLabelText(`Attitude: no value, ${cues}`)).toBeTruthy();
+    // Live link: neither state claims staleness.
+    await view.rerender(tree(withMissing(withNav({ [D.outerMarker]: 1 }), D.pitch)));
+    expect(
+      screen.getByLabelText(
+        'Attitude: not available on this aircraft, NAV1 course 1.2 dots right, glideslope 0.5 dots down, outer marker',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('adds no "not live" to an attitude with no value and no cues', async () => {
+    await render(tree(withMissing(live({ state: 'reconnecting' }), D.pitch)));
+    expect(screen.getByLabelText('Attitude: not available on this aircraft')).toBeTruthy();
+  });
+
   it('fades every cue with the link, as the boxes are', async () => {
     const view = await render(tree(withNav({ [D.outerMarker]: 1 })));
     expect(opacityAbove('pfd-loc-diamond')).toBe(1);

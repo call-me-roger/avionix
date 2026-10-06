@@ -89,6 +89,7 @@ export function PfdView({ width }: { width: number }) {
           {...v.attitude}
           slip={v.turn.slip}
           navWords={describeNavCues(nav)}
+          valuesCurrent={link.valuesCurrent}
         />
         <AltitudeTape
           width={60 * k}
