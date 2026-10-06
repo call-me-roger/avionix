@@ -50,7 +50,7 @@ flashing, bit 4 underscore, bits 0–3 colour: 0 black, 1 cyan, 2 red, 3 yellow,
 6 amber, 7 white. The scratchpad is the 14th line (index 13). Special glyphs Laminar names: `°`,
 `☐` (U+2610), `←↑→↓` (U+2190–2193), `Δ`, `⬡` (U+2B21), `◀` (U+25C0), `▶` (U+25B6).
 
-**Keys (prefix `sim/FMS/` for CDU 1, `sim/FMS2/` for CDU 2; 72 each):**
+**Keys (prefix `sim/FMS/` for CDU 1, `sim/FMS2/` for CDU 2; 70 each):**
 
 - Line select: `ls_1l`..`ls_6l`, `ls_1r`..`ls_6r`
 - Page and function: `index`, `fpln`, `clb`, `crz`, `des`, `dir_intc`, `legs`, `dep_arr`, `hold`,
@@ -71,7 +71,7 @@ The roadmap's R1–R12 stand. This section says how each is met and adds what th
 
 - Generic profile **1.6.0** adds four features:
   - `cdu1-screen` "CDU 1 screen": the 16 text lines (required) and 16 style lines (optional).
-  - `cdu1-keys` "CDU 1 keys": the 72 `sim/FMS/` commands (each optional) and
+  - `cdu1-keys` "CDU 1 keys": the 70 `sim/FMS/` commands (each optional) and
     `fms_exec_light_pilot` (optional).
   - `cdu2-screen`, `cdu2-keys`: the same for `fms_cdu2_*`, `sim/FMS2/` and
     `fms_exec_light_copilot`.
@@ -79,7 +79,7 @@ The roadmap's R1–R12 stand. This section says how each is met and adds what th
   visible. The Web API streams only changes, so an idle second unit costs its first 32 values and
   little after, and switching units is instant. Nothing CDU-related is subscribed while another
   panel is visible (F-04 demand).
-- Every name is probed at connect like every other binding. This adds 210 names to the 112 probed
+- Every name is probed at connect like every other binding. This adds 206 names to the 112 probed
   today; at the existing concurrency of 6 the probe stays bounded, and the connect-time cost is a
   device check (smoke row). A deferred, on-demand probe is a recorded follow-up if that row shows
   a noticeable delay.
@@ -169,7 +169,11 @@ shows the No FMS state rather than the 737's last screen. A screen that goes bla
 - **Messages** appear in one message line inside the CDU bezel, replace each other, and clear after
   8 s or on the next successful key. They never contain a URL, status code, exception text,
   DataRef or command name, or protocol payload (R12). Keys use `ControlButton`'s `quiet` mode, so
-  no per-key notices appear.
+  no per-key notices appear, and a new `repeatable` mode, so a key whose previous press is still in
+  flight stays pressable (typing `LL` sends two presses).
+- **Knowing a key failed.** The panel's `activate` action now resolves to `'ok' | 'failed' |
+  'refused'` (it still never rejects), so the queue learns each key's outcome without reading the
+  store.
 
 ### 4.6 CDU 1 / CDU 2 (R7)
 
@@ -208,7 +212,7 @@ native module); the native follow-up is recorded.
 
 ## 5. Mock X-Plane
 
-The mock server gains the 66 CDU DataRefs and 144 commands, plus a toy FMS for the integration
+The mock server gains the 66 CDU DataRefs and 140 commands, plus a toy FMS for the integration
 test: letter, digit and punctuation keys append to the scratchpad (line 13), `key_clear` clears it,
 `key_delete` writes `DELETE`, `ls_1l` moves the scratchpad to line 2 and lights the EXEC light,
 `exec` turns the light off, and the title line reads `TOY FMS`. Its style bytes use cyan for the
@@ -217,7 +221,7 @@ scratchpad, large white for data and small for labels, so the test sees real sty
 ## 6. Testing
 
 - Unit: text and style decoding (UTF-8 multi-byte, NULs, padding, truncation, invalid base64, style
-  bits, colours 0 and 8–15), the key catalogue (72 keys per unit, names match section 3), the
+  bits, colours 0 and 8–15), the key catalogue (70 keys per unit, names match section 3), the
   queue (order, cap, drop-after-failure, link loss, unit switch, slow-link timing), the web key
   mapping.
 - UI: every screen state; colours, reverse, underline, small font and flashing (with Reduce
