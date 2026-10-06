@@ -363,8 +363,8 @@ export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
   { id: 1073, name: 'sim/cockpit2/autopilot/altitude_hold_status', valueType: 'int', value: 0 },
   { id: 1074, name: 'sim/cockpit2/autopilot/vvi_status', valueType: 'int', value: 0 },
   { id: 1075, name: 'sim/cockpit2/autopilot/speed_status', valueType: 'int', value: 0 },
-  // F-30: HSI source (0 NAV1, 1 NAV2, 2 GPS1, 3 GPS2) and course, an ILS with the needle centred
-  // and TO, and a NAV1 DME.
+  // F-30: HSI source (0 NAV1, 1 NAV2, 2 GPS1, 3 GPS2) and course, a VOR-like NAV1 course with the
+  // needle 0.8 dots right and TO, no glideslope (display_vertical 0), and a NAV1 DME.
   {
     id: 1076,
     name: 'sim/cockpit2/radios/actuators/HSI_source_select_pilot',

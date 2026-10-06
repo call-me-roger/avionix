@@ -56,8 +56,10 @@ async function until(predicate: () => boolean, timeoutMs = 3000): Promise<void> 
 }
 
 /**
- * The Navigation panel's demand. `NAVIGATION_PANEL` itself lives in a React Native module this
- * node project cannot load; tests/ui/navigation-panel.test.tsx pins it to this same set.
+ * The navigation features of the Navigation panel's demand. `NAVIGATION_PANEL` itself lives in a
+ * React Native module this node project cannot load; tests/ui/navigation-panel.test.tsx pins its
+ * full set of nine. This is seven of them: it leaves out FEATURE_FLIGHT_INSTRUMENTS and
+ * FEATURE_HEADING_CONTROL, which these tests do not exercise.
  */
 const NAVIGATION_DEMAND = [
   FEATURE_NAV_DEVIATION,
