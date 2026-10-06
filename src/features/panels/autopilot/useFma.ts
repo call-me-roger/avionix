@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { GENERIC_DATAREFS as D } from '@/domain/aircraft/profiles/generic';
 import {
@@ -66,10 +66,14 @@ export function useFma(): Fma {
     speedIsMach: read(D.airspeedIsMach) === 1,
   });
 
+  const hasValue = autothrottle !== null || Object.values(statuses).some((value) => value !== null);
+
   const [boxState, setBoxState] = useState<BoxState>(EMPTY_BOX_STATE);
   const [disconnect, setDisconnect] = useState<DisconnectState>(EMPTY_DISCONNECT);
-  // A link loss resets the boxes, so modes seen again on reconnect are not taken as new.
-  const nextBox = link.valuesCurrent ? nextBoxState(boxState, columns, now) : EMPTY_BOX_STATE;
+  // A link loss resets the boxes, so modes seen again on reconnect are not taken as new. So does a
+  // sample with no mode data: an all-empty baseline would box every mode once its values arrive.
+  const nextBox =
+    link.valuesCurrent && hasValue ? nextBoxState(boxState, columns, now) : EMPTY_BOX_STATE;
   if (nextBox !== boxState) {
     setBoxState(nextBox);
   }
@@ -78,8 +82,12 @@ export function useFma(): Fma {
     setDisconnect(nextDisc);
   }
 
+  // Exactly one buzz per disconnect: a new `failure` (the haptics preference toggled) must not
+  // buzz again for one already announced.
+  const buzzedFor = useRef<number | null>(null);
   useEffect(() => {
-    if (disconnect.since !== null) {
+    if (disconnect.since !== null && disconnect.since !== buzzedFor.current) {
+      buzzedFor.current = disconnect.since;
       failure();
     }
   }, [disconnect.since, failure]);
@@ -90,6 +98,6 @@ export function useFma(): Fma {
     disconnected: disconnectShowing(disconnect, now),
     acknowledge: () => setDisconnect((current) => ({ ...current, since: null })),
     text: annunciationText(statuses, autothrottle),
-    hasValue: autothrottle !== null || Object.values(statuses).some((value) => value !== null),
+    hasValue,
   };
 }

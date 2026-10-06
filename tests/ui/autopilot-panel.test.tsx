@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react-native';
 import React from 'react';
-import { AccessibilityInfo, Animated, StyleSheet } from 'react-native';
+import { AccessibilityInfo, Animated, Pressable, StyleSheet } from 'react-native';
 
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
@@ -9,6 +9,7 @@ import {
   GENERIC_DATAREFS as D,
   GENERIC_PROFILE,
 } from '@/domain/aircraft/profiles/generic';
+import { HapticsProvider, useHapticsPreference } from '@/features/haptics/HapticsProvider';
 import { AutopilotPanel } from '@/features/panels/autopilot/AutopilotPanel';
 import { Fma } from '@/features/panels/autopilot/Fma';
 import type { PanelActions } from '@/features/panels/primitives/PanelContext';
@@ -16,6 +17,7 @@ import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { haptics } from '@/platform/haptics';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
 import { ThemeProvider } from '@/theme/theme-context';
+import { lightTheme } from '@/theme/tokens';
 
 jest.mock('@/platform/haptics', () => ({ haptics: { press: jest.fn(), failure: jest.fn() } }));
 
@@ -392,9 +394,71 @@ describe('Autopilot panel', () => {
     const loop = jest.spyOn(Animated, 'loop');
     const view = await render(tree(withValues({ [D.autopilotServos]: 1 })));
     await view.rerender(tree(withValues({ [D.autopilotServos]: 0 }), NOW + 1000));
-    const ap = screen.getByTestId('fma-ap-disconnect');
-    expect(StyleSheet.flatten(ap.props.style).opacity).toBe(1);
+    const ap = StyleSheet.flatten(screen.getByTestId('fma-ap-disconnect').props.style);
+    expect(ap.opacity).toBe(1);
     expect(loop).not.toHaveBeenCalled();
+    // Steady, it must still differ from an engaged AP by more than colour: reverse video.
+    expect(ap.backgroundColor).toBe(lightTheme.avionics.caution);
+    expect(ap.color).toBe(lightTheme.avionics.glass);
+  });
+
+  it('draws an engaged AP plain, never in the disconnect’s reverse video', async () => {
+    await render(tree(withValues({ [D.autopilotServos]: 1 })));
+    const ap = within(screen.getByTestId('autopilot-fma')).getByText('AP');
+    const style = StyleSheet.flatten(ap.props.style);
+    expect(style.backgroundColor).toBeUndefined();
+    expect(style.color).toBe(lightTheme.avionics.engaged);
+  });
+
+  it('leaves empty cells blank when there is mode data, with no dash', async () => {
+    // VALUES: A/T armed only, AP and FD off.
+    await render(tree(live()));
+    const fma = within(screen.getByTestId('autopilot-fma'));
+    expect(fma.getByText('A/T')).toBeTruthy();
+    expect(fma.queryByText('—')).toBeNull();
+    expect(fma.queryByText('AP')).toBeNull();
+    expect(fma.queryByText('FD')).toBeNull();
+  });
+
+  it('dashes every column while there is no mode data', async () => {
+    await render(
+      tree(
+        live({
+          health: { ...base.health, activity: 'noFlight', live: true, lastHeartbeatAt: NOW },
+        }),
+      ),
+    );
+    expect(within(screen.getByTestId('autopilot-fma')).getAllByText('—')).toHaveLength(4);
+  });
+
+  it('does not box modes already engaged when their values arrive after an empty sample', async () => {
+    const view = await render(tree(live({ telemetry: {} })));
+    expect(screen.getByTestId('autopilot-fma')).toBeTruthy();
+    await view.rerender(tree(live(), NOW + 1000));
+    expect(screen.getByLabelText('Autopilot modes: HDG · ALT · Armed NAV')).toBeTruthy();
+    expect(screen.queryByTestId('fma-box-lateral')).toBeNull();
+    expect(screen.queryByTestId('fma-box-vertical')).toBeNull();
+  });
+
+  it('buzzes once per disconnect, even when the haptics preference changes during it', async () => {
+    function HapticsToggle() {
+      const { enabled, setEnabled } = useHapticsPreference();
+      return <Pressable accessibilityLabel="Toggle haptics" onPress={() => setEnabled(!enabled)} />;
+    }
+    const storage = createMemorySettingsStorage();
+    const withHaptics = (snapshot: SessionSnapshot, now: number) => (
+      <HapticsProvider storage={storage}>
+        <HapticsToggle />
+        {tree(snapshot, now, storage)}
+      </HapticsProvider>
+    );
+    const view = await render(withHaptics(withValues({ [D.autopilotServos]: 1 }), NOW));
+    await view.rerender(withHaptics(withValues({ [D.autopilotServos]: 0 }), NOW + 1000));
+    expect(haptics.failure).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByLabelText('Toggle haptics'));
+    await fireEvent.press(screen.getByLabelText('Toggle haptics'));
+    expect(screen.getByTestId('fma-ap-disconnect')).toBeTruthy();
+    expect(haptics.failure).toHaveBeenCalledTimes(1);
   });
 
   it('leaves "not live" to the PFD when compact, keeping it in the label', async () => {

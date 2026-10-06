@@ -62,7 +62,15 @@ const makeStyles = (theme: Theme) => ({
   compact: { fontSize: theme.typography.captionSize },
   engaged: { color: theme.avionics.engaged },
   armed: { color: theme.avionics.armed },
-  caution: { color: theme.avionics.caution },
+  // Reverse video, so a disconnect never differs from an engaged AP by colour alone (steady under
+  // reduced motion, it would otherwise be a green AP turned amber).
+  disconnectAp: {
+    color: theme.avionics.glass,
+    backgroundColor: theme.avionics.caution,
+    borderRadius: 2,
+    paddingHorizontal: 3,
+    overflow: 'hidden' as const,
+  },
   dim: { color: theme.avionics.legendDim },
   box: {
     borderWidth: 1.5,
@@ -75,7 +83,8 @@ const makeStyles = (theme: Theme) => ({
 /**
  * The flight-mode annunciator, laid out like the G1000's AFCS status bar: A/T, lateral, AP/FD and
  * vertical, engaged (green) over armed (white). A new mode is boxed for 10 s; an autopilot
- * disconnect flashes an amber AP for 5 s, steady under reduced motion, and a tap acknowledges it.
+ * disconnect flashes a reverse-video amber AP for 5 s, steady under reduced motion, and a tap
+ * acknowledges it. "—" marks the columns only while there is no mode data at all.
  * `compact` is the PFD's: smaller text, and no "not live" of its own, as the PFD fades as a whole.
  */
 export function Fma({ compact = false }: { compact?: boolean }) {
@@ -90,7 +99,8 @@ export function Fma({ compact = false }: { compact?: boolean }) {
     cell,
     link.valuesCurrent ? live : styles.dim,
   ];
-  const missing = <Text style={[cell, styles.dim]}>{MISSING}</Text>;
+  // With mode data an empty cell stays blank, as on the G1000; "—" only says there is none.
+  const missing = hasValue ? null : <Text style={[cell, styles.dim]}>{MISSING}</Text>;
 
   const active = (slot: FmaSlot, word: string | null) => {
     if (word === null) {
@@ -117,7 +127,7 @@ export function Fma({ compact = false }: { compact?: boolean }) {
     disconnected || columns.ap || columns.fd ? (
       <>
         {disconnected ? (
-          <FlashingAp style={[cell, styles.caution]} steady={reducedMotion} />
+          <FlashingAp style={[cell, styles.disconnectAp]} steady={reducedMotion} />
         ) : columns.ap ? (
           active('ap', 'AP')
         ) : null}
