@@ -81,6 +81,9 @@ describe('theme tokens', () => {
         [colors.placeholder, colors.inputBackground],
         [colors.danger, colors.surface],
         [colors.success, colors.surface],
+        // Accent is text and thin indicators (selected tab, current step, next pairing box).
+        [colors.accent, colors.surface],
+        [colors.accent, colors.background],
       ];
       for (const [foreground, background] of pairs) {
         expect(contrastRatio(foreground, background)).toBeGreaterThanOrEqual(4.5);

@@ -19,6 +19,7 @@ import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
 import { entryPadStyles } from '@/features/panels/radios/EntryPad';
 import { BodyText } from '@/theme/primitives';
+import { useOnBezel } from '@/theme/surface-context';
 import { useThemedStyles } from '@/theme/theme-context';
 
 /**
@@ -36,6 +37,7 @@ export function SelectorPad({
   blocked: boolean;
 }) {
   const styles = useThemedStyles(entryPadStyles);
+  const onBezel = useOnBezel();
   const { write } = usePanel();
   const target = entry.target;
   if (target === null) {
@@ -63,8 +65,8 @@ export function SelectorPad({
     entry.sent();
   };
   return (
-    <View style={styles.wrap}>
-      <Text style={styles.title}>{title}</Text>
+    <View style={[styles.wrap, onBezel ? styles.wrapOnBezel : null]}>
+      <Text style={[styles.title, onBezel ? styles.titleOnBezel : null]}>{title}</Text>
       <View
         style={styles.display}
         accessible
@@ -93,7 +95,9 @@ export function SelectorPad({
           onPress={entry.cancel}
           style={styles.cancel}
         >
-          <Text style={styles.cancelLabel}>Cancel</Text>
+          <Text style={[styles.cancelLabel, onBezel ? styles.cancelLabelOnBezel : null]}>
+            Cancel
+          </Text>
         </Pressable>
         <ControlButton
           label="Set"

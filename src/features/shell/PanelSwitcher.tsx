@@ -24,7 +24,8 @@ const makeStyles = (theme: Theme) => ({
   itemColumn: { flexDirection: 'column' as const },
   itemRow: { flexDirection: 'row' as const },
   // The selected indicator sits on the edge facing the content: the top in the portrait bottom
-  // bar, the right edge in the landscape rail. The full primary fill is gone (R-01).
+  // bar, the right edge in the landscape rail. The full primary fill is gone (R-01); the bar, icon and
+  // label are drawn in `accent`, which stays readable on the surface in every mode.
   indicatorTop: {
     position: 'absolute' as const,
     top: 0,
@@ -32,7 +33,7 @@ const makeStyles = (theme: Theme) => ({
     right: theme.spacing.sm,
     height: 3,
     borderRadius: 2,
-    backgroundColor: theme.colors.primary,
+    backgroundColor: theme.colors.accent,
   },
   indicatorRight: {
     position: 'absolute' as const,
@@ -41,10 +42,10 @@ const makeStyles = (theme: Theme) => ({
     bottom: theme.spacing.xs,
     width: 3,
     borderRadius: 2,
-    backgroundColor: theme.colors.primary,
+    backgroundColor: theme.colors.accent,
   },
   label: { color: theme.colors.textMuted, fontSize: theme.typography.captionSize + 1 },
-  labelSelected: { color: theme.colors.primary, fontWeight: 'bold' as const },
+  labelSelected: { color: theme.colors.accent, fontWeight: 'bold' as const },
 });
 
 /**
@@ -86,7 +87,7 @@ export function PanelSwitcher({
       >
         {items.map((item) => {
           const selected = item.id === route;
-          const tint = selected ? theme.colors.primary : theme.colors.textMuted;
+          const tint = selected ? theme.colors.accent : theme.colors.textMuted;
           return (
             <Pressable
               key={item.id}

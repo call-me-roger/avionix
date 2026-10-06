@@ -21,7 +21,7 @@ const makeStyles = (theme: Theme) => ({
   },
   boxNext: {
     borderWidth: 2,
-    borderColor: theme.colors.primary,
+    borderColor: theme.colors.accent,
   },
   digit: {
     ...numeric(theme, true),

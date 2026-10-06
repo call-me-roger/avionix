@@ -30,7 +30,7 @@ const makeStyles = (theme: Theme) => ({
     marginTop: theme.typography.titleSize / 2,
   },
   glyphDone: { color: theme.colors.success, fontSize: theme.typography.titleSize },
-  glyphCurrent: { color: theme.colors.primary, fontSize: theme.typography.titleSize },
+  glyphCurrent: { color: theme.colors.accent, fontSize: theme.typography.titleSize },
   glyphTodo: { color: theme.colors.textMuted, fontSize: theme.typography.titleSize },
   labelDone: {
     color: theme.colors.success,
@@ -38,7 +38,7 @@ const makeStyles = (theme: Theme) => ({
     marginTop: theme.spacing.xs,
   },
   labelCurrent: {
-    color: theme.colors.primary,
+    color: theme.colors.accent,
     fontSize: theme.typography.captionSize,
     marginTop: theme.spacing.xs,
     fontWeight: 'bold' as const,

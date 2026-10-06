@@ -6,8 +6,15 @@ export interface ThemeColors {
   text: string;
   textMuted: string;
   border: string;
+  /** A fill (buttons, chips); text on it is `onPrimary`. Never text or a thin indicator itself. */
   primary: string;
   onPrimary: string;
+  /**
+   * Text, glyphs and thin indicators in the app's accent hue (the selected tab, the current setup
+   * step, the next pairing box): 4.5:1 on surface and background in every mode, where `primary`,
+   * a fill colour, is not (night's is ~1.3:1).
+   */
+  accent: string;
   danger: string;
   success: string;
   caution: string;
@@ -168,6 +175,8 @@ export const lightTheme: Theme = {
     border: '#c9ced6',
     primary: '#1f6feb',
     onPrimary: '#ffffff',
+    // #1f6feb darkened within its hue: as given it is 4.32:1 on the #f6f7f9 background.
+    accent: '#1d69df',
     danger: '#b00020',
     success: '#1a7f37',
     caution: '#8a5d00',
@@ -192,6 +201,7 @@ export const darkTheme: Theme = {
     border: '#30363d',
     primary: '#1f6feb',
     onPrimary: '#ffffff',
+    accent: '#58a6ff',
     danger: '#ff7b72',
     success: '#3fb950',
     caution: '#d29922',
@@ -221,6 +231,7 @@ export const nightTheme: Theme = {
     border: '#3a2e20',
     primary: '#33200a',
     onPrimary: '#a88a60',
+    accent: '#a88a60',
     danger: '#d0584a',
     success: '#6f9a4a',
     caution: '#a07a2a',

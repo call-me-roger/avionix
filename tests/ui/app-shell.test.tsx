@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -165,6 +165,18 @@ describe('AppShell', () => {
     await render(tree(services));
     expect(await screen.findByTestId('panel-flight-data')).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Flight data' })).toBeSelected();
+  });
+
+  it('draws the selected tab’s label in accent, the others muted', async () => {
+    const { services } = makeServices({}, await seeded('flight-data'));
+    await render(tree(services));
+    const selected = await screen.findByRole('tab', { name: 'Flight data' });
+    expect(within(selected).getByText('Flight data')).toHaveStyle({
+      color: lightTheme.colors.accent,
+    });
+    expect(
+      within(screen.getByRole('tab', { name: 'Autopilot' })).getByText('Autopilot'),
+    ).toHaveStyle({ color: lightTheme.colors.textMuted });
   });
 
   it('asks the session for exactly what the visible panel reads', async () => {

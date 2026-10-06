@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { Dimensions, StyleSheet } from 'react-native';
 
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
@@ -92,6 +92,30 @@ describe('Radios keypad entry', () => {
     expect(screen.getByText('NEW')).toBeTruthy();
     expect(screen.getByText('132.005')).toHaveStyle({ color: lightTheme.avionics.selected });
     expect(screen.getByLabelText('COM1: active 121.500, standby 118.005')).toBeTruthy();
+  });
+
+  it('draws the keypad in avionics colours inside the radio unit on a phone', async () => {
+    // Narrow (the default test window): the pad sits inside COM1's unit, on the bezel.
+    await render(tree(live()));
+    await fireEvent.press(screen.getByLabelText('Enter COM1 standby'));
+    expect(screen.getByText('COM1 standby')).toHaveStyle({ color: lightTheme.avionics.legend });
+    expect(screen.getByText('Cancel')).toHaveStyle({ color: lightTheme.avionics.selected });
+  });
+
+  it('keeps app colours on the keypad beside the units in a wide layout', async () => {
+    // Wide: the pad is its own column beside the units, on the app background.
+    const original = Dimensions.get('window');
+    Dimensions.set({ window: { width: 1024, height: 768, scale: 1, fontScale: 1 } });
+    try {
+      await render(tree(live()));
+      await fireEvent.press(screen.getByLabelText('Enter COM1 standby'));
+      expect(screen.getByText('COM1 standby')).toHaveStyle({ color: lightTheme.colors.text });
+      expect(screen.getByText('Cancel')).toHaveStyle({ color: lightTheme.colors.accent });
+    } finally {
+      await act(async () => {
+        Dimensions.set({ window: original });
+      });
+    }
   });
 
   it('always reads as typed, never jumping to the padded value (I2)', async () => {

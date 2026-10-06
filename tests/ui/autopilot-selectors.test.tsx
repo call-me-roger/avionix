@@ -193,6 +193,16 @@ describe('autopilot selectors', () => {
     expect(actions.write).toHaveBeenCalledWith('altitude-select', D.altitudeDial, 12000);
   });
 
+  it('draws the keypad title and Cancel in avionics colours inside the SELECTORS unit', async () => {
+    await render(tree(live()));
+    await fireEvent.press(screen.getByLabelText('Enter altitude'));
+    // The light theme's app text (#111417) would be dark on the dark bezel.
+    expect(screen.getByText('Altitude selector')).toHaveStyle({
+      color: lightTheme.avionics.legend,
+    });
+    expect(screen.getByText('Cancel')).toHaveStyle({ color: lightTheme.avionics.selected });
+  });
+
   it('explains an out-of-range altitude and keeps Set disabled', async () => {
     await render(tree(live()));
     await fireEvent.press(screen.getByLabelText('Enter altitude'));
