@@ -3,7 +3,7 @@ import { View, useWindowDimensions } from 'react-native';
 
 import { GENERIC_DATAREFS as D } from '@/domain/aircraft/profiles/generic';
 import { TWO_COLUMN_MIN_WIDTH } from '@/domain/panels/device-layout';
-import { Annunciator } from '@/features/panels/autopilot/Annunciator';
+import { Fma } from '@/features/panels/autopilot/Fma';
 import { OVERRIDE_NOTICE, SELECTORS, autopilotNumber } from '@/features/panels/autopilot/autopilot';
 import { EngageRow } from '@/features/panels/autopilot/EngageRow';
 import { ModeButtons } from '@/features/panels/autopilot/ModeButtons';
@@ -50,7 +50,7 @@ function AutopilotContent() {
       }}
     >
       <View style={[{ gap: theme.touch.spacing }, wide ? { flex: 1 } : { alignSelf: 'stretch' }]}>
-        <Annunciator />
+        <Fma />
         {blocked ? <BodyText tone="danger">{OVERRIDE_NOTICE}</BodyText> : null}
         <EngageRow readBack={readBack} blocked={blocked} />
         <ModeButtons readBack={readBack} blocked={blocked} />

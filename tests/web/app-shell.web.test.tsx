@@ -158,7 +158,10 @@ describe('AppShell on react-native-web', () => {
       (tab as HTMLElement).click();
     });
     expect(container.querySelector('[data-testid="panel-autopilot"]')).not.toBeNull();
-    expect(container.textContent ?? '').toContain('No modes engaged');
+    // The FMA draws columns; its one-line reading is its accessibility label.
+    expect(
+      container.querySelector('[data-testid="autopilot-fma"]')?.getAttribute('aria-label'),
+    ).toBe('Autopilot modes: No modes engaged');
   });
 
   it('draws the instruments as DOM, Instruments first in the switcher', async () => {
