@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { cduKeysFeatureId } from '@/domain/aircraft/profiles/generic';
 import { CduKeyQueue, SLOW_KEY_MS } from '@/domain/cdu/key-queue';
@@ -17,58 +17,104 @@ export interface CduKeys {
   slow: boolean;
 }
 
+/** A shown message, wrapped so a repeat of the same text is still a new object: the clearing
+ * effect below keys off identity, so an identical message restarts its own MESSAGE_MS. */
+interface Shown {
+  text: string;
+}
+
+/** Which `(unit, controlsEnabled)` pair a built queue serves. */
+export interface QueueTag {
+  unit: CduUnit;
+  controlsEnabled: boolean;
+}
+
+/**
+ * Whether a queue built for `builtFor` may still serve a press made while the hook renders
+ * `current`. The queue is (re)built in an effect, which can run one render behind the props it
+ * depends on; comparing tags here means a press made in that gap is dropped rather than misrouted
+ * to a queue built for a different unit, or sent while the link is actually inert (C2, C5).
+ */
+export function queueTagMatches(builtFor: QueueTag | null, current: QueueTag): boolean {
+  return (
+    builtFor !== null &&
+    builtFor.unit === current.unit &&
+    builtFor.controlsEnabled === current.controlsEnabled
+  );
+}
+
 /**
  * Queues CDU key presses for one unit and turns the queue's events into the one message a screen
- * shows (never a per-key toast) and the SLOW lamp. One queue exists per `(unit, controlsEnabled)`
- * pair: a unit switch or the link going inert tears the old queue down — dropping whatever waited
- * and silencing whatever was in flight (C1, C5) — and a fresh one takes over, which also covers
- * unmount. `send` reads `activate` through a ref kept current by its own effect, so an in-flight
- * press still resolves correctly even though `usePanel()` hands back a new function every render.
+ * shows (never a per-key toast) and the SLOW lamp. A queue exists only while `link.controlsEnabled`
+ * is true (C5: every key is disabled, not just visibly, while values are not current), and a fresh
+ * one replaces it whenever `unit` or `controlsEnabled` changes — dropping whatever waited and
+ * silencing whatever was in flight (C2, C5) — which also covers unmount.
+ *
+ * Two defences close the gap between a render committing a new `unit`/`controlsEnabled` and the
+ * queue effect catching up: the effect runs in `useLayoutEffect`, inside the commit, before anything
+ * else can run; and `press` itself refuses to use a queue whose tag (`queueTagMatches`) disagrees
+ * with the render it was called from, dropping the key rather than risking a misroute if a queue
+ * ever is built on a later, non-synchronous pass.
+ *
+ * `send` reads `activate` through a ref kept current by its own effect, so an in-flight press still
+ * resolves correctly even though `usePanel()` hands back a new function every render.
  */
 export function useCduKeys(unit: CduUnit): CduKeys {
   const { activate, link } = usePanel();
-  const [message, setMessage] = useState<string | null>(null);
+  const [shown, setShown] = useState<Shown | null>(null);
   const [slow, setSlow] = useState(false);
 
   const activateRef = useRef(activate);
-  const queueRef = useRef<CduKeyQueue | null>(null);
+  const queueRef = useRef<{ tag: QueueTag; queue: CduKeyQueue } | null>(null);
   const slowTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     activateRef.current = activate;
   }, [activate]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!link.controlsEnabled) {
+      return undefined;
+    }
+    const applySlow = (elapsedMs: number) => {
+      if (elapsedMs <= SLOW_KEY_MS) {
+        return;
+      }
+      setSlow(true);
+      if (slowTimeoutRef.current !== null) {
+        clearTimeout(slowTimeoutRef.current);
+      }
+      slowTimeoutRef.current = setTimeout(() => {
+        slowTimeoutRef.current = null;
+        setSlow(false);
+      }, SLOW_SHOWN_MS);
+    };
     const queue = new CduKeyQueue(
       (keyId) => activateRef.current(cduKeysFeatureId(unit), cduCommand(unit, keyId)),
       () => Date.now(),
       (event) => {
         switch (event.kind) {
           case 'sent':
-            setMessage(null);
-            if (event.elapsedMs > SLOW_KEY_MS) {
-              setSlow(true);
-              if (slowTimeoutRef.current !== null) {
-                clearTimeout(slowTimeoutRef.current);
-              }
-              slowTimeoutRef.current = setTimeout(() => {
-                slowTimeoutRef.current = null;
-                setSlow(false);
-              }, SLOW_SHOWN_MS);
-            }
+            setShown(null);
+            applySlow(event.elapsedMs);
             return;
           case 'failed':
-            setMessage(
-              keyFailedMessage(cduKey(event.key)?.name ?? event.key, event.result, event.dropped),
-            );
+            setShown({
+              text: keyFailedMessage(
+                cduKey(event.key)?.name ?? event.key,
+                event.result,
+                event.dropped,
+              ),
+            });
+            applySlow(event.elapsedMs);
             return;
           case 'full':
-            setMessage(QUEUE_FULL_MESSAGE);
+            setShown({ text: QUEUE_FULL_MESSAGE });
             return;
         }
       },
     );
-    queueRef.current = queue;
+    queueRef.current = { tag: { unit, controlsEnabled: link.controlsEnabled }, queue };
     return () => {
       queue.clear();
       queueRef.current = null;
@@ -76,23 +122,36 @@ export function useCduKeys(unit: CduUnit): CduKeys {
         clearTimeout(slowTimeoutRef.current);
         slowTimeoutRef.current = null;
       }
-      setMessage(null);
+      setShown(null);
       setSlow(false);
     };
   }, [unit, link.controlsEnabled]);
 
-  // A message clears itself after MESSAGE_MS, or sooner when it changes (including to null).
+  // A message clears itself after MESSAGE_MS, or sooner when it changes (including to null). Keyed
+  // on `shown`'s identity, so showing the very same text again still gets its own full MESSAGE_MS.
   useEffect(() => {
-    if (message === null) {
+    if (shown === null) {
       return undefined;
     }
-    const timeout = setTimeout(() => setMessage(null), MESSAGE_MS);
+    const timeout = setTimeout(() => {
+      setShown((current) => (current === shown ? null : current));
+    }, MESSAGE_MS);
     return () => clearTimeout(timeout);
-  }, [message]);
+  }, [shown]);
 
-  const press = useCallback((keyId: string) => {
-    queueRef.current?.press(keyId);
-  }, []);
+  const press = useCallback(
+    (keyId: string) => {
+      const built = queueRef.current;
+      if (
+        built === null ||
+        !queueTagMatches(built.tag, { unit, controlsEnabled: link.controlsEnabled })
+      ) {
+        return;
+      }
+      built.queue.press(keyId);
+    },
+    [unit, link.controlsEnabled],
+  );
 
-  return { press, message, slow };
+  return { press, message: shown?.text ?? null, slow };
 }

@@ -61,13 +61,42 @@ describe('CduKeyQueue', () => {
     expect(h.events).toEqual([{ kind: 'sent', key: 'exec', elapsedMs: 640 }]);
   });
 
-  it('drops the keys behind a failed one and says how many', async () => {
+  it('drops the keys behind a failed one and says how many, with how long it took', async () => {
     const h = harness();
     ['key_K', 'key_L', 'key_A', 'key_X'].forEach((key) => h.queue.press(key));
-    await h.settle('failed');
+    await h.settle('failed', 640);
     expect(h.sent).toEqual(['key_K']);
-    expect(h.events).toEqual([{ kind: 'failed', key: 'key_K', result: 'failed', dropped: 3 }]);
+    expect(h.events).toEqual([
+      { kind: 'failed', key: 'key_K', result: 'failed', dropped: 3, elapsedMs: 640 },
+    ]);
     expect(h.queue.size).toBe(0);
+  });
+
+  it('treats a rejecting send as a failure instead of wedging the queue', async () => {
+    const sent: string[] = [];
+    const events: CduQueueEvent[] = [];
+    const rejections: ((error: unknown) => void)[] = [];
+    const queue = new CduKeyQueue(
+      (key) =>
+        new Promise<ActivationResult>((_resolve, reject) => {
+          sent.push(key);
+          rejections.push(reject);
+        }),
+      () => 0,
+      (event) => events.push(event),
+    );
+    queue.press('key_K');
+    queue.press('key_L');
+    rejections.shift()?.(new Error('transport exploded'));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(events).toEqual([
+      { kind: 'failed', key: 'key_K', result: 'failed', dropped: 1, elapsedMs: 0 },
+    ]);
+    expect(queue.size).toBe(0);
+    // Not wedged: a later press still sends.
+    expect(queue.press('key_Z')).toBe(true);
+    expect(sent).toEqual(['key_K', 'key_Z']);
   });
 
   it('refuses a press beyond the limit', () => {

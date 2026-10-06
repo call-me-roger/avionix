@@ -7,7 +7,13 @@ export const SLOW_KEY_MS = 500;
 
 export type CduQueueEvent =
   | { kind: 'sent'; key: string; elapsedMs: number }
-  | { kind: 'failed'; key: string; result: 'failed' | 'refused'; dropped: number }
+  | {
+      kind: 'failed';
+      key: string;
+      result: 'failed' | 'refused';
+      dropped: number;
+      elapsedMs: number;
+    }
   | { kind: 'full' };
 
 /**
@@ -55,14 +61,21 @@ export class CduKeyQueue {
     while (this.waiting.length > 0 && generation === this.generation) {
       const key = this.waiting.shift() as string;
       const started = this.now();
-      const result = await this.send(key);
+      let result: ActivationResult;
+      try {
+        result = await this.send(key);
+      } catch {
+        // `activate` never rejects by contract (spec §4.5); treating a rejection as a failure
+        // keeps the queue from wedging in `running` forever if that contract is ever broken.
+        result = 'failed';
+      }
       if (generation !== this.generation) {
         return;
       }
       if (result !== 'ok') {
         const dropped = this.waiting.length;
         this.waiting = [];
-        this.onEvent({ kind: 'failed', key, result, dropped });
+        this.onEvent({ kind: 'failed', key, result, dropped, elapsedMs: this.now() - started });
         break;
       }
       this.onEvent({ kind: 'sent', key, elapsedMs: this.now() - started });

@@ -10,7 +10,12 @@ import { CDU_QUEUE_LIMIT, SLOW_KEY_MS } from '@/domain/cdu/key-queue';
 import type { CduUnit } from '@/domain/cdu/keys';
 import { QUEUE_FULL_MESSAGE } from '@/domain/cdu/messages';
 import type { ActivationResult } from '@/domain/panels/activation';
-import { MESSAGE_MS, SLOW_SHOWN_MS, useCduKeys } from '@/features/panels/cdu/useCduKeys';
+import {
+  MESSAGE_MS,
+  SLOW_SHOWN_MS,
+  queueTagMatches,
+  useCduKeys,
+} from '@/features/panels/cdu/useCduKeys';
 import type { PanelActions } from '@/features/panels/primitives/PanelContext';
 import { PanelScope } from '@/features/panels/primitives/PanelFrame';
 
@@ -134,6 +139,40 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
+/**
+ * `queueTagMatches` is the belt-and-suspenders half of the routing-gap fix (review finding 1):
+ * `useLayoutEffect` closes the gap for every source that changes `unit` or `link.controlsEnabled`
+ * on React's synchronous lane today, but `press` also refuses a queue whose tag disagrees with the
+ * render it was called from, so a queue built on a later pass (e.g. a future async preference load)
+ * is dropped rather than misrouted. React's `act()` in this test environment deliberately flushes
+ * commit, layout effects and passive effects together before any `await` resolves, so the gap itself
+ * cannot be reproduced through `render`/`rerender` here; this pins the pure comparison `press` relies
+ * on instead.
+ */
+describe('queueTagMatches', () => {
+  it('matches a queue built for the same unit and controlsEnabled', () => {
+    expect(
+      queueTagMatches({ unit: 1, controlsEnabled: true }, { unit: 1, controlsEnabled: true }),
+    ).toBe(true);
+  });
+
+  it('rejects a queue built for a different unit', () => {
+    expect(
+      queueTagMatches({ unit: 1, controlsEnabled: true }, { unit: 2, controlsEnabled: true }),
+    ).toBe(false);
+  });
+
+  it('rejects a queue built while controls were enabled, now that they are not', () => {
+    expect(
+      queueTagMatches({ unit: 1, controlsEnabled: true }, { unit: 1, controlsEnabled: false }),
+    ).toBe(false);
+  });
+
+  it('rejects when no queue has been built yet', () => {
+    expect(queueTagMatches(null, { unit: 1, controlsEnabled: true })).toBe(false);
+  });
+});
+
 describe('useCduKeys', () => {
   it('activates the pressed keys in order, against unit 1', async () => {
     await render(tree(live(), 1));
@@ -213,15 +252,18 @@ describe('useCduKeys', () => {
     expect(messageText()).toBe(QUEUE_FULL_MESSAGE);
   });
 
-  it('empties the queue when controls become disabled: the in-flight answer sends nothing more and shows no message', async () => {
+  it('empties the queue when controls become disabled: the in-flight answer sends nothing more, shows no message, and nothing is sent once the link returns', async () => {
     const view = await render(tree(live(), 1));
     await press('key_K');
     await press('key_L');
     expect(activate).toHaveBeenCalledTimes(1);
     await view.rerender(tree(notConnected(), 1));
-    await resolveNext('ok');
+    await resolveNext('failed');
     expect(activate).toHaveBeenCalledTimes(1);
     expect(messageText()).toBe('');
+    // Nothing is sent on reconnect (C5): the dropped key_L must not surface once the link is live again.
+    await view.rerender(tree(live(), 1));
+    expect(activate).toHaveBeenCalledTimes(1);
   });
 
   it('empties the queue when the unit changes', async () => {
@@ -230,10 +272,49 @@ describe('useCduKeys', () => {
     await press('key_L');
     expect(activate).toHaveBeenCalledTimes(1);
     await view.rerender(tree(live(), 2));
-    await resolveNext('ok');
+    await resolveNext('failed');
     expect(activate).toHaveBeenCalledTimes(1);
     expect(messageText()).toBe('');
     await press('key_K');
     expect(activate).toHaveBeenLastCalledWith('cdu2-keys', 'sim/FMS2/key_K');
+  });
+
+  it('builds no queue while controls are disabled: a press does nothing', async () => {
+    await render(tree(notConnected(), 1));
+    await press('key_K');
+    expect(activate).not.toHaveBeenCalled();
+  });
+
+  it('restarts the message timer when the same message is shown again', async () => {
+    await render(tree(live(), 1));
+    await press('key_A', CDU_QUEUE_LIMIT);
+    await press('key_B');
+    expect(messageText()).toBe(QUEUE_FULL_MESSAGE);
+    await act(async () => {
+      jest.advanceTimersByTime(MESSAGE_MS - 1);
+    });
+    expect(messageText()).toBe(QUEUE_FULL_MESSAGE);
+    // A second, identical refusal must not inherit the first's almost-expired timer.
+    await press('key_B');
+    expect(messageText()).toBe(QUEUE_FULL_MESSAGE);
+    await act(async () => {
+      jest.advanceTimersByTime(MESSAGE_MS - 1);
+    });
+    expect(messageText()).toBe(QUEUE_FULL_MESSAGE);
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(messageText()).toBe('');
+  });
+
+  it('lights SLOW for a slow answer that then fails', async () => {
+    await render(tree(live(), 1));
+    await press('key_K');
+    expect(slowText()).toBe('not-slow');
+    await act(async () => {
+      jest.advanceTimersByTime(SLOW_KEY_MS + 50);
+    });
+    await resolveNext('failed');
+    expect(slowText()).toBe('slow');
   });
 });
