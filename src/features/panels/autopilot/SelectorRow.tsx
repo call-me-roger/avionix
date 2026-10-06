@@ -116,6 +116,8 @@ export function SelectorRow({
           <Text style={styles.name}>{spec.label}</Text>
           {notLive ? <BodyText muted>not live</BodyText> : null}
         </View>
+        {/* The value mutes through this button's own disabled styling: the link disables every
+            control whenever values are not current, so no separate stale style is needed here. */}
         <ControlButton
           label={text}
           accessibilityLabel={`Enter ${spec.label.toLowerCase()}`}

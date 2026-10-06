@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react-native';
 import React from 'react';
+import { StyleSheet } from 'react-native';
 
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
@@ -13,6 +14,7 @@ import type { PanelActions } from '@/features/panels/primitives/PanelContext';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
 import { ThemeProvider } from '@/theme/theme-context';
+import { lightTheme } from '@/theme/tokens';
 
 const NOW = 1_000_000;
 const base = initialSnapshot(GENERIC_PROFILE, 5);
@@ -273,5 +275,21 @@ describe('autopilot selectors', () => {
     await fireEvent.press(screen.getByLabelText('Enter altitude'));
     const row = screen.getByTestId('selector-row-altitude');
     expect(within(row).getByLabelText('Set altitude')).toBeTruthy();
+  });
+
+  it('mutes the value and disables it while X-Plane is not live', async () => {
+    await render(
+      tree(
+        live({
+          health: { ...base.health, activity: 'stalled', live: false, lastHeartbeatAt: NOW },
+        }),
+      ),
+    );
+    expect(screen.getByLabelText('Altitude selector: 5,000 ft, not live')).toBeTruthy();
+    const button = screen.getByLabelText('Enter altitude');
+    expect(button.props.accessibilityState.disabled).toBe(true);
+    const label = within(button).getByText('5,000 ft');
+    const style = StyleSheet.flatten(label.props.style);
+    expect(style.color).toBe(lightTheme.colors.textMuted);
   });
 });
