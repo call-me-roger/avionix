@@ -58,9 +58,9 @@ function StripCell({ label, text, current }: { label: string; text: string; curr
   const row = useThemedStyles(makeRowStyles);
   return (
     <View style={layout.cell}>
-      <BodyText muted numberOfLines={1}>
+      <Text style={row.label} numberOfLines={1}>
         {label}
-      </BodyText>
+      </Text>
       <Text
         style={[row.value, current ? null : row.stale]}
         numberOfLines={1}

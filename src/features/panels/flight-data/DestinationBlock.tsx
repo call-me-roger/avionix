@@ -50,7 +50,7 @@ export function DestinationBlock() {
       accessible
       accessibilityLabel={`${LABEL}: ${text}${current ? '' : ', not live'}`}
     >
-      <BodyText>{LABEL}</BodyText>
+      <Text style={styles.label}>{LABEL}</Text>
       <Text style={[styles.value, current ? null : styles.stale]}>{text}</Text>
       {current ? null : <BodyText muted>not live</BodyText>}
     </View>
