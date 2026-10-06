@@ -182,7 +182,7 @@ A small box at the top centre shows **O**, **M** or **I**, filled in the marker 
 
 - The accessible label is one sentence, for example: "HSI, NAV1, IKSO, course 270, 1.2 dots right, TO, glideslope 0.5 dots low, DME 12.4 nautical miles".
 - Invalid parts read "no NAV signal" and "glideslope flagged".
-- Deviation words read left or right of course, and high or low on the glideslope. The dots value is spoken, so the unit is unambiguous (R2).
+- Deviation words describe where the needle sits: "1.2 dots right", "glideslope 0.5 dots up". X-Plane's deflection value is drawn as given (positive = needle right or diamond up), never inverted by Avionix; a device row confirms the sense. The dots value is spoken, so the unit is unambiguous (R2).
 
 **Geometry**
 
@@ -260,7 +260,7 @@ Read-back sentences:
 **Data and accessibility**
 
 - These read the same `hsi_*` names, through the new features added to `INSTRUMENTS_PANEL.features`. A missing feature drops only its cue.
-- The PFD's accessible attitude label adds ", localizer 1.2 dots right, glideslope 0.5 dots low", but only while each is shown.
+- The PFD's accessible attitude label adds ", localizer 1.2 dots right, glideslope 0.5 dots down", but only while each is shown.
 
 ### 7. Profile 1.5.0 (`generic.ts`)
 
