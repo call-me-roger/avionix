@@ -27,7 +27,7 @@ const NOW = 1_000_000;
 const base = initialSnapshot(GENERIC_PROFILE, 5);
 const actions: PanelActions = {
   write: jest.fn(async () => undefined),
-  activate: jest.fn(async () => undefined),
+  activate: jest.fn(async () => 'ok' as const),
 };
 
 function snapshot(

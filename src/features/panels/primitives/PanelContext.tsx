@@ -1,12 +1,13 @@
 import { createContext, useContext } from 'react';
 
 import type { SessionSnapshot } from '@/application/session-snapshot';
+import type { ActivationResult } from '@/domain/panels/activation';
 import type { PanelLinkStatus } from '@/domain/panels/panel-link';
 import type { DataRefValue } from '@/domain/simulator/types';
 
 export interface PanelActions {
   write: (featureId: string, name: string, value: DataRefValue) => Promise<void>;
-  activate: (featureId: string, name: string, durationSec?: number) => Promise<void>;
+  activate: (featureId: string, name: string, durationSec?: number) => Promise<ActivationResult>;
 }
 
 /** What every primitive inside a panel reads, computed once per render by PanelFrame. */

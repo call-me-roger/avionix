@@ -24,7 +24,7 @@ function setup() {
       disconnect: () => undefined,
       pair: async () => undefined,
       write: async () => undefined,
-      activate: async () => undefined,
+      activate: async () => 'ok' as const,
       recheckCompatibility: async () => undefined,
       setDemand: () => undefined,
     },

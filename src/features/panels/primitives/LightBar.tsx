@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
-export type LightBarState = 'engaged' | 'armed' | 'off';
+export type LightBarState = 'engaged' | 'armed' | 'lit' | 'off';
 
 const makeStyles = (theme: Theme) => ({
   bar: {
@@ -15,23 +15,31 @@ const makeStyles = (theme: Theme) => ({
   },
   engaged: { backgroundColor: theme.avionics.engaged },
   armed: { borderWidth: 1.5, borderColor: theme.avionics.armed, backgroundColor: 'transparent' },
+  // `lit` is a plain lamp (the CDU's EXEC light): filled in the legend white, not a mode colour.
+  lit: { backgroundColor: theme.avionics.legend },
   off: { backgroundColor: theme.avionics.lightOff },
   // A lamp the panel cannot vouch for (stale values): the same shape, in `legendDim`.
   engagedDim: { backgroundColor: theme.avionics.legendDim },
   armedDim: { borderColor: theme.avionics.legendDim },
+  litDim: { backgroundColor: theme.avionics.legendDim },
 });
 
 /**
  * The annunciator strip above a hardware key's legend (spec section 2): a solid fill when
- * engaged, a hollow outline when armed, a dim fill when off. Shape, not colour alone, carries the
- * state. Hidden from accessibility: the button's own label already speaks it. `dim` (values not
- * current) keeps the shape but draws a lit bar in `legendDim`, so a last-known state never glows as
- * if X-Plane had just reported it.
+ * engaged, a hollow outline when armed, a plain lit fill when `lit`, a dim fill when off. Shape,
+ * not colour alone, carries the state. Hidden from accessibility: the button's own label already
+ * speaks it. `dim` (values not current) keeps the shape but draws a lit bar in `legendDim`, so a
+ * last-known state never glows as if X-Plane had just reported it.
  */
 export function LightBar({ state, dim = false }: { state: LightBarState; dim?: boolean }) {
   const styles = useThemedStyles(makeStyles);
   // An off bar is already unlit; only a lit one has anything to dim.
-  const dimmed = { engaged: styles.engagedDim, armed: styles.armedDim, off: null }[state];
+  const dimmed = {
+    engaged: styles.engagedDim,
+    armed: styles.armedDim,
+    lit: styles.litDim,
+    off: null,
+  }[state];
   return (
     <View
       style={[styles.bar, styles[state], dim ? dimmed : null]}

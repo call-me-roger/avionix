@@ -44,6 +44,22 @@ export interface AvionicsColors {
   lightOff: string;
 }
 
+/**
+ * F-32: the default FMS screen's eight colours on its glass. Shared by light and dark, like the
+ * rest of the avionics hardware palette.
+ */
+export interface CduColors {
+  glass: string;
+  screenEdge: string;
+  white: string;
+  cyan: string;
+  red: string;
+  yellow: string;
+  green: string;
+  magenta: string;
+  amber: string;
+}
+
 export interface FontFamilies {
   avionics?: string;
   avionicsBold?: string;
@@ -83,6 +99,7 @@ export interface Theme {
   colors: ThemeColors;
   instrument: InstrumentColors;
   avionics: AvionicsColors;
+  cdu: CduColors;
   spacing: { xs: number; sm: number; md: number; lg: number; xl: number };
   radius: { sm: number; md: number };
   typography: {
@@ -151,6 +168,32 @@ const nightAvionics: AvionicsColors = {
   lightOff: '#241c13',
 };
 
+/** F-32: the default FMS screen's eight colours on its glass. Shared by light and dark. */
+const dayCdu: CduColors = {
+  glass: '#05080b',
+  screenEdge: '#2b3138',
+  white: '#f2f2f2',
+  cyan: '#40d0ff',
+  red: '#ff4d4d',
+  yellow: '#ffe14d',
+  green: '#36d35a',
+  magenta: '#e040c0',
+  amber: '#ffb000',
+};
+
+/** Night CDU: every colour between relative luminance 0.175 (4.5:1 on black) and 0.30. */
+const nightCdu: CduColors = {
+  glass: '#000000',
+  screenEdge: '#2a2117',
+  white: '#9a9488',
+  cyan: '#5e9aa8',
+  red: '#d8483e',
+  yellow: '#a0924e',
+  green: '#5a9a48',
+  magenta: '#b8579f',
+  amber: '#b58440',
+};
+
 const dayInstrument: InstrumentColors = {
   face: '#000000',
   tape: '#2b2f36',
@@ -191,6 +234,7 @@ export const lightTheme: Theme = {
   },
   instrument: dayInstrument,
   avionics: dayAvionics,
+  cdu: dayCdu,
   spacing,
   radius,
   typography,
@@ -216,6 +260,7 @@ export const darkTheme: Theme = {
   },
   instrument: dayInstrument,
   avionics: dayAvionics,
+  cdu: dayCdu,
   spacing,
   radius,
   typography,
@@ -264,6 +309,7 @@ export const nightTheme: Theme = {
     gpsNeedle: '#b8579f',
   },
   avionics: nightAvionics,
+  cdu: nightCdu,
   spacing,
   radius,
   typography,

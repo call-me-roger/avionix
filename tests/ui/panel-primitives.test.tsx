@@ -62,7 +62,7 @@ function live(overrides: Partial<SessionSnapshot> = {}): SessionSnapshot {
 
 const actions: PanelActions = {
   write: jest.fn(async () => undefined),
-  activate: jest.fn(async () => undefined),
+  activate: jest.fn(async () => 'ok' as const),
 };
 
 async function renderInFrame(snapshot: SessionSnapshot, children: React.ReactNode) {
@@ -353,6 +353,25 @@ describe('ControlButton', () => {
     expect(onPress).not.toHaveBeenCalled();
   });
 
+  it('stays enabled while pending when repeatable, and presses queue', async () => {
+    const onPress = jest.fn();
+    await renderInFrame(
+      live({ operations: { t: { status: 'pending', failure: null, refusal: null, at: NOW } } }),
+      <ControlButton
+        label="Heading up"
+        featureId={FEATURE_HEADING_CONTROL}
+        target="t"
+        onPress={onPress}
+        repeatable
+      />,
+    );
+    const button = screen.getByRole('button', { name: 'Heading up' });
+    expect(button).toBeEnabled();
+    await fireEvent.press(button);
+    await fireEvent.press(button);
+    expect(onPress).toHaveBeenCalledTimes(2);
+  });
+
   it('reports its own failure as a cause and an action, and nobody else’s', async () => {
     const { cause } = explainFailure('WRITE_FAILED', 'operation');
     await renderInFrame(
@@ -464,6 +483,23 @@ describe('ControlButton', () => {
       ).toBeTruthy();
     });
 
+    it('draws a lit lamp in the legend colour', async () => {
+      await render(
+        wrap(
+          <ControlButton
+            label="HDG"
+            featureId={FEATURE_HEADING_CONTROL}
+            target="t"
+            annunciation="lit"
+            onPress={() => undefined}
+          />,
+        ),
+      );
+      expect(
+        within(screen.getByRole('button', { name: 'HDG' })).getByTestId('light-bar-lit', HIDDEN),
+      ).toHaveStyle({ backgroundColor: lightTheme.avionics.legend });
+    });
+
     it('dims a lit bar to legendDim on a stale link, keeping its shape', async () => {
       const stale = { ...live(), state: 'reconnecting' as const };
       const inStale = (node: React.ReactNode) => (
@@ -481,6 +517,20 @@ describe('ControlButton', () => {
       expect(screen.getByTestId('light-bar-armed', HIDDEN)).toHaveStyle({
         borderColor: lightTheme.avionics.legendDim,
         backgroundColor: 'transparent',
+      });
+      await view.rerender(
+        inStale(
+          <ControlButton
+            label="HDG"
+            featureId={FEATURE_HEADING_CONTROL}
+            target="t"
+            annunciation="lit"
+            onPress={() => undefined}
+          />,
+        ),
+      );
+      expect(screen.getByTestId('light-bar-lit', HIDDEN)).toHaveStyle({
+        backgroundColor: lightTheme.avionics.legendDim,
       });
     });
 

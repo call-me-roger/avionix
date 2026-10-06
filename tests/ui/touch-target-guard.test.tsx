@@ -57,7 +57,7 @@ function makeServices(snapshot: Partial<SessionSnapshot> = {}, storage?: Setting
     disconnect: jest.fn(),
     pair: jest.fn(async () => undefined),
     write: jest.fn(async () => undefined),
-    activate: jest.fn(async () => undefined),
+    activate: jest.fn(async () => 'ok' as const),
     setDemand: jest.fn(),
     recheckCompatibility: jest.fn(async () => undefined),
   };

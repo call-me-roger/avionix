@@ -66,7 +66,7 @@ function live(overrides: Partial<SessionSnapshot> = {}): SessionSnapshot {
 
 const actions: PanelActions = {
   write: jest.fn(async () => undefined),
-  activate: jest.fn(async () => undefined),
+  activate: jest.fn(async () => 'ok' as const),
 };
 
 function tree(

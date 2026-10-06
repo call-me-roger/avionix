@@ -73,6 +73,8 @@ interface Props {
   selected?: boolean;
   /** The annunciator light bar above the legend; absent draws none. */
   annunciation?: LightBarState;
+  /** Presses queue in the panel (CDU keys): the target's pending outcome does not disable the key. */
+  repeatable?: boolean;
   /** Replaces the legend text when given (e.g. a display window made pressable). */
   children?: React.ReactNode;
   /** Applies to the outer wrap `View`, so a key can take `flex: 1` in a row. */
@@ -86,7 +88,7 @@ export function ControlButton(props: Props) {
   const haptics = useHaptics();
   const availability = controlAvailability(featureOf(snapshot.compatibility, props.featureId));
   const outcome = snapshot.operations[props.target];
-  const pending = outcome?.status === 'pending';
+  const pending = outcome?.status === 'pending' && props.repeatable !== true;
   const enabled = link.controlsEnabled && availability.usable && !pending && props.invalid !== true;
 
   const [armed, setArmed] = useState(false);

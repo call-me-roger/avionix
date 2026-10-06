@@ -65,7 +65,10 @@ function withMissing(snapshot: SessionSnapshot, ...names: string[]): SessionSnap
 // and altitude labels read them aloud), so the queries that find them must include hidden elements.
 const HIDDEN = { includeHiddenElements: true };
 
-const actions = { write: jest.fn(async () => undefined), activate: jest.fn(async () => undefined) };
+const actions = {
+  write: jest.fn(async () => undefined),
+  activate: jest.fn(async () => 'ok' as const),
+};
 
 function tree(
   snapshot: SessionSnapshot,

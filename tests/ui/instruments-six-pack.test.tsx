@@ -60,7 +60,10 @@ function withMissing(snapshot: SessionSnapshot, ...names: string[]): SessionSnap
   return { ...snapshot, compatibility: { ...snapshot.compatibility, bindings } };
 }
 
-const actions = { write: jest.fn(async () => undefined), activate: jest.fn(async () => undefined) };
+const actions = {
+  write: jest.fn(async () => undefined),
+  activate: jest.fn(async () => 'ok' as const),
+};
 
 function tree(
   snapshot: SessionSnapshot,

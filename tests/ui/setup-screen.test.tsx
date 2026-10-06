@@ -47,7 +47,7 @@ function makeServices(
       void code;
     }),
     write: jest.fn(async () => undefined),
-    activate: jest.fn(async () => undefined),
+    activate: jest.fn(async () => 'ok' as const),
     recheckCompatibility: jest.fn(async () => undefined),
     setDemand: jest.fn(),
   };

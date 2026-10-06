@@ -19,7 +19,7 @@ import type { Theme } from '@/theme/tokens';
 /** R11: the strip only reads. No feature here ever writes or activates. */
 const STRIP_ACTIONS: PanelActions = {
   write: async () => undefined,
-  activate: async () => undefined,
+  activate: async () => 'refused',
 };
 
 const makeStyles = (theme: Theme) => ({

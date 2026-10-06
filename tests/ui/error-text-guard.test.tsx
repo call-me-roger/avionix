@@ -136,7 +136,7 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
                 now={10_000}
                 actions={{
                   write: jest.fn(async () => undefined),
-                  activate: jest.fn(async () => undefined),
+                  activate: jest.fn(async () => 'ok' as const),
                 }}
               >
                 <Component />

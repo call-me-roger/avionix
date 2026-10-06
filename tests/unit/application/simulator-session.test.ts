@@ -745,7 +745,8 @@ describe('SimulatorSession operations', () => {
   it('activates a command binding of the feature', async () => {
     const { session, clients, snapshot } = setup();
     await session.connect('192.168.1.100', 8086);
-    await session.activate(FEATURE_HEADING_CONTROL, HEADING_UP);
+    const result = await session.activate(FEATURE_HEADING_CONTROL, HEADING_UP);
+    expect(result).toBe('ok');
     expect(clients[0]?.activations).toEqual([9]);
     expect(snapshot().operations[HEADING_UP]).toMatchObject({ status: 'ok', failure: null });
   });
@@ -763,7 +764,8 @@ describe('SimulatorSession operations', () => {
     clients[0]?.activateCommand.mockRejectedValueOnce(
       new AvionixError({ code: 'COMMAND_FAILED', message: 'X-Plane answered HTTP 500' }),
     );
-    await session.activate(FEATURE_HEADING_CONTROL, HEADING_UP);
+    const result = await session.activate(FEATURE_HEADING_CONTROL, HEADING_UP);
+    expect(result).toBe('failed');
     expect(snapshot().operations[HEADING_UP]).toMatchObject({
       status: 'failed',
       failure: { code: 'COMMAND_FAILED', step: 'operation' },
@@ -774,7 +776,8 @@ describe('SimulatorSession operations', () => {
   it('refuses while not connected, without calling the client', async () => {
     const { session, clients, snapshot } = setup();
     await session.write(FEATURE_HEADING_CONTROL, HEADING, 10);
-    await session.activate(FEATURE_HEADING_CONTROL, HEADING_UP);
+    const result = await session.activate(FEATURE_HEADING_CONTROL, HEADING_UP);
+    expect(result).toBe('refused');
     expect(clients[0]?.setDataRefValue).not.toHaveBeenCalled();
     expect(clients[0]?.activateCommand).not.toHaveBeenCalled();
     expect(snapshot().operations[HEADING]).toMatchObject({
@@ -801,7 +804,8 @@ describe('SimulatorSession operations', () => {
   it('refuses to activate a DataRef as if it were a command', async () => {
     const { session, clients, snapshot } = setup();
     await session.connect('192.168.1.100', 8086);
-    await session.activate(FEATURE_HEADING_CONTROL, HEADING);
+    const result = await session.activate(FEATURE_HEADING_CONTROL, HEADING);
+    expect(result).toBe('refused');
     expect(clients[0]?.activations).toEqual([]);
     expect(snapshot().operations[HEADING]?.refusal).toBe('unavailable');
   });

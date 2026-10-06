@@ -36,7 +36,7 @@ function live(overrides: Partial<SessionSnapshot> = {}): SessionSnapshot {
 }
 
 function makeActions(): PanelActions & { write: jest.Mock; activate: jest.Mock } {
-  return { write: jest.fn(async () => undefined), activate: jest.fn(async () => undefined) };
+  return { write: jest.fn(async () => undefined), activate: jest.fn(async () => 'ok' as const) };
 }
 
 async function renderPanel(
