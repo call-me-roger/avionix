@@ -7,6 +7,7 @@ import { type SettingsStorage, createMemorySettingsStorage } from '@/application
 import { UNITS_STORAGE_KEY } from '@/application/unit-preferences';
 import { GENERIC_DATAREFS as D, GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import { NOT_LIVE_OPACITY } from '@/features/panels/instruments/InstrumentFace';
+import { instrumentRenders } from '@/features/panels/instruments/svg-parts';
 import { Hsi, PX_PER_DOT } from '@/features/panels/navigation/Hsi';
 import { PanelScope } from '@/features/panels/primitives/PanelFrame';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
@@ -567,5 +568,48 @@ describe('HSI states', () => {
     expect(screen.queryByTestId('hsi-crs-flag')).toBeNull();
     expect(svgText('hsi-nav-flag')).toBe('NAV');
     expect(label()).not.toContain('course');
+  });
+});
+
+describe('HSI memoisation', () => {
+  function resetRenders() {
+    for (const key of Object.keys(instrumentRenders)) {
+      instrumentRenders[key] = 0;
+    }
+  }
+
+  it("does not redraw when only another instrument's value changes", async () => {
+    const storage = createMemorySettingsStorage();
+    const first = live();
+    const view = await render(tree(first, storage));
+    resetRenders();
+    await view.rerender(
+      tree(
+        { ...first, telemetry: { ...first.telemetry, ...telemetry({ [D.altitude]: 4600 }) } },
+        storage,
+      ),
+    );
+    expect(instrumentRenders['instrument-hsi'] ?? 0).toBe(0);
+    expect(instrumentRenders['hsi-card-marks'] ?? 0).toBe(0);
+  });
+
+  it('redraws the face, but not the static card marks, when the heading changes', async () => {
+    const storage = createMemorySettingsStorage();
+    const view = await render(tree(live(), storage));
+    resetRenders();
+    await view.rerender(tree(live({ [D.heading]: 275 }), storage));
+    expect(instrumentRenders['instrument-hsi']).toBe(1);
+    expect(instrumentRenders['hsi-card-marks'] ?? 0).toBe(0);
+    expect(rotationOf('hsi-card')).toBeCloseTo(85);
+    expect(label()).toMatch(/^HSI, heading 275, /);
+  });
+
+  it('redraws when a nested value changes, such as the deviation', async () => {
+    const storage = createMemorySettingsStorage();
+    const view = await render(tree(live(), storage));
+    resetRenders();
+    await view.rerender(tree(live({ [D.hsiHdef]: -0.5 }), storage));
+    expect(instrumentRenders['instrument-hsi']).toBe(1);
+    expect(Number(screen.getByTestId('hsi-cdi').props.x1)).toBeCloseTo(C - 0.5 * PX_PER_DOT);
   });
 });

@@ -6,7 +6,7 @@ import { withStatus } from '@/domain/instruments/labels';
 import { sourceLabel } from '@/domain/navigation/hsi';
 import { cardAngle, deviationOffset } from '@/domain/navigation/hsi-geometry';
 import { InstrumentFace } from '@/features/panels/instruments/InstrumentFace';
-import { cardLabelFont, useSvgFonts } from '@/features/panels/instruments/svg-parts';
+import { cardLabelFont, countRender, useSvgFonts } from '@/features/panels/instruments/svg-parts';
 import { Flag, flagWidth } from '@/features/panels/navigation/NavFlag';
 import {
   MARKER_LETTER,
@@ -146,366 +146,410 @@ function BearingPointer({
 }
 
 /**
+ * The card's 72 ticks and 12 labels at north-up. Static: built once per theme and font (the only
+ * inputs, read from context), never on a needle's or the heading's change; the card's group turns
+ * them.
+ */
+const CardMarks = React.memo(function CardMarks() {
+  countRender('hsi-card-marks');
+  const ink = useTheme().instrument;
+  const fonts = useSvgFonts();
+  return (
+    <>
+      {CARD_TICKS.map((tick) => {
+        const outer = polar(C, C, CARD_R, tick.value);
+        const inner = polar(C, C, CARD_R - (tick.major ? 12 : 7), tick.value);
+        return (
+          <Line
+            key={tick.value}
+            x1={outer.x}
+            y1={outer.y}
+            x2={inner.x}
+            y2={inner.y}
+            stroke={ink.marking}
+            strokeWidth={tick.major ? 2 : 1.5}
+          />
+        );
+      })}
+      {CARD_LABELS.map((deg) => (
+        <SvgText
+          key={deg}
+          testID={`hsi-card-label-${deg}`}
+          x={C}
+          y={C - CARD_R + 30}
+          fontSize={14}
+          fontWeight="bold"
+          fill={ink.marking}
+          textAnchor="middle"
+          transform={`rotate(${deg} ${C} ${C})`}
+          {...cardLabelFont(headingTickLabel(deg), fonts)}
+        >
+          {headingTickLabel(deg)}
+        </SvgText>
+      ))}
+    </>
+  );
+});
+
+/** Plain data compared by value, so a fresh `useNavValues` object with the same values is equal. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) {
+    return true;
+  }
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) {
+    return false;
+  }
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((key) =>
+      sameValue((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
+    )
+  );
+}
+
+/**
  * A Garmin-style HSI (spec section 3). The card turns under a fixed lubber line and aircraft; the
  * course pointer, CDI and TO/FROM turn with the course, the bearing pointers with their bearings,
  * all by `cardAngle` from the heading. Each validity rule is applied in `useNavValues`: what it
  * returns null is not drawn, and a flagged needle shows its red word instead, never a centred
  * needle (R3, R4, R7). X-Plane's deflections are drawn as given: positive is right and up.
  */
-export function Hsi({ size }: { size: number }) {
-  const v = useNavValues();
-  const theme = useTheme();
-  const ink = theme.instrument;
-  const fonts = useSvgFonts();
-  const needle = needleColour(v.source, theme);
-  // An unknown or missing source still says so in words, in the colour that claims no source.
-  const source = sourceLabel(v.source) ?? 'SRC ?';
-  const label = withStatus('HSI', v.status, () => describeHsi(v));
-  const heading = v.heading;
-  // TO or FROM is said of the course, so without one neither the arrow nor the word is shown.
-  const toFrom = v.course === null ? null : v.toFrom;
+const HsiFace = React.memo(
+  function HsiFace({ size, v }: { size: number; v: NavValues }) {
+    const theme = useTheme();
+    const ink = theme.instrument;
+    const fonts = useSvgFonts();
+    const needle = needleColour(v.source, theme);
+    // An unknown or missing source still says so in words, in the colour that claims no source.
+    const source = sourceLabel(v.source) ?? 'SRC ?';
+    const label = withStatus('HSI', v.status, () => describeHsi(v));
+    const heading = v.heading;
+    // TO or FROM is said of the course, so without one neither the arrow nor the word is shown.
+    const toFrom = v.course === null ? null : v.toFrom;
 
-  return (
-    <InstrumentFace
-      testID="instrument-hsi"
-      label={label}
-      status={v.status}
-      width={size}
-      height={size}
-      viewBox={VB}
-      scale={
-        <>
-          <Rect x={0} y={0} width={VB.width} height={VB.height} rx={12} fill={ink.face} />
-          <Circle cx={C} cy={C} r={CARD_R} fill={ink.face} stroke={ink.marking} strokeWidth={1} />
-        </>
-      }
-    >
-      {heading === null ? null : (
-        <>
-          {/* First, so the card's top ticks, the bug and the lubber line draw over the 4 units
+    return (
+      <InstrumentFace
+        testID="instrument-hsi"
+        label={label}
+        status={v.status}
+        width={size}
+        height={size}
+        viewBox={VB}
+        scale={
+          <>
+            <Rect x={0} y={0} width={VB.width} height={VB.height} rx={12} fill={ink.face} />
+            <Circle cx={C} cy={C} r={CARD_R} fill={ink.face} stroke={ink.marking} strokeWidth={1} />
+          </>
+        }
+      >
+        {heading === null ? null : (
+          <>
+            {/* First, so the card's top ticks, the bug and the lubber line draw over the 4 units
               of the box below the card's edge: its letter sits wholly above the card. */}
-          {v.marker === null ? null : (
-            <>
-              <Rect
-                testID="hsi-marker-box"
-                x={C - 14}
-                y={0}
-                width={28}
-                height={20}
-                rx={3}
-                fill={markerColour(v.marker, theme)}
-              />
-              <SvgText
-                testID="hsi-marker"
-                x={C}
-                y={15}
-                fontSize={14}
-                fontWeight="bold"
-                fill={ink.face}
-                textAnchor="middle"
-                {...fonts.letters}
-              >
-                {MARKER_LETTER[v.marker]}
-              </SvgText>
-            </>
-          )}
-
-          <G testID="hsi-card" transform={`rotate(${cardAngle(0, heading)} ${C} ${C})`}>
-            {CARD_TICKS.map((tick) => {
-              const outer = polar(C, C, CARD_R, tick.value);
-              const inner = polar(C, C, CARD_R - (tick.major ? 12 : 7), tick.value);
-              return (
-                <Line
-                  key={tick.value}
-                  x1={outer.x}
-                  y1={outer.y}
-                  x2={inner.x}
-                  y2={inner.y}
-                  stroke={ink.marking}
-                  strokeWidth={tick.major ? 2 : 1.5}
+            {v.marker === null ? null : (
+              <>
+                <Rect
+                  testID="hsi-marker-box"
+                  x={C - 14}
+                  y={0}
+                  width={28}
+                  height={20}
+                  rx={3}
+                  fill={markerColour(v.marker, theme)}
                 />
-              );
-            })}
-            {CARD_LABELS.map((deg) => (
-              <SvgText
-                key={deg}
-                testID={`hsi-card-label-${deg}`}
-                x={C}
-                y={C - CARD_R + 30}
-                fontSize={14}
-                fontWeight="bold"
-                fill={ink.marking}
-                textAnchor="middle"
-                transform={`rotate(${deg} ${C} ${C})`}
-                {...cardLabelFont(headingTickLabel(deg), fonts)}
-              >
-                {headingTickLabel(deg)}
-              </SvgText>
-            ))}
-          </G>
+                <SvgText
+                  testID="hsi-marker"
+                  x={C}
+                  y={15}
+                  fontSize={14}
+                  fontWeight="bold"
+                  fill={ink.face}
+                  textAnchor="middle"
+                  {...fonts.letters}
+                >
+                  {MARKER_LETTER[v.marker]}
+                </SvgText>
+              </>
+            )}
 
-          {v.headingBug === null ? null : (
-            <Polygon
-              testID="hsi-heading-bug"
-              points={BUG_POINTS}
-              fill={ink.selected}
-              transform={`rotate(${cardAngle(v.headingBug, heading)} ${C} ${C})`}
-            />
-          )}
+            <G testID="hsi-card" transform={`rotate(${cardAngle(0, heading)} ${C} ${C})`}>
+              <CardMarks />
+            </G>
 
-          {v.bearing1 === null ? null : (
-            <BearingPointer
-              testID="hsi-brg1"
-              double={false}
-              angle={cardAngle(v.bearing1, heading)}
-            />
-          )}
-          {v.bearing2 === null ? null : (
-            <BearingPointer testID="hsi-brg2" double angle={cardAngle(v.bearing2, heading)} />
-          )}
-
-          {v.course === null ? null : (
-            <G
-              testID="hsi-course-group"
-              transform={`rotate(${cardAngle(v.course, heading)} ${C} ${C})`}
-            >
-              {DOTS.map((dot) => (
-                <Circle
-                  key={dot}
-                  cx={C + deviationOffset(dot, PX_PER_DOT)}
-                  cy={C}
-                  r={3.5}
-                  fill="none"
-                  stroke={ink.marking}
-                  strokeWidth={1.5}
-                />
-              ))}
+            {v.headingBug === null ? null : (
               <Polygon
-                testID="hsi-course-pointer"
-                points={`${C},${COURSE_TIP} ${C - 8},${COURSE_HEAD_BASE} ${C + 8},${COURSE_HEAD_BASE}`}
-                fill={needle}
+                testID="hsi-heading-bug"
+                points={BUG_POINTS}
+                fill={ink.selected}
+                transform={`rotate(${cardAngle(v.headingBug, heading)} ${C} ${C})`}
               />
-              <Line
-                x1={C}
-                y1={COURSE_HEAD_BASE}
-                x2={C}
-                y2={C - CDI_HALF - CDI_GAP}
-                stroke={needle}
-                strokeWidth={4}
+            )}
+
+            {v.bearing1 === null ? null : (
+              <BearingPointer
+                testID="hsi-brg1"
+                double={false}
+                angle={cardAngle(v.bearing1, heading)}
               />
-              <Line
-                x1={C}
-                y1={C + CDI_HALF + CDI_GAP}
-                x2={C}
-                y2={C + CARD_R - 4}
-                stroke={needle}
-                strokeWidth={4}
-              />
-              {v.lateral.dots === null ? null : (
+            )}
+            {v.bearing2 === null ? null : (
+              <BearingPointer testID="hsi-brg2" double angle={cardAngle(v.bearing2, heading)} />
+            )}
+
+            {v.course === null ? null : (
+              <G
+                testID="hsi-course-group"
+                transform={`rotate(${cardAngle(v.course, heading)} ${C} ${C})`}
+              >
+                {DOTS.map((dot) => (
+                  <Circle
+                    key={dot}
+                    cx={C + deviationOffset(dot, PX_PER_DOT)}
+                    cy={C}
+                    r={3.5}
+                    fill="none"
+                    stroke={ink.marking}
+                    strokeWidth={1.5}
+                  />
+                ))}
+                <Polygon
+                  testID="hsi-course-pointer"
+                  points={`${C},${COURSE_TIP} ${C - 8},${COURSE_HEAD_BASE} ${C + 8},${COURSE_HEAD_BASE}`}
+                  fill={needle}
+                />
                 <Line
-                  testID="hsi-cdi"
-                  x1={C + deviationOffset(v.lateral.dots.dots, PX_PER_DOT)}
-                  y1={C - CDI_HALF}
-                  x2={C + deviationOffset(v.lateral.dots.dots, PX_PER_DOT)}
-                  y2={C + CDI_HALF}
+                  x1={C}
+                  y1={COURSE_HEAD_BASE}
+                  x2={C}
+                  y2={C - CDI_HALF - CDI_GAP}
                   stroke={needle}
                   strokeWidth={4}
                 />
-              )}
-              {v.toFrom === null ? null : (
-                <Polygon
-                  testID="hsi-to-from-arrow"
-                  points={
-                    v.toFrom === 'TO'
-                      ? `${C},${C - 34} ${C - 8},${C - 22} ${C + 8},${C - 22}`
-                      : `${C},${C + 34} ${C - 8},${C + 22} ${C + 8},${C + 22}`
-                  }
-                  fill={ink.marking}
+                <Line
+                  x1={C}
+                  y1={C + CDI_HALF + CDI_GAP}
+                  x2={C}
+                  y2={C + CARD_R - 4}
+                  stroke={needle}
+                  strokeWidth={4}
                 />
-              )}
-            </G>
-          )}
+                {v.lateral.dots === null ? null : (
+                  <Line
+                    testID="hsi-cdi"
+                    x1={C + deviationOffset(v.lateral.dots.dots, PX_PER_DOT)}
+                    y1={C - CDI_HALF}
+                    x2={C + deviationOffset(v.lateral.dots.dots, PX_PER_DOT)}
+                    y2={C + CDI_HALF}
+                    stroke={needle}
+                    strokeWidth={4}
+                  />
+                )}
+                {v.toFrom === null ? null : (
+                  <Polygon
+                    testID="hsi-to-from-arrow"
+                    points={
+                      v.toFrom === 'TO'
+                        ? `${C},${C - 34} ${C - 8},${C - 22} ${C + 8},${C - 22}`
+                        : `${C},${C + 34} ${C - 8},${C + 22} ${C + 8},${C + 22}`
+                    }
+                    fill={ink.marking}
+                  />
+                )}
+              </G>
+            )}
 
-          {v.lateral.valid ? null : (
-            <Flag
-              testID="hsi-nav-flag"
-              x={C}
-              y={C - 32}
-              word={v.lateral.unavailable ? 'NAV N/A' : 'NAV'}
-            />
-          )}
-
-          {v.glideslope.state === 'unavailable' ? (
-            // The aircraft lacks a glideslope DataRef: said where the scale would be, so a missing
-            // diamond on an approach never reads as no glideslope expected.
-            <Flag
-              testID="hsi-gs-flag"
-              x={flagRightX(`${verticalName(v.source).flag} N/A`)}
-              y={C}
-              word={`${verticalName(v.source).flag} N/A`}
-            />
-          ) : null}
-          {v.glideslope.state === 'valid' || v.glideslope.state === 'flagged' ? (
-            <G testID="hsi-gs-scale">
-              <Line
-                x1={GS_X - 6}
-                y1={C}
-                x2={GS_X + 6}
-                y2={C}
-                stroke={ink.marking}
-                strokeWidth={2}
+            {v.lateral.valid ? null : (
+              <Flag
+                testID="hsi-nav-flag"
+                x={C}
+                y={C - 32}
+                word={v.lateral.unavailable ? 'NAV N/A' : 'NAV'}
               />
-              {DOTS.map((dot) => (
-                <Circle
-                  key={dot}
-                  cx={GS_X}
-                  cy={C - deviationOffset(dot, PX_PER_DOT)}
-                  r={3.5}
-                  fill="none"
+            )}
+
+            {v.glideslope.state === 'unavailable' ? (
+              // The aircraft lacks a glideslope DataRef: said where the scale would be, so a missing
+              // diamond on an approach never reads as no glideslope expected.
+              <Flag
+                testID="hsi-gs-flag"
+                x={flagRightX(`${verticalName(v.source).flag} N/A`)}
+                y={C}
+                word={`${verticalName(v.source).flag} N/A`}
+              />
+            ) : null}
+            {v.glideslope.state === 'valid' || v.glideslope.state === 'flagged' ? (
+              <G testID="hsi-gs-scale">
+                <Line
+                  x1={GS_X - 6}
+                  y1={C}
+                  x2={GS_X + 6}
+                  y2={C}
                   stroke={ink.marking}
-                  strokeWidth={1.5}
+                  strokeWidth={2}
                 />
-              ))}
-              {v.glideslope.dots === null ? null : (
-                <Polygon
-                  testID="hsi-gs-diamond"
-                  points={diamondPoints(C - deviationOffset(v.glideslope.dots.dots, PX_PER_DOT))}
-                  fill={needle}
-                />
-              )}
-              {v.glideslope.state === 'flagged' ? (
-                <Flag
-                  testID="hsi-gs-flag"
-                  x={flagRightX(verticalName(v.source).flag)}
-                  y={C}
-                  word={verticalName(v.source).flag}
-                />
-              ) : null}
-            </G>
-          ) : null}
+                {DOTS.map((dot) => (
+                  <Circle
+                    key={dot}
+                    cx={GS_X}
+                    cy={C - deviationOffset(dot, PX_PER_DOT)}
+                    r={3.5}
+                    fill="none"
+                    stroke={ink.marking}
+                    strokeWidth={1.5}
+                  />
+                ))}
+                {v.glideslope.dots === null ? null : (
+                  <Polygon
+                    testID="hsi-gs-diamond"
+                    points={diamondPoints(C - deviationOffset(v.glideslope.dots.dots, PX_PER_DOT))}
+                    fill={needle}
+                  />
+                )}
+                {v.glideslope.state === 'flagged' ? (
+                  <Flag
+                    testID="hsi-gs-flag"
+                    x={flagRightX(verticalName(v.source).flag)}
+                    y={C}
+                    word={verticalName(v.source).flag}
+                  />
+                ) : null}
+              </G>
+            ) : null}
 
-          <Polygon
-            points={`${C},${C - CARD_R + 1} ${C - 6},${C - CARD_R + 13} ${C + 6},${C - CARD_R + 13}`}
-            fill={ink.pointer}
-          />
-          <Line x1={C} y1={C - 14} x2={C} y2={C + 16} stroke={ink.pointer} strokeWidth={3} />
-          <Line
-            x1={C - 18}
-            y1={C - 2}
-            x2={C + 18}
-            y2={C - 2}
-            stroke={ink.pointer}
-            strokeWidth={3}
-          />
-          <Line
-            x1={C - 7}
-            y1={C + 13}
-            x2={C + 7}
-            y2={C + 13}
-            stroke={ink.pointer}
-            strokeWidth={3}
-          />
+            <Polygon
+              points={`${C},${C - CARD_R + 1} ${C - 6},${C - CARD_R + 13} ${C + 6},${C - CARD_R + 13}`}
+              fill={ink.pointer}
+            />
+            <Line x1={C} y1={C - 14} x2={C} y2={C + 16} stroke={ink.pointer} strokeWidth={3} />
+            <Line
+              x1={C - 18}
+              y1={C - 2}
+              x2={C + 18}
+              y2={C - 2}
+              stroke={ink.pointer}
+              strokeWidth={3}
+            />
+            <Line
+              x1={C - 7}
+              y1={C + 13}
+              x2={C + 7}
+              y2={C + 13}
+              stroke={ink.pointer}
+              strokeWidth={3}
+            />
 
-          <SvgText
-            testID="hsi-source"
-            x={CORNER_INSET}
-            y={16}
-            fontSize={CORNER_SIZE}
-            fontWeight="bold"
-            fill={needle}
-            {...fonts.letters}
-          >
-            {source}
-          </SvgText>
-          {v.ident === null ? null : (
             <SvgText
-              testID="hsi-ident"
+              testID="hsi-source"
               x={CORNER_INSET}
-              y={16 + LINE_STEP}
-              fontSize={CORNER_SIZE}
-              fontWeight="bold"
-              fill={ink.marking}
-              {...fonts.letters}
-            >
-              {v.ident}
-            </SvgText>
-          )}
-          {v.course === null ? null : (
-            <SvgText
-              testID="hsi-course"
-              x={VB.width - CORNER_INSET}
               y={16}
               fontSize={CORNER_SIZE}
               fontWeight="bold"
               fill={needle}
-              textAnchor="end"
-              {...fonts.digits}
-            >
-              {`CRS ${headingText(v.course)}°`}
-            </SvgText>
-          )}
-          {v.course === null && v.lateral.valid ? (
-            // A received course with no course value: flagged where the course is printed, since
-            // neither the pointer nor the CDI can be drawn without it.
-            <Flag testID="hsi-crs-flag" x={flagRightX('CRS')} y={12} word="CRS" />
-          ) : null}
-          {v.dme === null ? null : (
-            <SvgText
-              testID="hsi-dme"
-              x={CORNER_INSET}
-              y={VB.height - CORNER_INSET - LINE_STEP}
-              fontSize={CORNER_SIZE}
-              fontWeight="bold"
-              fill={ink.marking}
-              {...fonts.digits}
-            >
-              {v.dme}
-            </SvgText>
-          )}
-          {v.dmeSpeed === null ? null : (
-            <SvgText
-              testID="hsi-dme-speed"
-              x={CORNER_INSET}
-              y={VB.height - CORNER_INSET}
-              fontSize={CORNER_SIZE}
-              fontWeight="bold"
-              fill={ink.marking}
-              {...fonts.digits}
-            >
-              {v.dmeSpeed}
-            </SvgText>
-          )}
-          {v.dmeTime === null ? null : (
-            <SvgText
-              testID="hsi-dme-time"
-              x={v.dmeSpeed === null ? CORNER_INSET : DME_TIME_AFTER_SPEED_X}
-              y={VB.height - CORNER_INSET}
-              fontSize={CORNER_SIZE}
-              fontWeight="bold"
-              fill={ink.marking}
-              {...fonts.digits}
-            >
-              {v.dmeTime}
-            </SvgText>
-          )}
-          {toFrom === null ? null : (
-            <SvgText
-              testID="hsi-to-from"
-              x={VB.width - CORNER_INSET}
-              y={VB.height - CORNER_INSET}
-              fontSize={CORNER_SIZE}
-              fontWeight="bold"
-              fill={ink.marking}
-              textAnchor="end"
               {...fonts.letters}
             >
-              {toFrom}
+              {source}
             </SvgText>
-          )}
-        </>
-      )}
-    </InstrumentFace>
-  );
+            {v.ident === null ? null : (
+              <SvgText
+                testID="hsi-ident"
+                x={CORNER_INSET}
+                y={16 + LINE_STEP}
+                fontSize={CORNER_SIZE}
+                fontWeight="bold"
+                fill={ink.marking}
+                {...fonts.letters}
+              >
+                {v.ident}
+              </SvgText>
+            )}
+            {v.course === null ? null : (
+              <SvgText
+                testID="hsi-course"
+                x={VB.width - CORNER_INSET}
+                y={16}
+                fontSize={CORNER_SIZE}
+                fontWeight="bold"
+                fill={needle}
+                textAnchor="end"
+                {...fonts.digits}
+              >
+                {`CRS ${headingText(v.course)}°`}
+              </SvgText>
+            )}
+            {v.course === null && v.lateral.valid ? (
+              // A received course with no course value: flagged where the course is printed, since
+              // neither the pointer nor the CDI can be drawn without it.
+              <Flag testID="hsi-crs-flag" x={flagRightX('CRS')} y={12} word="CRS" />
+            ) : null}
+            {v.dme === null ? null : (
+              <SvgText
+                testID="hsi-dme"
+                x={CORNER_INSET}
+                y={VB.height - CORNER_INSET - LINE_STEP}
+                fontSize={CORNER_SIZE}
+                fontWeight="bold"
+                fill={ink.marking}
+                {...fonts.digits}
+              >
+                {v.dme}
+              </SvgText>
+            )}
+            {v.dmeSpeed === null ? null : (
+              <SvgText
+                testID="hsi-dme-speed"
+                x={CORNER_INSET}
+                y={VB.height - CORNER_INSET}
+                fontSize={CORNER_SIZE}
+                fontWeight="bold"
+                fill={ink.marking}
+                {...fonts.digits}
+              >
+                {v.dmeSpeed}
+              </SvgText>
+            )}
+            {v.dmeTime === null ? null : (
+              <SvgText
+                testID="hsi-dme-time"
+                x={v.dmeSpeed === null ? CORNER_INSET : DME_TIME_AFTER_SPEED_X}
+                y={VB.height - CORNER_INSET}
+                fontSize={CORNER_SIZE}
+                fontWeight="bold"
+                fill={ink.marking}
+                {...fonts.digits}
+              >
+                {v.dmeTime}
+              </SvgText>
+            )}
+            {toFrom === null ? null : (
+              <SvgText
+                testID="hsi-to-from"
+                x={VB.width - CORNER_INSET}
+                y={VB.height - CORNER_INSET}
+                fontSize={CORNER_SIZE}
+                fontWeight="bold"
+                fill={ink.marking}
+                textAnchor="end"
+                {...fonts.letters}
+              >
+                {toFrom}
+              </SvgText>
+            )}
+          </>
+        )}
+      </InstrumentFace>
+    );
+  },
+  (prev, next) => prev.size === next.size && sameValue(prev.v, next.v),
+);
+
+/**
+ * The HSI, read once per panel render: its face re-renders only when what it draws changes,
+ * as the PFD's faces do, so a telemetry tick for another instrument never redraws it.
+ */
+export function Hsi({ size }: { size: number }) {
+  const v = useNavValues();
+  return <HsiFace size={size} v={v} />;
 }
 
 /** The glideslope diamond centred on (GS_X, y); its first vertex is the top. */
