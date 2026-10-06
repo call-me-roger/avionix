@@ -10,8 +10,38 @@ export interface ThemeColors {
   onPrimary: string;
   danger: string;
   success: string;
+  caution: string;
   inputBackground: string;
   placeholder: string;
+}
+
+/**
+ * R-01: the avionics hardware palette (bezels, glass, key caps, annunciator lights), in the meanings
+ * of AC 25-11B and the Garmin guides: green engaged or active, white armed, cyan selected or being
+ * tuned, amber caution, red warning. Light and dark share it, as a real panel is dark in daylight.
+ */
+export interface AvionicsColors {
+  bezel: string;
+  bezelEdge: string;
+  glass: string;
+  glassEdge: string;
+  keyFace: string;
+  keyFacePressed: string;
+  legend: string;
+  legendDim: string;
+  engaged: string;
+  armed: string;
+  selected: string;
+  caution: string;
+  warning: string;
+  lightOff: string;
+}
+
+export interface FontFamilies {
+  avionics?: string;
+  avionicsBold?: string;
+  mono?: string;
+  monoBold?: string;
 }
 
 /**
@@ -33,23 +63,82 @@ export interface InstrumentColors {
   arcRed: string;
   flag: string;
   flagText: string;
+  selected: string;
+  bug: string;
 }
 
 export interface Theme {
   mode: ThemeMode;
   colors: ThemeColors;
   instrument: InstrumentColors;
+  avionics: AvionicsColors;
   spacing: { xs: number; sm: number; md: number; lg: number; xl: number };
   radius: { sm: number; md: number };
-  typography: { headingSize: number; titleSize: number; bodySize: number };
+  typography: {
+    headingSize: number;
+    titleSize: number;
+    bodySize: number;
+    displaySize: number;
+    legendSize: number;
+    captionSize: number;
+    fonts: FontFamilies;
+  };
   /** F-04 R4: the same on phone and tablet; a tablet shows more controls, never smaller ones. */
   touch: { minTarget: number; spacing: number };
 }
 
 const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
 const radius = { sm: 4, md: 8 } as const;
-const typography = { headingSize: 24, titleSize: 16, bodySize: 14 } as const;
+// Shared, not frozen: `fonts` is replaced once the B612 families load (withAvionicsFonts).
+const typography = {
+  headingSize: 24,
+  titleSize: 16,
+  bodySize: 14,
+  displaySize: 28,
+  legendSize: 15,
+  captionSize: 12,
+  fonts: {} as FontFamilies,
+};
 const touch = { minTarget: 48, spacing: 8 } as const;
+
+/**
+ * Day avionics hardware palette, shared by `lightTheme` and `darkTheme`: a real glass-cockpit panel
+ * is dark in daylight too, so there is one "day" look, not a light and a dark one.
+ */
+const dayAvionics: AvionicsColors = {
+  bezel: '#1d2126',
+  bezelEdge: '#3a4048',
+  glass: '#05080b',
+  glassEdge: '#2b3138',
+  keyFace: '#2c3138',
+  keyFacePressed: '#181b20',
+  legend: '#e8eaed',
+  legendDim: '#8b949e',
+  engaged: '#36d35a',
+  armed: '#e8eaed',
+  selected: '#2fd0f0',
+  caution: '#ffb300',
+  warning: '#ff4a3d',
+  lightOff: '#3a4048',
+};
+
+/** Night avionics: every colour kept at relative luminance 0.30 or less, like the rest of the palette. */
+const nightAvionics: AvionicsColors = {
+  bezel: '#0c0a08',
+  bezelEdge: '#2a2117',
+  glass: '#000000',
+  glassEdge: '#2a2117',
+  keyFace: '#14100b',
+  keyFacePressed: '#060504',
+  legend: '#a88a60',
+  legendDim: '#917752',
+  engaged: '#4f9a3a',
+  armed: '#a88a60',
+  selected: '#3f8f9a',
+  caution: '#b07a1e',
+  warning: '#d0584a',
+  lightOff: '#241c13',
+};
 
 const dayInstrument: InstrumentColors = {
   face: '#000000',
@@ -65,6 +154,8 @@ const dayInstrument: InstrumentColors = {
   arcRed: '#e5322d',
   flag: '#e5322d',
   flagText: '#ffffff',
+  selected: '#2fd0f0',
+  bug: '#ff8a1f',
 };
 
 export const lightTheme: Theme = {
@@ -79,10 +170,12 @@ export const lightTheme: Theme = {
     onPrimary: '#ffffff',
     danger: '#b00020',
     success: '#1a7f37',
+    caution: '#8a5d00',
     inputBackground: '#ffffff',
     placeholder: '#6b7280',
   },
   instrument: dayInstrument,
+  avionics: dayAvionics,
   spacing,
   radius,
   typography,
@@ -101,10 +194,12 @@ export const darkTheme: Theme = {
     onPrimary: '#ffffff',
     danger: '#ff7b72',
     success: '#3fb950',
+    caution: '#d29922',
     inputBackground: '#0d1117',
     placeholder: '#8b949e',
   },
   instrument: dayInstrument,
+  avionics: dayAvionics,
   spacing,
   radius,
   typography,
@@ -128,6 +223,7 @@ export const nightTheme: Theme = {
     onPrimary: '#a88a60',
     danger: '#d0584a',
     success: '#6f9a4a',
+    caution: '#a07a2a',
     inputBackground: '#000000',
     placeholder: '#917752',
   },
@@ -145,7 +241,10 @@ export const nightTheme: Theme = {
     arcRed: '#b0473b',
     flag: '#d0584a',
     flagText: '#000000',
+    selected: '#3f8f9a',
+    bug: '#a0601e',
   },
+  avionics: nightAvionics,
   spacing,
   radius,
   typography,

@@ -18,6 +18,7 @@ import {
   saveThemePreference,
 } from '@/theme/theme-preference';
 import { type Theme, themeForMode } from '@/theme/tokens';
+import { withAvionicsFonts } from '@/theme/typography';
 
 interface ThemeContextValue {
   theme: Theme;
@@ -32,10 +33,17 @@ export interface ThemeProviderProps {
   storage: SettingsStorage;
   /** Overrides the OS colour scheme (tests, forced schemes). `undefined` means "use the OS". */
   systemSchemeOverride?: 'light' | 'dark' | null;
+  /** True once the B612 avionics fonts have loaded; until then the theme keeps the system font. */
+  fontsLoaded?: boolean;
   children: React.ReactNode;
 }
 
-export function ThemeProvider({ storage, systemSchemeOverride, children }: ThemeProviderProps) {
+export function ThemeProvider({
+  storage,
+  systemSchemeOverride,
+  fontsLoaded = false,
+  children,
+}: ThemeProviderProps) {
   const osScheme = useColorScheme();
   const normalizedOsScheme = osScheme === 'light' || osScheme === 'dark' ? osScheme : null;
   const systemScheme =
@@ -69,10 +77,10 @@ export function ThemeProvider({ storage, systemSchemeOverride, children }: Theme
     [storage],
   );
 
-  const theme = useMemo(
-    () => themeForMode(resolveThemeMode(preference, systemScheme)),
-    [preference, systemScheme],
-  );
+  const theme = useMemo(() => {
+    const base = themeForMode(resolveThemeMode(preference, systemScheme));
+    return fontsLoaded ? withAvionicsFonts(base) : base;
+  }, [preference, systemScheme, fontsLoaded]);
 
   const value = useMemo<ThemeContextValue>(
     () => ({ theme, preference, setPreference, ready }),
