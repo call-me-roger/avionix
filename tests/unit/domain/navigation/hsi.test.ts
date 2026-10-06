@@ -2,6 +2,8 @@ import {
   DEV_PEG_DOTS,
   bearingPointer,
   deviationDots,
+  dmeSpeedText,
+  dmeSpeedWords,
   dmeText,
   dmeTimeText,
   dmeWords,
@@ -109,6 +111,28 @@ describe('DME', () => {
     expect(dmeWords(1, null, 'nm')).toBeNull();
     expect(dmeWords(1, -1, 'nm')).toBeNull();
     expect(dmeWords(1, Number.NaN, 'nm')).toBeNull();
+  });
+  it('shows the groundspeed in whole knots, only beside a shown distance', () => {
+    expect(dmeSpeedText(1, 12.4, 110.4)).toBe('110 KT');
+    expect(dmeSpeedText(1, 12.4, 0)).toBe('0 KT');
+    // No distance, so no groundspeed: no DME signal, no distance value, or a negative one.
+    expect(dmeSpeedText(0, 12.4, 110)).toBeNull();
+    expect(dmeSpeedText(null, 12.4, 110)).toBeNull();
+    expect(dmeSpeedText(1, null, 110)).toBeNull();
+    expect(dmeSpeedText(1, -1, 110)).toBeNull();
+    // No usable speed of its own.
+    expect(dmeSpeedText(1, 12.4, null)).toBeNull();
+    expect(dmeSpeedText(1, 12.4, Number.NaN)).toBeNull();
+    expect(dmeSpeedText(1, 12.4, Number.POSITIVE_INFINITY)).toBeNull();
+    expect(dmeSpeedText(1, 12.4, -5)).toBeNull();
+  });
+  it('speaks the same groundspeed in knots', () => {
+    expect(dmeSpeedWords(1, 12.4, 109.6)).toBe('groundspeed 110 knots');
+    expect(dmeSpeedWords(1, 12.4, 1)).toBe('groundspeed 1 knot');
+    expect(dmeSpeedWords(0, 12.4, 110)).toBeNull();
+    expect(dmeSpeedWords(1, null, 110)).toBeNull();
+    expect(dmeSpeedWords(1, 12.4, null)).toBeNull();
+    expect(dmeSpeedWords(1, 12.4, -1)).toBeNull();
   });
   it('rounds the time to whole minutes', () => {
     expect(dmeTimeText(6.6)).toBe('7 MIN');

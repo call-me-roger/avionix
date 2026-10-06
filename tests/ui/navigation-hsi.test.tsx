@@ -37,6 +37,7 @@ const VALUES: Record<string, number | string> = {
   [D.hsiGsFlag]: 0,
   [D.hsiHasDme]: 1,
   [D.hsiDmeDistance]: 12.4,
+  [D.hsiDmeSpeed]: 110,
   [D.hsiDmeTime]: 7,
   [D.nav1Id]: IKSO,
   [D.nav2Id]: ITMA,
@@ -230,7 +231,34 @@ describe('HSI on a valid NAV1 course', () => {
     await render(tree(live({ [D.hsiHasDme]: 0 })));
     expect(screen.queryByTestId('hsi-dme')).toBeNull();
     expect(screen.queryByTestId('hsi-dme-time')).toBeNull();
+    expect(screen.queryByTestId('hsi-dme-speed')).toBeNull();
     expect(label()).not.toContain('DME');
+    expect(label()).not.toContain('groundspeed');
+  });
+
+  it('shows the DME groundspeed under the distance, the time beside it, and says it', async () => {
+    await render(tree(live()));
+    expect(svgText('hsi-dme-speed')).toBe('110 KT');
+    const dme = screen.getByTestId('hsi-dme');
+    const speed = screen.getByTestId('hsi-dme-speed');
+    const time = screen.getByTestId('hsi-dme-time');
+    // react-native-svg hands a text's position to the native view as one-element arrays.
+    const at = (node: typeof dme, axis: 'x' | 'y') => Number((node.props[axis] as number[])[0]);
+    expect(at(speed, 'x')).toBe(at(dme, 'x'));
+    expect(at(speed, 'y')).toBeGreaterThan(at(dme, 'y'));
+    expect(at(time, 'y')).toBe(at(speed, 'y'));
+    expect(at(time, 'x')).toBeGreaterThan(at(speed, 'x'));
+    expect(label()).toContain('DME 12.4 nautical miles, groundspeed 110 knots');
+  });
+
+  it('keeps the time under the distance without a groundspeed', async () => {
+    const snapshot = live();
+    const { [D.hsiDmeSpeed]: _dropped, ...rest } = snapshot.telemetry;
+    await render(tree({ ...snapshot, telemetry: rest }));
+    expect(screen.queryByTestId('hsi-dme-speed')).toBeNull();
+    const at = (testID: string) => Number((screen.getByTestId(testID).props.x as number[])[0]);
+    expect(at('hsi-dme-time')).toBe(at('hsi-dme'));
+    expect(label()).not.toContain('groundspeed');
   });
 
   it('sets the corner texts in B612 Mono and B612 once the fonts load', async () => {
@@ -330,19 +358,29 @@ describe('HSI glideslope', () => {
     expect(screen.queryByTestId('hsi-gs-scale')).toBeNull();
   });
 
-  it('says the glideslope is not available when its flag is missing on the aircraft', async () => {
-    await render(tree(withMissing(live({ [D.hsiVertical]: 1, [D.hsiVdef]: -0.5 }), D.hsiGsFlag)));
-    expect(screen.queryByTestId('hsi-gs-diamond')).toBeNull();
-    expect(screen.queryByTestId('hsi-gs-scale')).toBeNull();
-    expect(label()).toContain('glideslope not available on this aircraft');
-  });
+  it.each([D.hsiVdef, D.hsiVertical, D.hsiGsFlag])(
+    'flags GS N/A at the scale, with no scale or diamond, when %s is missing on the aircraft',
+    async (name) => {
+      await render(
+        tree(withMissing(live({ [D.hsiVertical]: 1, [D.hsiGsFlag]: 0, [D.hsiVdef]: -0.5 }), name)),
+      );
+      expect(screen.queryByTestId('hsi-gs-scale')).toBeNull();
+      expect(screen.queryByTestId('hsi-gs-diamond')).toBeNull();
+      expect(svgText('hsi-gs-flag')).toBe('GS N/A');
+      expect(paint('hsi-gs-flag-box', 'fill')).toBe(processColor(ink.flag));
+      expect(label()).toContain('glideslope not available on this aircraft');
+      expect(screen.getByTestId('hsi-cdi')).toBeTruthy();
+    },
+  );
 
-  it('says the glideslope is not available when its signal is missing on the aircraft', async () => {
-    await render(tree(withMissing(live({ [D.hsiVdef]: -0.5 }), D.hsiVertical)));
-    expect(screen.queryByTestId('hsi-gs-scale')).toBeNull();
-    expect(screen.queryByTestId('hsi-gs-flag')).toBeNull();
-    expect(label()).toContain('glideslope not available on this aircraft');
-    expect(screen.getByTestId('hsi-cdi')).toBeTruthy();
+  it('keeps the GS N/A flag at the scale, wholly inside the face', async () => {
+    await render(tree(withMissing(live(), D.hsiVertical)));
+    const box = screen.getByTestId('hsi-gs-flag-box');
+    const x = Number(box.props.x);
+    const width = Number(box.props.width);
+    expect(x + width).toBeLessThanOrEqual(240);
+    // Centred on the scale's centre line, where the diamond would ride.
+    expect(Number(box.props.y) + Number(box.props.height) / 2).toBeCloseTo(C);
   });
 
   it('calls a GPS vertical path a glidepath and flags it GP', async () => {
@@ -356,6 +394,7 @@ describe('HSI glideslope', () => {
     expect(label()).toContain('glidepath flagged');
     await view.rerender(tree(withMissing(live({ [D.hsiSource]: 2 }), D.hsiVertical)));
     expect(label()).toContain('glidepath not available on this aircraft');
+    expect(svgText('hsi-gs-flag')).toBe('GP N/A');
   });
 
   it('draws no scale at all when no glideslope is expected', async () => {
@@ -506,12 +545,27 @@ describe('HSI states', () => {
     },
   );
 
-  it('draws no course pointer or CDI without a course', async () => {
+  it('flags CRS and says the course is not available when a received course has no value', async () => {
     await render(tree(withMissing(live(), D.hsiCourse)));
     expect(screen.queryByTestId('hsi-course-group')).toBeNull();
     expect(screen.queryByTestId('hsi-cdi')).toBeNull();
     expect(screen.queryByTestId('hsi-course')).toBeNull();
-    expect(label()).not.toContain('course');
+    expect(svgText('hsi-crs-flag')).toBe('CRS');
+    expect(paint('hsi-crs-flag-box', 'fill')).toBe(processColor(ink.flag));
+    expect(label()).toContain('NAV1, IKSO, course not available');
     expect(label()).not.toContain('dots');
+  });
+
+  it('draws no CRS flag while the course is shown', async () => {
+    await render(tree(live()));
+    expect(screen.queryByTestId('hsi-crs-flag')).toBeNull();
+    expect(label()).not.toContain('course not available');
+  });
+
+  it('leaves a missing course to the NAV flag when no course is received either', async () => {
+    await render(tree(withMissing(live({ [D.hsiFromTo]: 0 }), D.hsiCourse)));
+    expect(screen.queryByTestId('hsi-crs-flag')).toBeNull();
+    expect(svgText('hsi-nav-flag')).toBe('NAV');
+    expect(label()).not.toContain('course');
   });
 });

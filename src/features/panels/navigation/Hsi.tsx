@@ -7,7 +7,7 @@ import { sourceLabel } from '@/domain/navigation/hsi';
 import { cardAngle, deviationOffset } from '@/domain/navigation/hsi-geometry';
 import { InstrumentFace } from '@/features/panels/instruments/InstrumentFace';
 import { cardLabelFont, useSvgFonts } from '@/features/panels/instruments/svg-parts';
-import { Flag } from '@/features/panels/navigation/NavFlag';
+import { Flag, flagWidth } from '@/features/panels/navigation/NavFlag';
 import {
   MARKER_LETTER,
   deviationWords,
@@ -40,6 +40,10 @@ const DIAMOND_HALF_W = 6;
 const CORNER_SIZE = 12;
 const CORNER_INSET = 6;
 const LINE_STEP = 14;
+/** The DME time, after the groundspeed on the bottom line: clear of `999 KT` in the corner font. */
+const DME_TIME_AFTER_SPEED_X = 60;
+/** A flag's box ends one unit inside the face's right edge, as the GS flag at the scale does. */
+const flagRightX = (word: string) => VB.width - 1 - flagWidth(word) / 2;
 /**
  * The heading bug at north on the card: on the card's edge, notched on its inner side so the
  * card's tick at the selected heading reads between its two prongs. Rotated to its bearing.
@@ -56,7 +60,12 @@ function describeHsi(v: NavValues): string {
   if (v.ident !== null) {
     parts.push(v.ident);
   }
-  if (v.course !== null) {
+  if (v.course === null) {
+    // A received course with no course to hang it on: said, never silently dropped.
+    if (v.lateral.valid) {
+      parts.push('course not available');
+    }
+  } else {
     parts.push(`course ${headingText(v.course)}`);
     if (v.lateral.dots !== null) {
       parts.push(deviationWords(v.lateral.dots, 'right', 'left'));
@@ -80,6 +89,9 @@ function describeHsi(v: NavValues): string {
   }
   if (v.dmeSpoken !== null) {
     parts.push(`DME ${v.dmeSpoken}`);
+  }
+  if (v.dmeSpeedSpoken !== null) {
+    parts.push(v.dmeSpeedSpoken);
   }
   if (v.marker !== null) {
     parts.push(`${v.marker} marker`);
@@ -323,6 +335,16 @@ export function Hsi({ size }: { size: number }) {
             />
           )}
 
+          {v.glideslope.state === 'unavailable' ? (
+            // The aircraft lacks a glideslope DataRef: said where the scale would be, so a missing
+            // diamond on an approach never reads as no glideslope expected.
+            <Flag
+              testID="hsi-gs-flag"
+              x={flagRightX(`${verticalName(v.source).flag} N/A`)}
+              y={C}
+              word={`${verticalName(v.source).flag} N/A`}
+            />
+          ) : null}
           {v.glideslope.state === 'valid' || v.glideslope.state === 'flagged' ? (
             <G testID="hsi-gs-scale">
               <Line
@@ -352,7 +374,12 @@ export function Hsi({ size }: { size: number }) {
                 />
               )}
               {v.glideslope.state === 'flagged' ? (
-                <Flag testID="hsi-gs-flag" x={GS_X - 1} y={C} word={verticalName(v.source).flag} />
+                <Flag
+                  testID="hsi-gs-flag"
+                  x={flagRightX(verticalName(v.source).flag)}
+                  y={C}
+                  word={verticalName(v.source).flag}
+                />
               ) : null}
             </G>
           ) : null}
@@ -417,6 +444,11 @@ export function Hsi({ size }: { size: number }) {
               {`CRS ${headingText(v.course)}°`}
             </SvgText>
           )}
+          {v.course === null && v.lateral.valid ? (
+            // A received course with no course value: flagged where the course is printed, since
+            // neither the pointer nor the CDI can be drawn without it.
+            <Flag testID="hsi-crs-flag" x={flagRightX('CRS')} y={12} word="CRS" />
+          ) : null}
           {v.dme === null ? null : (
             <SvgText
               testID="hsi-dme"
@@ -430,10 +462,23 @@ export function Hsi({ size }: { size: number }) {
               {v.dme}
             </SvgText>
           )}
+          {v.dmeSpeed === null ? null : (
+            <SvgText
+              testID="hsi-dme-speed"
+              x={CORNER_INSET}
+              y={VB.height - CORNER_INSET}
+              fontSize={CORNER_SIZE}
+              fontWeight="bold"
+              fill={ink.marking}
+              {...fonts.digits}
+            >
+              {v.dmeSpeed}
+            </SvgText>
+          )}
           {v.dmeTime === null ? null : (
             <SvgText
               testID="hsi-dme-time"
-              x={CORNER_INSET}
+              x={v.dmeSpeed === null ? CORNER_INSET : DME_TIME_AFTER_SPEED_X}
               y={VB.height - CORNER_INSET}
               fontSize={CORNER_SIZE}
               fontWeight="bold"

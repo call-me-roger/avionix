@@ -5,6 +5,8 @@ import {
   type Marker,
   bearingPointer,
   deviationDots,
+  dmeSpeedText,
+  dmeSpeedWords,
   dmeText,
   dmeTimeText,
   dmeWords,
@@ -38,6 +40,9 @@ export interface NavValues {
   /** The same distance with its unit in words, for the accessible label. */
   dmeSpoken: string | null;
   dmeTime: string | null;
+  /** The DME's groundspeed, `110 KT`, only with the distance (R8); and in words. */
+  dmeSpeed: string | null;
+  dmeSpeedSpoken: string | null;
   ident: string | null;
   marker: Marker | null;
   headingBug: number | null;
@@ -99,6 +104,7 @@ export function useNavValues(): NavValues {
   const hasDme = read(D.hsiHasDme);
   const distance = read(D.hsiDmeDistance);
   const dme = dmeText(hasDme, distance, units.distance);
+  const knots = read(D.hsiDmeSpeed);
   // Only with a received course: a stale ident must never read as a station being received.
   const identName = valid ? identDataRef(source) : null;
 
@@ -115,6 +121,8 @@ export function useNavValues(): NavValues {
     dme,
     dmeSpoken: dme === null ? null : dmeWords(hasDme, distance, units.distance),
     dmeTime: dme === null ? null : dmeTimeText(read(D.hsiDmeTime)),
+    dmeSpeed: dmeSpeedText(hasDme, distance, knots),
+    dmeSpeedSpoken: dmeSpeedWords(hasDme, distance, knots),
     ident: identName === null ? null : text(identName),
     marker: markerLit(read(D.outerMarker), read(D.middleMarker), read(D.innerMarker)),
     headingBug: read(D.headingBug),

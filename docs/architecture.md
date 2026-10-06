@@ -455,8 +455,12 @@ spoken, "1.2 dots right" or "full scale left") and `markerColour`/`MARKER_LETTER
 missing lateral or glideslope binding marks only its own part unavailable rather than hiding the
 whole face (`useNavValues`, which applies every validity rule once so no face can ever draw a needle
 X-Plane has flagged). A missing deviation binding shows a red `NAV N/A` flag in place of the CDI; a
-missing glideslope binding reads "glideslope not available on this aircraft" and draws no scale; a
-missing or unrecognised source shows `SRC ?` rather than a blank corner. The navaid identifier
+missing glideslope binding draws no scale but a red `GS N/A` flag (`GP N/A` for a GPS source) where
+the scale would be, and reads "glideslope not available on this aircraft" (the PFD shows nothing for
+it); a received course with no course value shows a red `CRS` flag in the course's corner and reads
+"course not available", so the undrawn CDI is never silently dropped; a missing or unrecognised
+source shows `SRC ?` rather than a blank corner. The DME's groundspeed (`110 KT`, "groundspeed 110
+knots") is shown under the distance, with the time beside it, and only while the distance is. The navaid identifier
 (NAV1's or NAV2's own `*_nav_id`, nothing for GPS) is shown only while the lateral signal is valid,
 so a stale identifier can never read as a station being received. The rotating card, course pointer,
 CDI bar, TO/FROM triangle, glideslope scale (at `GS_X = 226`, just outside the card ring at radius

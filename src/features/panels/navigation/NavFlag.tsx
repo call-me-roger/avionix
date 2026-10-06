@@ -7,6 +7,11 @@ import { useTheme } from '@/theme/theme-context';
 /** The HSI's corner-text size, which its flags share. */
 const FLAG_TEXT_SIZE = 12;
 
+/** The width of a flag's box, so a face can keep a flag inside its edge. */
+export function flagWidth(word: string): number {
+  return word.length * 9 + 10;
+}
+
 /**
  * A red flag box with its word, centred on (x, y), drawn inside an SVG: failure flags are words on
  * red (U2). The HSI and the PFD's navigation cues both draw it.
@@ -24,7 +29,7 @@ export function Flag({
 }) {
   const ink = useTheme().instrument;
   const { letters } = useSvgFonts();
-  const width = word.length * 9 + 10;
+  const width = flagWidth(word);
   return (
     <>
       <Rect

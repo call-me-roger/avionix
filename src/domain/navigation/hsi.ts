@@ -106,6 +106,40 @@ export function dmeWords(
   return `${convertDistance(distanceNm, unit).toFixed(1)} ${DISTANCE_WORDS[unit]}`;
 }
 
+/** The DME's groundspeed, only beside its distance (R8): without a distance it means nothing. */
+function dmeKnots(
+  hasDme: number | null,
+  distanceNm: number | null,
+  knots: number | null,
+): number | null {
+  if (!dmeShown(hasDme, distanceNm) || knots === null || !Number.isFinite(knots) || knots < 0) {
+    return null;
+  }
+  return Math.round(knots);
+}
+
+export function dmeSpeedText(
+  hasDme: number | null,
+  distanceNm: number | null,
+  knots: number | null,
+): string | null {
+  const shown = dmeKnots(hasDme, distanceNm, knots);
+  return shown === null ? null : `${shown} KT`;
+}
+
+/** The same groundspeed as `dmeSpeedText`, in words for the accessible label. */
+export function dmeSpeedWords(
+  hasDme: number | null,
+  distanceNm: number | null,
+  knots: number | null,
+): string | null {
+  const shown = dmeKnots(hasDme, distanceNm, knots);
+  if (shown === null) {
+    return null;
+  }
+  return `groundspeed ${shown} ${shown === 1 ? 'knot' : 'knots'}`;
+}
+
 export function dmeTimeText(minutes: number | null): string | null {
   if (minutes === null || !Number.isFinite(minutes) || minutes < 0) {
     return null;
