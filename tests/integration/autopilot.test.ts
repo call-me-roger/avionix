@@ -7,18 +7,14 @@ import {
   FEATURE_ALTITUDE_SELECT,
   FEATURE_AUTOPILOT,
   FEATURE_AUTOTHROTTLE,
-  FEATURE_FLIGHT_DIRECTOR,
-  FEATURE_HEADING_CONTROL,
-  FEATURE_MODE_ALT,
   FEATURE_MODE_APR,
-  FEATURE_MODE_FLC,
   FEATURE_MODE_HDG,
   FEATURE_MODE_NAV,
-  FEATURE_MODE_VS,
   FEATURE_VERTICAL_SPEED_SELECT,
   GENERIC_COMMANDS as C,
   GENERIC_DATAREFS as D,
 } from '@/domain/aircraft/profiles/generic';
+import { AUTOPILOT_PANEL } from '@/features/panels/autopilot/autopilot';
 import { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { silentLogger } from '@/infrastructure/logging/logger';
 import { HttpTransport } from '@/infrastructure/xplane/http/http-transport';
@@ -61,24 +57,6 @@ async function until(predicate: () => boolean, timeoutMs = 3000): Promise<void> 
   }
 }
 
-// Task 4 replaces this inline list with `AUTOPILOT_PANEL.features` once the panel descriptor
-// exists in `@/features/panels/autopilot/autopilot`.
-const AUTOPILOT_FEATURES = [
-  FEATURE_AUTOPILOT,
-  FEATURE_FLIGHT_DIRECTOR,
-  FEATURE_AUTOTHROTTLE,
-  FEATURE_HEADING_CONTROL,
-  FEATURE_ALTITUDE_SELECT,
-  FEATURE_VERTICAL_SPEED_SELECT,
-  FEATURE_AIRSPEED_SELECT,
-  FEATURE_MODE_HDG,
-  FEATURE_MODE_NAV,
-  FEATURE_MODE_APR,
-  FEATURE_MODE_ALT,
-  FEATURE_MODE_VS,
-  FEATURE_MODE_FLC,
-];
-
 describe('the autopilot against the mock X-Plane', () => {
   let server: MockXPlaneServer;
   beforeEach(async () => {
@@ -90,7 +68,7 @@ describe('the autopilot against the mock X-Plane', () => {
 
   async function connected(): Promise<SimulatorSession> {
     const session = createSession();
-    session.setDemand(AUTOPILOT_FEATURES);
+    session.setDemand(AUTOPILOT_PANEL.features);
     await session.connect(server.host, server.port);
     return session;
   }
@@ -101,7 +79,7 @@ describe('the autopilot against the mock X-Plane', () => {
   it('reports every autopilot feature available on the generic aircraft', async () => {
     const session = await connected();
     const { compatibility } = session.store.getSnapshot();
-    for (const id of AUTOPILOT_FEATURES) {
+    for (const id of AUTOPILOT_PANEL.features) {
       expect(featureStatus(compatibility, id)).toBe('available');
     }
     session.disconnect();

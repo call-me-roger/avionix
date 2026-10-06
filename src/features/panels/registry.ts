@@ -1,8 +1,8 @@
 import type React from 'react';
 
 import type { PanelDescriptor } from '@/domain/panels/panel';
+import { AUTOPILOT_PANEL, AutopilotPanel } from '@/features/panels/autopilot/AutopilotPanel';
 import { FLIGHT_DATA_PANEL, FlightDataPanel } from '@/features/panels/flight-data/FlightDataPanel';
-import { HEADING_PANEL, HeadingPanel } from '@/features/panels/heading/HeadingPanel';
 import {
   INSTRUMENTS_PANEL,
   InstrumentsPanel,
@@ -18,8 +18,8 @@ export interface RegisteredPanel {
 export const PANELS: readonly RegisteredPanel[] = [
   { descriptor: INSTRUMENTS_PANEL, Component: InstrumentsPanel },
   { descriptor: RADIOS_PANEL, Component: RadiosPanel },
+  { descriptor: AUTOPILOT_PANEL, Component: AutopilotPanel },
   { descriptor: FLIGHT_DATA_PANEL, Component: FlightDataPanel },
-  { descriptor: HEADING_PANEL, Component: HeadingPanel },
 ];
 
 /** Stable by construction: `usePanelLayout` depends on this reference not changing. */

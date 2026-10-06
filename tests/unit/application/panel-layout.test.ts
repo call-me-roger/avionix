@@ -15,6 +15,9 @@ import {
 import { createMemorySettingsStorage } from '@/application/settings-store';
 
 const KNOWN = ['flight-data', 'heading'];
+// Autopilot stands in for 'heading' here: this release's known ids, where 'heading' has been
+// retired and replaced.
+const KNOWN_WITH_AUTOPILOT = ['flight-data', 'autopilot'];
 
 describe('panel layout rules', () => {
   it('opens on Setup the first time, where the pilot connects', () => {
@@ -35,6 +38,19 @@ describe('panel layout rules', () => {
       last: SETUP_ROUTE,
       strip: true,
     });
+  });
+
+  it('moves a pilot who last used the retired Heading panel to Autopilot', () => {
+    expect(
+      normaliseLayout({ hidden: [], last: 'heading', strip: true }, KNOWN_WITH_AUTOPILOT).last,
+    ).toBe('autopilot');
+  });
+
+  it('drops a hidden Heading panel instead of hiding Autopilot', () => {
+    expect(
+      normaliseLayout({ hidden: ['heading'], last: 'setup', strip: true }, KNOWN_WITH_AUTOPILOT)
+        .hidden,
+    ).toEqual([]);
   });
 
   it('lists visible panels in registry order', () => {
@@ -141,7 +157,7 @@ describe('the strip setting and retired ids', () => {
       last: 'flight-data',
       strip: true,
     });
-    expect(RETIRED_PANEL_IDS).toEqual({ 'basic-data': 'flight-data' });
+    expect(RETIRED_PANEL_IDS).toEqual({ 'basic-data': 'flight-data', heading: 'autopilot' });
   });
 
   it('keeps a retired id as-is while it is still registered as a known panel', async () => {

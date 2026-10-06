@@ -21,12 +21,17 @@ export interface PanelLayout {
 export const DEFAULT_PANEL_LAYOUT: PanelLayout = { hidden: [], last: SETUP_ROUTE, strip: true };
 
 /**
- * Panels that were replaced, and what replaced them. A stored `last` entry for a retired id is
- * rewritten before unknown ids are dropped, so a pilot is not thrown back to Setup because a
- * placeholder panel was retired. A retired id in `hidden` is not rewritten; `normaliseLayout`
- * drops it like any other unknown id instead, so the successor is not carried over hidden.
+ * Panels that were replaced, and what replaced them: `basic-data` by the flight data strip's own
+ * panel, and the interim `heading` panel by F-20's Autopilot panel. A stored `last` entry for a
+ * retired id is rewritten before unknown ids are dropped, so a pilot is not thrown back to Setup
+ * because a placeholder panel was retired. A retired id in `hidden` is not rewritten;
+ * `normaliseLayout` drops it like any other unknown id instead, so the successor is not carried
+ * over hidden.
  */
-export const RETIRED_PANEL_IDS: Readonly<Record<string, string>> = { 'basic-data': 'flight-data' };
+export const RETIRED_PANEL_IDS: Readonly<Record<string, string>> = {
+  'basic-data': 'flight-data',
+  heading: 'autopilot',
+};
 
 const storedSchema = z.object({
   hidden: z.array(z.string()),
