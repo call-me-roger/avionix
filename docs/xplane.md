@@ -265,3 +265,51 @@ writes it, since doing so would fight whatever is already in control.
 | `sim/autopilot/altitude_hold` | command | — | — | Verified against `Commands.txt` |
 | `sim/autopilot/vertical_speed` | command | — | — | Verified against `Commands.txt` |
 | `sim/autopilot/level_change` | command | — | — | Verified against `Commands.txt` |
+
+## Navigation (F-30)
+
+Five features in `GENERIC_PROFILE` 1.5.0: `nav-deviation`, `nav-glideslope`, `nav-source`,
+`nav-course` and `nav-aids`. The deviation and glideslope needles are each one feature with every
+binding required, because a half-drawn needle is worse than a hidden one; the source and course are
+their own features, so a miss disables only the NAV unit's write, never the needles; `nav-aids`
+bundles everything advisory (bearings, signal flags, DME and markers) with no binding required, so
+a miss drops only that one cue. The HSI itself stands on the heading alone (`FEATURE_FLIGHT_INSTRUMENTS`):
+a missing deviation or glideslope binding marks only its own part unavailable rather than hiding the
+whole face.
+
+| Name | Type | Units | Writable | Source |
+|---|---|---|---|---|
+| `sim/cockpit2/radios/actuators/HSI_source_select_pilot` | int | enum: 0 NAV1, 1 NAV2, 2 GPS1, 3 GPS2 | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/actuators/hsi_obs_deg_mag_pilot` | float | degrees magnetic | yes | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/hsi_hdef_dots_pilot` | float | dots | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/hsi_vdef_dots_pilot` | float | dots | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/hsi_flag_from_to_pilot` | int | enum: 0 flag, 1 to, 2 from | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/hsi_display_horizontal_pilot` | int | 0 or 1 | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/hsi_display_vertical_pilot` | int | 0 or 1 | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/hsi_flag_glideslope_pilot` | int | 0 or 1; shows when a GS is expected but not received | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/hsi_has_dme_pilot` | int | 0 or 1 | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/hsi_dme_distance_nm_pilot` | float | nautical miles | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/hsi_dme_speed_kts_pilot` | float | knots | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/hsi_dme_time_min_pilot` | float | minutes | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/nav1_bearing_deg_mag`, `nav2_bearing_deg_mag` | float | degrees magnetic | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/nav1_display_horizontal`, `nav2_display_horizontal` | int | 0 or 1 | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/outer_marker_lit`, `middle_marker_lit`, `inner_marker_lit` | int | 0 or 1 (flashes as X-Plane flashes it) | no | Verified against `DataRefs.txt` |
+| `sim/cockpit2/radios/indicators/nav1_nav_id`, `nav2_nav_id` | data (base64, NUL-padded) | identifier text | no | Already verified above (F-21, F-22); reused here for the HSI's navaid identifier |
+| `sim/radios/obs_HSI_direct` | command | — | — | Verified against `Commands.txt`; sets the course to the bearing to the station (CTR) |
+
+The navaid identifier shown is the identifier of the active source: NAV1 or NAV2 from the existing
+radio profile names, and nothing for GPS (R9).
+
+**Unsettled: whether the HSI course follows the selected source.** `DataRefs.txt` does not say that
+`hsi_obs_deg_mag_pilot` follows the source; every other `hsi_*` name reads "the pilot's
+HSI-selected navaid", and the `sim/radios/obs_HSI_up` / `down` / `direct` commands treat the HSI
+OBS as one control, so Avionix reads and writes the HSI course through this one name rather than
+switching between `nav1_obs_deg_mag_pilot` and `nav2_obs_deg_mag_pilot` by source. The smoke test's
+device row confirms that selecting NAV1 or NAV2 in X-Plane shows and moves that radio's own course
+in the CRS window, and that writing CRS from Avionix moves X-Plane's CDI; until that row is run,
+this remains an assumption. If it does not hold, the fallback is a one-function change to write the
+per-source name instead.
+
+**Course stepping.** `Commands.txt` also defines `sim/radios/obs_HSI_up` and `obs_HSI_down`, but
+Avionix's course steppers (−10, −1, +1, +10) write `hsi_obs_deg_mag_pilot` directly, the same write
+the keypad uses, rather than activating those commands; only `obs_HSI_direct` is used, as CTR.

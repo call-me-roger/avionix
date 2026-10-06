@@ -157,6 +157,32 @@ const AUTOPILOT_FAKE_DATAREFS: Record<string, FakeDataRef> = {
   [GENERIC_DATAREFS.speedStatus]: { id: 96, valueType: 'int' },
 };
 
+/**
+ * F-30's navigation features, absent from `DEFAULT_FAKE_DATAREFS` for the same reason as the
+ * other feature datarefs above.
+ */
+const NAV_FAKE_DATAREFS: Record<string, FakeDataRef> = {
+  [GENERIC_DATAREFS.hsiHdef]: { id: 100, valueType: 'float' },
+  [GENERIC_DATAREFS.hsiFromTo]: { id: 101, valueType: 'int' },
+  [GENERIC_DATAREFS.hsiHorizontal]: { id: 102, valueType: 'int' },
+  [GENERIC_DATAREFS.hsiVdef]: { id: 103, valueType: 'float' },
+  [GENERIC_DATAREFS.hsiVertical]: { id: 104, valueType: 'int' },
+  [GENERIC_DATAREFS.hsiGsFlag]: { id: 105, valueType: 'int' },
+  [GENERIC_DATAREFS.hsiSource]: { id: 106, valueType: 'int', isWritable: true },
+  [GENERIC_DATAREFS.hsiCourse]: { id: 107, valueType: 'float', isWritable: true },
+  [GENERIC_DATAREFS.nav1Bearing]: { id: 108, valueType: 'float' },
+  [GENERIC_DATAREFS.nav2Bearing]: { id: 109, valueType: 'float' },
+  [GENERIC_DATAREFS.nav1Signal]: { id: 110, valueType: 'int' },
+  [GENERIC_DATAREFS.nav2Signal]: { id: 111, valueType: 'int' },
+  [GENERIC_DATAREFS.hsiHasDme]: { id: 112, valueType: 'int' },
+  [GENERIC_DATAREFS.hsiDmeDistance]: { id: 113, valueType: 'float' },
+  [GENERIC_DATAREFS.hsiDmeSpeed]: { id: 114, valueType: 'float' },
+  [GENERIC_DATAREFS.hsiDmeTime]: { id: 115, valueType: 'float' },
+  [GENERIC_DATAREFS.outerMarker]: { id: 116, valueType: 'int' },
+  [GENERIC_DATAREFS.middleMarker]: { id: 117, valueType: 'int' },
+  [GENERIC_DATAREFS.innerMarker]: { id: 118, valueType: 'int' },
+};
+
 class FakeClient implements SimulatorClient {
   updateListeners = new Set<(updates: DataRefUpdate[]) => void>();
   closeListeners = new Set<(info: SocketCloseInfo) => void>();
@@ -307,9 +333,10 @@ class ManualScheduler implements Scheduler {
 
 // Drains the microtask queue. The connect flow awaits the token store and the connector
 // probe before the simulator flow starts, so this needs enough turns to reach the
-// subscription step.
+// subscription step; 300 (bumped from 100 for F-30's nineteen new bindings) comfortably covers a
+// full `probeBindings` pass over the whole profile at `PROBE_CONCURRENCY`.
 async function flush(): Promise<void> {
-  for (let i = 0; i < 100; i += 1) {
+  for (let i = 0; i < 300; i += 1) {
     await Promise.resolve();
   }
 }
@@ -1756,6 +1783,7 @@ describe('aircraft compatibility', () => {
       ...INSTRUMENT_FAKE_DATAREFS,
       ...RADIO_FAKE_DATAREFS,
       ...AUTOPILOT_FAKE_DATAREFS,
+      ...NAV_FAKE_DATAREFS,
     };
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
@@ -2066,8 +2094,9 @@ describe('aircraft changes', () => {
     expect(scheduler.queue.filter((entry) => !entry.cancelled)).toHaveLength(1);
     await scheduler.runNext();
     // One re-check pass probes every command binding in the profile: headingUp, the five radio
-    // and transponder commands added in 1.3.0, and the fifteen autopilot commands added in 1.4.0.
-    expect(client.findCommand.mock.calls.length).toBe(before + 21);
+    // and transponder commands added in 1.3.0, the fifteen autopilot commands added in 1.4.0, and
+    // the HSI direct-to command added in 1.5.0.
+    expect(client.findCommand.mock.calls.length).toBe(before + 22);
   });
 
   it('ignores an update that repeats the identification already on record', async () => {

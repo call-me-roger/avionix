@@ -8,11 +8,13 @@ import { NOT_LIVE_OPACITY } from '@/features/panels/instruments/InstrumentFace';
 import { AltitudeTape } from '@/features/panels/instruments/pfd/AltitudeTape';
 import { AttitudeDisplay } from '@/features/panels/instruments/pfd/AttitudeDisplay';
 import { HeadingTape } from '@/features/panels/instruments/pfd/HeadingTape';
+import { NavCues, describeNavCues } from '@/features/panels/instruments/pfd/NavCues';
 import { SpeedTape } from '@/features/panels/instruments/pfd/SpeedTape';
 import { TurnRateScale } from '@/features/panels/instruments/pfd/TurnRateScale';
 import { VsiScale } from '@/features/panels/instruments/pfd/VsiScale';
 import { useAutopilotTargets } from '@/features/panels/instruments/useAutopilotTargets';
 import { useInstrumentValues } from '@/features/panels/instruments/useInstrumentValues';
+import { useNavValues } from '@/features/panels/navigation/useNavValues';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import { useTheme } from '@/theme/theme-context';
 import { numeric } from '@/theme/typography';
@@ -29,13 +31,17 @@ const machText = (mach: number): string => `M ${mach.toFixed(3).replace(/^0/, ''
  * attitude with no value (whose face draws nothing of its own) still shows it, as the six-pack does.
  * The autopilot's FMA runs across the top, and its targets are drawn in cyan on the tapes; the
  * selected heading also has its own box low left, in the turn-rate row's empty slot, where the
- * G1000 puts it. The heading label reads it aloud.
+ * G1000 puts it. The heading label reads it aloud. The navigation cues come from `useNavValues`,
+ * the HSI's own reading, and are drawn over the attitude as radio altitude is, so a missing pitch
+ * or roll never takes them away; the attitude label reads them aloud.
  */
 export function PfdView({ width }: { width: number }) {
   const theme = useTheme();
   const ink = theme.instrument;
   const v = useInstrumentValues();
   const targets = useAutopilotTargets();
+  // The HSI's own source of truth, so the PFD and the HSI never disagree about a needle.
+  const nav = useNavValues();
   const { link } = usePanel();
   const k = width / PFD_VIEW.width;
   const box = (boxWidth: number) => ({
@@ -77,7 +83,14 @@ export function PfdView({ width }: { width: number }) {
           markings={v.markings}
           selected={targets.speed}
         />
-        <AttitudeDisplay width={200 * k} height={240 * k} {...v.attitude} slip={v.turn.slip} />
+        <AttitudeDisplay
+          width={200 * k}
+          height={240 * k}
+          {...v.attitude}
+          slip={v.turn.slip}
+          navWords={describeNavCues(nav)}
+          valuesCurrent={link.valuesCurrent}
+        />
         <AltitudeTape
           width={60 * k}
           height={240 * k}
@@ -92,6 +105,17 @@ export function PfdView({ width }: { width: number }) {
           height={240 * k}
           {...v.verticalSpeed}
           bug={targets.verticalSpeed}
+        />
+        <NavCues
+          left={60 * k}
+          width={200 * k}
+          height={240 * k}
+          live={link.valuesCurrent}
+          source={nav.source}
+          lateralDots={nav.lateral.dots?.dots ?? null}
+          glideslope={nav.glideslope.state}
+          glideslopeDots={nav.glideslope.dots?.dots ?? null}
+          marker={nav.marker}
         />
         {altitudeShown && radioAltitudeShown(v.altitude.radioAltitude) ? (
           // Centred low on the attitude (its viewBox is 200 × 240 at the same scale), clear of the

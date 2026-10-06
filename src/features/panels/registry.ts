@@ -7,6 +7,7 @@ import {
   INSTRUMENTS_PANEL,
   InstrumentsPanel,
 } from '@/features/panels/instruments/InstrumentsPanel';
+import { NAVIGATION_PANEL, NavigationPanel } from '@/features/panels/navigation/NavigationPanel';
 import { RADIOS_PANEL, RadiosPanel } from '@/features/panels/radios/RadiosPanel';
 
 export interface RegisteredPanel {
@@ -19,6 +20,7 @@ export const PANELS: readonly RegisteredPanel[] = [
   { descriptor: INSTRUMENTS_PANEL, Component: InstrumentsPanel },
   { descriptor: RADIOS_PANEL, Component: RadiosPanel },
   { descriptor: AUTOPILOT_PANEL, Component: AutopilotPanel },
+  { descriptor: NAVIGATION_PANEL, Component: NavigationPanel },
   { descriptor: FLIGHT_DATA_PANEL, Component: FlightDataPanel },
 ];
 

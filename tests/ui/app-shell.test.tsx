@@ -15,11 +15,16 @@ import {
   FEATURE_FLIGHT_INSTRUMENTS,
   FEATURE_GPS_DESTINATION,
   FEATURE_HEADING_CONTROL,
+  FEATURE_NAV_AIDS,
+  FEATURE_NAV_DEVIATION,
+  FEATURE_NAV_GLIDESLOPE,
+  FEATURE_NAV_SOURCE,
   GENERIC_PROFILE,
 } from '@/domain/aircraft/profiles/generic';
 import type { DeviceLayout } from '@/domain/panels/device-layout';
 import { EVERYWHERE } from '@/domain/panels/panel';
 import { AUTOPILOT_PANEL } from '@/features/panels/autopilot/autopilot';
+import { NAVIGATION_PANEL } from '@/features/panels/navigation/NavigationPanel';
 import { PANELS, type RegisteredPanel } from '@/features/panels/registry';
 import { AppShell } from '@/features/shell/AppShell';
 import { silentLogger } from '@/infrastructure/logging/logger';
@@ -116,6 +121,7 @@ describe('AppShell', () => {
       'Instruments',
       'Radios',
       'Autopilot',
+      'Navigation',
       'Flight data',
       'Setup',
     ]);
@@ -129,7 +135,7 @@ describe('AppShell', () => {
     expect(screen.getByRole('tab', { name: 'Instruments' })).toBeSelected();
     expect(screen.getByTestId('pfd')).toBeTruthy();
     // The strip is docked here too, so its DataRefs join the instruments' own, which include the
-    // autopilot's for the PFD's targets and FMA.
+    // autopilot's for the PFD's targets and FMA, and the navigation cues drawn on its attitude.
     await waitFor(() =>
       expect(session.setDemand).toHaveBeenLastCalledWith(
         [
@@ -138,6 +144,10 @@ describe('AppShell', () => {
             FEATURE_FLIGHT_DATA,
             FEATURE_FLIGHT_INSTRUMENTS,
             ...AUTOPILOT_PANEL.features,
+            FEATURE_NAV_DEVIATION,
+            FEATURE_NAV_GLIDESLOPE,
+            FEATURE_NAV_AIDS,
+            FEATURE_NAV_SOURCE,
           ]),
         ].sort(),
       ),
@@ -194,6 +204,10 @@ describe('AppShell', () => {
     expect(session.setDemand).toHaveBeenLastCalledWith(
       [...new Set([FEATURE_FLIGHT_DATA, ...AUTOPILOT_PANEL.features])].sort(),
     );
+    await fireEvent.press(screen.getByRole('tab', { name: 'Navigation' }));
+    expect(session.setDemand).toHaveBeenLastCalledWith(
+      [...new Set([FEATURE_FLIGHT_DATA, ...NAVIGATION_PANEL.features])].sort(),
+    );
   });
 
   it('opens Setup with diagnostics from the status bar on a panel', async () => {
@@ -216,9 +230,11 @@ describe('AppShell', () => {
       await screen.findByRole('switch', { name: 'Show Instruments in the switcher' }),
     );
     await fireEvent.press(screen.getByRole('switch', { name: 'Show Radios in the switcher' }));
+    await fireEvent.press(screen.getByRole('switch', { name: 'Show Navigation in the switcher' }));
     await fireEvent.press(screen.getByRole('switch', { name: 'Show Flight data in the switcher' }));
     expect(screen.queryByRole('tab', { name: 'Instruments' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Radios' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Navigation' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Flight data' })).toBeNull();
     const lastOne = screen.getByRole('switch', { name: 'Show Autopilot in the switcher' });
     expect(lastOne).toBeDisabled();

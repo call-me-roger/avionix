@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react-native';
 import React from 'react';
-import { processColor } from 'react-native';
+import { StyleSheet, processColor } from 'react-native';
 
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
@@ -307,12 +307,12 @@ const SELECTED = processColor(darkTheme.instrument.selected);
 
 /** react-native-svg hands a fill to the native view as `{ type, payload }`. */
 function fillOf(testID: string): unknown {
-  return (screen.getByTestId(testID).props.fill as { payload?: unknown }).payload;
+  return (screen.getByTestId(testID, HIDDEN).props.fill as { payload?: unknown }).payload;
 }
 
 /** The text an SVG `Text` draws: react-native-svg hands it to its one span as `content`. */
 function svgText(testID: string): unknown {
-  const node = screen.getByTestId(testID);
+  const node = screen.getByTestId(testID, HIDDEN);
   return (node.children[0] as { props: { content?: unknown } }).props.content;
 }
 
@@ -321,7 +321,7 @@ function svgText(testID: string): unknown {
  * view. A tape bug's notch is its fifth vertex (index 4), the VSI triangle's tip its second.
  */
 function vertex(testID: string, index: number): { x: number; y: number } {
-  const d = String(screen.getByTestId(testID).props.d);
+  const d = String(screen.getByTestId(testID, HIDDEN).props.d);
   const points = [...d.matchAll(/(-?[\d.]+)[ ,](-?[\d.]+)/g)].map((m) => ({
     x: Number(m[1]),
     y: Number(m[2]),
@@ -510,5 +510,273 @@ describe('PFD autopilot targets', () => {
   it('names no font family before the fonts load', async () => {
     await render(tree(withAp()));
     expect(screen.getByTestId('pfd-altitude-selected').props.font).not.toHaveProperty('fontFamily');
+  });
+});
+
+// An ILS on NAV1 as X-Plane reports it: localizer received, needle 1.2 dots right, TO, and the
+// glideslope received with its diamond half a dot down. No marker lit.
+const ILS: Record<string, number> = {
+  [D.hsiSource]: 0,
+  [D.hsiHdef]: 1.2,
+  [D.hsiFromTo]: 1,
+  [D.hsiHorizontal]: 1,
+  [D.hsiVdef]: -0.5,
+  [D.hsiVertical]: 1,
+  [D.hsiGsFlag]: 0,
+  [D.outerMarker]: 0,
+  [D.middleMarker]: 0,
+  [D.innerMarker]: 0,
+};
+
+function withNav(overrides: Record<string, number> = {}, snapshot = live()): SessionSnapshot {
+  return {
+    ...snapshot,
+    telemetry: { ...snapshot.telemetry, ...telemetry({ ...ILS, ...overrides }) },
+  };
+}
+
+const ATTITUDE = 'Attitude: pitch 3 degrees up, bank 15 degrees right';
+const GPS = 2;
+const NAV_CUES = [
+  'pfd-nav-cues',
+  'pfd-loc-scale',
+  'pfd-loc-diamond',
+  'pfd-nav-source',
+  'pfd-gs-scale',
+  'pfd-gs-diamond',
+  'pfd-gs-flag',
+  'pfd-marker',
+  'pfd-marker-box',
+];
+
+/** The cues are hidden from screen readers (the attitude label says them), so look in hidden too. */
+const cue = (testID: string) => screen.queryByTestId(testID, HIDDEN);
+
+function expectNoCues() {
+  for (const id of NAV_CUES) {
+    expect(cue(id)).toBeNull();
+  }
+}
+
+/** The nearest opacity above a drawn cue, from a group's prop or a view's style: its fade. */
+function opacityAbove(testID: string): unknown {
+  let node = screen.getByTestId(testID, HIDDEN).parent;
+  while (node !== null) {
+    const opacity =
+      node.props.opacity ??
+      (StyleSheet.flatten(node.props.style) as { opacity?: unknown } | undefined)?.opacity;
+    if (opacity !== undefined) {
+      return opacity;
+    }
+    node = node.parent;
+  }
+  return undefined;
+}
+
+describe('PFD navigation cues', () => {
+  it('draws no scale, no flag and no marker with no navaid tuned', async () => {
+    await render(tree(live()));
+    expectNoCues();
+    expect(screen.queryByText('NAV', HIDDEN)).toBeNull();
+    expect(screen.getByLabelText(ATTITUDE)).toBeTruthy();
+  });
+
+  it('hides the lateral scale, never centred and with no flag, while X-Plane flags it', async () => {
+    const view = await render(tree(withNav({ [D.hsiHorizontal]: 0 })));
+    expect(cue('pfd-loc-scale')).toBeNull();
+    expect(cue('pfd-loc-diamond')).toBeNull();
+    expect(cue('pfd-nav-source')).toBeNull();
+    expect(screen.queryByText('NAV', HIDDEN)).toBeNull();
+    expect(screen.getByLabelText(`${ATTITUDE}, glideslope 0.5 dots down`)).toBeTruthy();
+    // Neither TO nor FROM: the course means nothing, so the needle is hidden too.
+    await view.rerender(tree(withNav({ [D.hsiFromTo]: 0 })));
+    expect(cue('pfd-loc-diamond')).toBeNull();
+  });
+
+  it('shows nothing, not even N/A, when the aircraft lacks a deviation DataRef', async () => {
+    await render(tree(withMissing(withNav(), D.hsiHdef, D.hsiVdef)));
+    expectNoCues();
+    expect(within(screen.getByTestId('instrument-attitude')).queryByText(/N\/A/)).toBeNull();
+    expect(screen.getByLabelText(ATTITUDE)).toBeTruthy();
+  });
+
+  it('puts the NAV1 diamond at its dots from the centre in green, with its source word', async () => {
+    await render(tree(withNav()));
+    expect(cue('pfd-loc-scale')).toBeTruthy();
+    // 1.2 dots right at 18 a dot, from the attitude's centre at 100; its first vertex is the top.
+    expect(vertex('pfd-loc-diamond', 0).x).toBeCloseTo(100 + 1.2 * 18);
+    expect(fillOf('pfd-loc-diamond')).toBe(processColor(darkTheme.instrument.navNeedle));
+    expect(svgText('pfd-nav-source')).toBe('NAV1');
+    expect(fillOf('pfd-nav-source')).toBe(processColor(darkTheme.instrument.navNeedle));
+  });
+
+  it('draws a GPS course in magenta, says GPS and speaks a glidepath', async () => {
+    await render(tree(withNav({ [D.hsiSource]: GPS, [D.hsiHdef]: -0.4 })));
+    expect(vertex('pfd-loc-diamond', 0).x).toBeCloseTo(100 - 0.4 * 18);
+    expect(fillOf('pfd-loc-diamond')).toBe(processColor(darkTheme.instrument.gpsNeedle));
+    expect(svgText('pfd-nav-source')).toBe('GPS');
+    expect(fillOf('pfd-nav-source')).toBe(processColor(darkTheme.instrument.gpsNeedle));
+    expect(
+      screen.getByLabelText(`${ATTITUDE}, GPS course 0.4 dots left, glidepath 0.5 dots down`),
+    ).toBeTruthy();
+  });
+
+  it('names NAV2 when it is the source', async () => {
+    await render(tree(withNav({ [D.hsiSource]: 1, [D.hsiVertical]: 0 })));
+    expect(svgText('pfd-nav-source')).toBe('NAV2');
+    expect(screen.getByLabelText(`${ATTITUDE}, NAV2 course 1.2 dots right`)).toBeTruthy();
+  });
+
+  it('draws no source word, and says just "course", for a source it does not know', async () => {
+    await render(tree(withNav({ [D.hsiSource]: 7, [D.hsiVertical]: 0 })));
+    expect(cue('pfd-loc-diamond')).toBeTruthy();
+    expect(cue('pfd-nav-source')).toBeNull();
+    expect(screen.getByLabelText(`${ATTITUDE}, course 1.2 dots right`)).toBeTruthy();
+  });
+
+  it('stops a full-scale needle at 2.5 dots and says so', async () => {
+    await render(tree(withNav({ [D.hsiHdef]: 4, [D.hsiVertical]: 0 })));
+    expect(vertex('pfd-loc-diamond', 0).x).toBeCloseTo(100 + 2.5 * 18);
+    expect(screen.getByLabelText(`${ATTITUDE}, NAV1 course full scale right`)).toBeTruthy();
+  });
+
+  it('says the course and the glideslope only while each is shown', async () => {
+    await render(tree(withNav()));
+    expect(
+      screen.getByLabelText(`${ATTITUDE}, NAV1 course 1.2 dots right, glideslope 0.5 dots down`),
+    ).toBeTruthy();
+  });
+
+  it('shows the glideslope diamond only while X-Plane says it is valid', async () => {
+    await render(tree(withNav()));
+    expect(cue('pfd-gs-scale')).toBeTruthy();
+    // Half a dot down at 18 a dot, from the centre at 120; its first vertex is the top, 7 above.
+    expect(vertex('pfd-gs-diamond', 0).y).toBeCloseTo(120 + 0.5 * 18 - 7);
+    expect(cue('pfd-gs-flag')).toBeNull();
+  });
+
+  it('shows a red GS flag and no diamond while the glideslope is flagged', async () => {
+    await render(tree(withNav({ [D.hsiGsFlag]: 1 })));
+    expect(svgText('pfd-gs-flag')).toBe('GS');
+    expect(fillOf('pfd-gs-flag')).toBe(processColor(darkTheme.instrument.flagText));
+    expect(fillOf('pfd-gs-flag-box')).toBe(processColor(darkTheme.instrument.flag));
+    expect(cue('pfd-gs-diamond')).toBeNull();
+    expect(cue('pfd-gs-scale')).toBeNull();
+    expect(
+      screen.getByLabelText(`${ATTITUDE}, NAV1 course 1.2 dots right, glideslope flagged`),
+    ).toBeTruthy();
+  });
+
+  it('flags a GPS glidepath GP, not GS', async () => {
+    await render(tree(withNav({ [D.hsiSource]: GPS, [D.hsiGsFlag]: 1 })));
+    expect(svgText('pfd-gs-flag')).toBe('GP');
+    expect(
+      screen.getByLabelText(`${ATTITUDE}, GPS course 1.2 dots right, glidepath flagged`),
+    ).toBeTruthy();
+  });
+
+  it('shows no glideslope scale and no flag when none is expected, as on a VOR', async () => {
+    await render(tree(withNav({ [D.hsiVertical]: 0 })));
+    expect(cue('pfd-gs-scale')).toBeNull();
+    expect(cue('pfd-gs-diamond')).toBeNull();
+    expect(cue('pfd-gs-flag')).toBeNull();
+    expect(screen.getByLabelText(`${ATTITUDE}, NAV1 course 1.2 dots right`)).toBeTruthy();
+  });
+
+  it.each([
+    ['outer', D.outerMarker, 'O', darkTheme.instrument.selected],
+    ['middle', D.middleMarker, 'M', darkTheme.avionics.caution],
+    ['inner', D.innerMarker, 'I', darkTheme.avionics.legend],
+  ])('shows the %s marker as its letter on its colour', async (word, name, letter, colour) => {
+    await render(tree(withNav({ [name]: 1 })));
+    expect(svgText('pfd-marker')).toBe(letter);
+    expect(fillOf('pfd-marker')).toBe(processColor(darkTheme.instrument.face));
+    expect(fillOf('pfd-marker-box')).toBe(processColor(colour));
+    expect(
+      screen.getByLabelText(
+        `${ATTITUDE}, NAV1 course 1.2 dots right, glideslope 0.5 dots down, ${word} marker`,
+      ),
+    ).toBeTruthy();
+  });
+
+  it('keeps every cue when the attitude itself is missing: a missing feature drops only its cue', async () => {
+    await render(tree(withMissing(withNav({ [D.outerMarker]: 1 }), D.pitch)));
+    expect(cue('pfd-loc-diamond')).toBeTruthy();
+    expect(cue('pfd-gs-diamond')).toBeTruthy();
+    expect(cue('pfd-marker')).toBeTruthy();
+    expect(
+      screen.getByLabelText(
+        'Attitude: not available on this aircraft, NAV1 course 1.2 dots right, glideslope 0.5 dots down, outer marker',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('says the cues are not live with the link stale, whatever the attitude state', async () => {
+    const stale = live({ state: 'reconnecting' });
+    const cues = 'NAV1 course 1.2 dots right, glideslope 0.5 dots down, outer marker, not live';
+    // Unavailable: the aircraft lacks pitch.
+    const view = await render(tree(withMissing(withNav({ [D.outerMarker]: 1 }, stale), D.pitch)));
+    expect(screen.getByLabelText(`Attitude: not available on this aircraft, ${cues}`)).toBeTruthy();
+    // No value: pitch has not arrived.
+    const noPitch = withNav({ [D.outerMarker]: 1 }, stale);
+    const { [D.pitch]: _dropped, ...rest } = noPitch.telemetry;
+    await view.rerender(tree({ ...noPitch, telemetry: rest }));
+    expect(screen.getByLabelText(`Attitude: no value, ${cues}`)).toBeTruthy();
+    // Live link: neither state claims staleness.
+    await view.rerender(tree(withMissing(withNav({ [D.outerMarker]: 1 }), D.pitch)));
+    expect(
+      screen.getByLabelText(
+        'Attitude: not available on this aircraft, NAV1 course 1.2 dots right, glideslope 0.5 dots down, outer marker',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('adds no "not live" to an attitude with no value and no cues', async () => {
+    await render(tree(withMissing(live({ state: 'reconnecting' }), D.pitch)));
+    expect(screen.getByLabelText('Attitude: not available on this aircraft')).toBeTruthy();
+  });
+
+  it('fades every cue with the link, as the boxes are', async () => {
+    const view = await render(tree(withNav({ [D.outerMarker]: 1 })));
+    expect(opacityAbove('pfd-loc-diamond')).toBe(1);
+    await view.rerender(tree(withNav({ [D.outerMarker]: 1 }, live({ state: 'reconnecting' }))));
+    for (const id of [
+      'pfd-loc-scale',
+      'pfd-loc-diamond',
+      'pfd-nav-source',
+      'pfd-gs-diamond',
+      'pfd-marker',
+    ]) {
+      expect(opacityAbove(id)).toBe(NOT_LIVE_OPACITY);
+    }
+    expect(
+      screen.getByLabelText(
+        `${ATTITUDE}, NAV1 course 1.2 dots right, glideslope 0.5 dots down, outer marker, not live`,
+      ),
+    ).toBeTruthy();
+    await view.rerender(tree(withNav({ [D.hsiGsFlag]: 1 }, live({ state: 'reconnecting' }))));
+    expect(opacityAbove('pfd-gs-flag')).toBe(NOT_LIVE_OPACITY);
+  });
+
+  it('draws no cue with no flight loaded', async () => {
+    await render(tree(withNav({ [D.outerMarker]: 1, [D.hsiGsFlag]: 1 }, live(NO_FLIGHT))));
+    expectNoCues();
+  });
+
+  it('re-renders only the altitude tape when only the altitude changes, cues shown', async () => {
+    const storage = createMemorySettingsStorage();
+    const first = withNav({ [D.outerMarker]: 1 });
+    const view = await render(tree(first, storage));
+    resetRenders();
+    await view.rerender(
+      tree(
+        { ...first, telemetry: { ...first.telemetry, ...telemetry({ [D.altitude]: 4600 }) } },
+        storage,
+      ),
+    );
+    expect(instrumentRenders['instrument-altitude']).toBe(1);
+    for (const face of FACES.filter((face) => face !== 'instrument-altitude')) {
+      expect(instrumentRenders[face] ?? 0).toBe(0);
+    }
   });
 });

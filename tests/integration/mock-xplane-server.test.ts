@@ -356,3 +356,52 @@ describe('radios and transponder in the mock', () => {
     await server.stop();
   });
 });
+
+describe('F-30 navigation in the mock', () => {
+  it('wraps a written HSI course into [0, 360)', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      const name = 'sim/cockpit2/radios/actuators/hsi_obs_deg_mag_pilot';
+      await writeValue(server, name, 370);
+      expect(server.getDataRefByName(name)?.value).toBe(10);
+      await writeValue(server, name, -10);
+      expect(server.getDataRefByName(name)?.value).toBe(350);
+      await writeValue(server, name, 360);
+      expect(server.getDataRefByName(name)?.value).toBe(0);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('clamps a written HSI source to 0–3', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      const name = 'sim/cockpit2/radios/actuators/HSI_source_select_pilot';
+      await writeValue(server, name, 7);
+      expect(server.getDataRefByName(name)?.value).toBe(3);
+      await writeValue(server, name, -2);
+      expect(server.getDataRefByName(name)?.value).toBe(0);
+      await writeValue(server, name, 2);
+      expect(server.getDataRefByName(name)?.value).toBe(2);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('sets the course to NAV1 bearing and clears hdef on the direct-to command', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      server.setDataRefValue('sim/cockpit2/radios/indicators/nav1_bearing_deg_mag', 123.7);
+      server.setDataRefValue('sim/cockpit2/radios/indicators/hsi_hdef_dots_pilot', 1.5);
+      await activate(server, server.commandIdByName('sim/radios/obs_HSI_direct'));
+      expect(
+        server.getDataRefByName('sim/cockpit2/radios/actuators/hsi_obs_deg_mag_pilot')?.value,
+      ).toBe(124);
+      expect(
+        server.getDataRefByName('sim/cockpit2/radios/indicators/hsi_hdef_dots_pilot')?.value,
+      ).toBe(0);
+    } finally {
+      await server.stop();
+    }
+  });
+});

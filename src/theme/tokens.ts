@@ -72,6 +72,10 @@ export interface InstrumentColors {
   flagText: string;
   selected: string;
   bug: string;
+  /** F-30 HSI/CDI: the lateral and glideslope needle, Garmin's VOR/LOC/GS green. */
+  navNeedle: string;
+  /** F-30 HSI/CDI: the needle when the HSI source is a GPS, Garmin's magenta. */
+  gpsNeedle: string;
 }
 
 export interface Theme {
@@ -163,6 +167,8 @@ const dayInstrument: InstrumentColors = {
   flagText: '#ffffff',
   selected: '#2fd0f0',
   bug: '#ff8a1f',
+  navNeedle: '#36d35a',
+  gpsNeedle: '#e040c0',
 };
 
 export const lightTheme: Theme = {
@@ -254,6 +260,8 @@ export const nightTheme: Theme = {
     flagText: '#000000',
     selected: '#3f8f9a',
     bug: '#a0601e',
+    navNeedle: '#4f9a3a',
+    gpsNeedle: '#b8579f',
   },
   avionics: nightAvionics,
   spacing,

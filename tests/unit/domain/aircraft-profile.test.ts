@@ -29,6 +29,11 @@ import {
   FEATURE_MODE_VS,
   FEATURE_NAV1,
   FEATURE_NAV2,
+  FEATURE_NAV_AIDS,
+  FEATURE_NAV_COURSE,
+  FEATURE_NAV_DEVIATION,
+  FEATURE_NAV_GLIDESLOPE,
+  FEATURE_NAV_SOURCE,
   FEATURE_TRANSPONDER_CODE,
   FEATURE_TRANSPONDER_IDENT,
   FEATURE_TRANSPONDER_MODE,
@@ -163,6 +168,26 @@ describe('profileBindings', () => {
       GENERIC_COMMANDS.modeVerticalSpeed,
       GENERIC_DATAREFS.speedStatus,
       GENERIC_COMMANDS.modeLevelChange,
+      GENERIC_DATAREFS.hsiHdef,
+      GENERIC_DATAREFS.hsiFromTo,
+      GENERIC_DATAREFS.hsiHorizontal,
+      GENERIC_DATAREFS.hsiVdef,
+      GENERIC_DATAREFS.hsiVertical,
+      GENERIC_DATAREFS.hsiGsFlag,
+      GENERIC_DATAREFS.hsiSource,
+      GENERIC_DATAREFS.hsiCourse,
+      GENERIC_COMMANDS.hsiDirect,
+      GENERIC_DATAREFS.nav1Bearing,
+      GENERIC_DATAREFS.nav2Bearing,
+      GENERIC_DATAREFS.nav1Signal,
+      GENERIC_DATAREFS.nav2Signal,
+      GENERIC_DATAREFS.hsiHasDme,
+      GENERIC_DATAREFS.hsiDmeDistance,
+      GENERIC_DATAREFS.hsiDmeSpeed,
+      GENERIC_DATAREFS.hsiDmeTime,
+      GENERIC_DATAREFS.outerMarker,
+      GENERIC_DATAREFS.middleMarker,
+      GENERIC_DATAREFS.innerMarker,
     ]);
   });
 });
@@ -191,7 +216,7 @@ describe('the generic profile', () => {
     expect(GENERIC_PROFILE.version).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('declares the Stage 1 features', () => {
+  it('declares the Stage 1 features, then the F-30 navigation features', () => {
     expect(GENERIC_PROFILE.features.map((feature) => feature.id)).toEqual([
       FEATURE_CONNECTION_HEALTH,
       FEATURE_FLIGHT_TELEMETRY,
@@ -219,6 +244,11 @@ describe('the generic profile', () => {
       FEATURE_MODE_ALT,
       FEATURE_MODE_VS,
       FEATURE_MODE_FLC,
+      FEATURE_NAV_DEVIATION,
+      FEATURE_NAV_GLIDESLOPE,
+      FEATURE_NAV_SOURCE,
+      FEATURE_NAV_COURSE,
+      FEATURE_NAV_AIDS,
     ]);
   });
 
@@ -264,11 +294,11 @@ describe('the generic profile', () => {
   });
 
   it('bumps the profile version for the new bindings', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.4.0');
+    expect(GENERIC_PROFILE.version).toBe('1.5.0');
   });
 
   it('declares the flight instruments, every one optional, and the altimeter setting', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.4.0');
+    expect(GENERIC_PROFILE.version).toBe('1.5.0');
     const instruments = findFeature(GENERIC_PROFILE, FEATURE_FLIGHT_INSTRUMENTS);
     expect(instruments?.label).toBe('Flight instruments');
     expect(instruments?.bindings.map((binding) => binding.name)).toEqual([
@@ -448,5 +478,65 @@ describe('the generic profile’s autopilot (F-20)', () => {
     );
     expect(written).not.toContain('sim/operation/override/override_autopilot');
     expect(written).not.toContain('sim/cockpit/autopilot/autopilot_state');
+  });
+});
+
+describe('the generic profile’s navigation features (F-30)', () => {
+  const bindingsOf = (id: string) =>
+    findFeature(GENERIC_PROFILE, id)?.bindings.map((binding) => [
+      binding.kind,
+      binding.name,
+      binding.required,
+      binding.write === true,
+    ]);
+
+  it('requires every lateral deviation binding', () => {
+    expect(bindingsOf(FEATURE_NAV_DEVIATION)).toEqual([
+      ['dataref', GENERIC_DATAREFS.hsiHdef, true, false],
+      ['dataref', GENERIC_DATAREFS.hsiFromTo, true, false],
+      ['dataref', GENERIC_DATAREFS.hsiHorizontal, true, false],
+    ]);
+  });
+
+  it('requires every glideslope binding', () => {
+    expect(bindingsOf(FEATURE_NAV_GLIDESLOPE)).toEqual([
+      ['dataref', GENERIC_DATAREFS.hsiVdef, true, false],
+      ['dataref', GENERIC_DATAREFS.hsiVertical, true, false],
+      ['dataref', GENERIC_DATAREFS.hsiGsFlag, true, false],
+    ]);
+  });
+
+  it('binds nav-source to the HSI source, written when you choose one', () => {
+    expect(bindingsOf(FEATURE_NAV_SOURCE)).toEqual([
+      ['dataref', GENERIC_DATAREFS.hsiSource, true, true],
+    ]);
+  });
+
+  it('binds nav-course to a required, written course and an optional direct-to command', () => {
+    expect(bindingsOf(FEATURE_NAV_COURSE)).toEqual([
+      ['dataref', GENERIC_DATAREFS.hsiCourse, true, true],
+      ['command', GENERIC_COMMANDS.hsiDirect, false, false],
+    ]);
+  });
+
+  it('makes every nav-aids binding optional, so a missing name drops only its cue', () => {
+    const aids = findFeature(GENERIC_PROFILE, FEATURE_NAV_AIDS);
+    expect(aids?.bindings.length).toBeGreaterThan(0);
+    for (const binding of aids?.bindings ?? []) {
+      expect(binding.required).toBe(false);
+    }
+    expect(aids?.bindings.map((binding) => binding.name)).toEqual([
+      GENERIC_DATAREFS.nav1Bearing,
+      GENERIC_DATAREFS.nav2Bearing,
+      GENERIC_DATAREFS.nav1Signal,
+      GENERIC_DATAREFS.nav2Signal,
+      GENERIC_DATAREFS.hsiHasDme,
+      GENERIC_DATAREFS.hsiDmeDistance,
+      GENERIC_DATAREFS.hsiDmeSpeed,
+      GENERIC_DATAREFS.hsiDmeTime,
+      GENERIC_DATAREFS.outerMarker,
+      GENERIC_DATAREFS.middleMarker,
+      GENERIC_DATAREFS.innerMarker,
+    ]);
   });
 });

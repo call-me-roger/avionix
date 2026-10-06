@@ -9,6 +9,7 @@ import {
   FEATURE_FLIGHT_TELEMETRY,
   FEATURE_HEADING_CONTROL,
   GENERIC_DATAREFS,
+  GENERIC_PROFILE,
 } from '@/domain/aircraft/profiles/generic';
 import { ConnectorClient } from '@/infrastructure/connector/connector-client';
 import { silentLogger } from '@/infrastructure/logging/logger';
@@ -71,34 +72,8 @@ describe('aircraft compatibility against the mock X-Plane', () => {
     expect(compatibility.identity.description).toBe('Cessna 172 SP');
     expect(compatibility.identity.icaoType).toBe('C172');
     expect(compatibility.identity.tailNumber).toBe('N172SP');
-    expect(compatibility.features.map((feature) => feature.status)).toEqual([
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-      'available',
-    ]);
+    expect(compatibility.features.length).toBe(GENERIC_PROFILE.features.length);
+    expect(compatibility.features.every((feature) => feature.status === 'available')).toBe(true);
     session.disconnect();
   });
 

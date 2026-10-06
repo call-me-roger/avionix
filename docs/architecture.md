@@ -431,6 +431,85 @@ tap on the FMA only acknowledges it early. `Fma`'s `compact` prop is the PFD's: 
 "not live" line of its own; `PfdView` instead wraps it at `NOT_LIVE_OPACITY` while values are not
 current, the same fade it gives its Mach, altimeter-setting and radio-altitude boxes.
 
+## Navigation
+
+`src/domain/navigation/` holds the HSI and CDI calculations as pure, tested functions with no React
+and no simulator types: `hsi.ts` (`deviationDots` and the 2.5-dot peg, `lateralValid` (R3),
+`glideslopeState` (R4, `'valid' | 'flagged' | 'none'`), `toFromWord`, the three `NAV_SOURCES` and
+`sourceLabel`/`sourceKind` including GPS2 and unknown values, `bearingPointer` (R7), `dmeText` /
+`dmeWords` / `dmeTimeText` (R8), and `markerLit`, inner over middle over outer when two are lit) and
+`hsi-geometry.ts` (`cardAngle`, the card-relative angle of a course or bearing, built on the
+autopilot's `headingDelta` so both wrap the same way through 360/0, and `deviationOffset`). Course
+entry and stepping reuse the autopilot's `heading` selector kind unchanged (`formatSelector`,
+`stepSelector`, `parseSelectorEntry`, `selectorMatches`); no new format or step code exists for it.
+
+`src/features/panels/navigation/nav-presentation.ts` is the one place that turns a source or marker
+into a colour or word for both faces, so the HSI and the PFD's cues never name or colour the same
+needle differently: `needleColour` (Garmin's convention — NAV green via `theme.instrument.navNeedle`,
+GPS magenta via `gpsNeedle`; a source Avionix does not recognise claims neither colour),
+`lateralName` ("NAV1 course", never bare "course" for a known source), `verticalName` (a GPS path is
+a glidepath flagged GP, a radio one a glideslope flagged GS), `deviationWords` (R2: the dots are
+spoken, "1.2 dots right" or "full scale left") and `markerColour`/`MARKER_LETTER`.
+
+**The HSI** (`Hsi.tsx`, an `InstrumentFace` with a 240×240 viewBox) stands on the heading alone: a
+missing lateral or glideslope binding marks only its own part unavailable rather than hiding the
+whole face (`useNavValues`, which applies every validity rule once so no face can ever draw a needle
+X-Plane has flagged). A missing deviation binding shows a red `NAV N/A` flag in place of the CDI; a
+missing glideslope binding draws no scale but a red `GS N/A` flag (`GP N/A` for a GPS source) where
+the scale would be, and reads "glideslope not available on this aircraft" (the PFD shows nothing for
+it); a received course with no course value shows a red `CRS` flag in the course's corner and reads
+"course not available", so the undrawn CDI is never silently dropped; a missing or unrecognised
+source shows `SRC ?` rather than a blank corner. The DME's groundspeed (`110 KT`, "groundspeed 110
+knots") is shown under the distance, with the time beside it, and only while the distance is. The navaid identifier
+(NAV1's or NAV2's own `*_nav_id`, nothing for GPS) is shown only while the lateral signal is valid,
+so a stale identifier can never read as a station being received. The rotating card, course pointer,
+CDI bar, TO/FROM triangle, glideslope scale (at `GS_X = 226`, just outside the card ring at radius
+104 from its centre 120), bearing pointers and marker box (`hsi-marker-box`, slightly overlapping
+the card's top edge by design, like the radio-altitude box on the PFD) are all drawn only from what
+`useNavValues` returns; X-Plane's deflection sign is drawn as given, never inverted.
+
+**The NAV control unit** (`NavControls.tsx`) is an `AvionicsUnit` below the HSI: three source keys
+(NAV1, NAV2, GPS) that write `HSI_source_select_pilot` with read-back, a caption `SRC GPS2` with no
+key lit when X-Plane reports source 3 (`SRC ?` for a value it does not name), a `DisplayWindow`
+course window (role `selected`, caption `CRS`) whose course is spoken by its own summary ("Course
+270°", plus ", not live" when the link is stale, as the autopilot's `SelectorRow` does) and that opens `CoursePad.tsx`'s keypad through `useCourseEntry` (modelled on the autopilot's
+`useSelectorEntry`, but with no `target`/`kind` to track since the course is always the `heading`
+selector kind), four steppers (−10, −1, +1, +10) that write `hsi_obs_deg_mag_pilot` directly rather
+than activating `sim/radios/obs_HSI_up`/`down` (`docs/xplane.md`), and CTR, which activates
+`sim/radios/obs_HSI_direct` and is disabled while the lateral signal is invalid, since there is no
+station to centre on; on an aircraft without `obs_HSI_direct` the key stays, disabled, with the
+reason under it. Read-back for both the source and the course uses the same `useReadBack`,
+`READ_BACK_MS` (3 s) window the radios and autopilot panels use, not a window of its own.
+
+**The Navigation panel** (`NavigationPanel.tsx`) is fourth in the switcher, after Autopilot and
+before Flight data (`src/features/panels/registry.ts`). Its descriptor demands the five navigation
+features plus `FEATURE_NAV1`/`FEATURE_NAV2` (for the navaid identifier, bound under the radio
+features, not any of the five new ones) and `FEATURE_FLIGHT_INSTRUMENTS`/`FEATURE_HEADING_CONTROL`
+(for the heading and heading bug the HSI's card and bug need). Like Radios and Autopilot, it is
+keyed on the aircraft's identity, so a changed aircraft drops a half-typed course and any read-back
+sentence. Narrower than `TWO_COLUMN_MIN_WIDTH` the HSI sits above the NAV unit, capped by height the
+same way `pfdWidth` caps the PFD (0.6 of the window height in portrait); wider, the HSI sits left and
+the NAV unit right.
+
+**On the PFD** (`NavCues.tsx`), the lateral and glideslope scales and the marker box are drawn as an
+overlay over the attitude display, in its own coordinate space, from the same `useNavValues` the HSI
+reads — never as the attitude's children — so a missing pitch or roll never removes them and a
+missing nav feature never affects the attitude. Lateral is shown only while valid, with a small
+source word (NAV1, NAV2 or GPS, in the needle colour) beside the scale so colour is never the only
+cue; the glideslope diamond is shown only when `glideslopeState` is `valid`, a red `GS`/`GP` flag
+(by source) shows instead when flagged, and nothing shows when there is no glideslope expected at
+all. `PfdView`'s accessible attitude label is extended through `describeNavCues`, which speaks each
+cue only while it is drawn, in the same vocabulary as the HSI ("NAV1 course 1.2 dots right",
+"glideslope 0.5 dots down", "outer marker").
+
+Five more profile features back all of this (`GENERIC_PROFILE` 1.5.0): `nav-deviation` and
+`nav-glideslope` are each one feature with every binding required, because a half-drawn needle is
+worse than a hidden one; `nav-source` and `nav-course` are their own features, so a miss disables
+only the NAV unit's write, never the needles (course direct-to is an optional binding within
+`nav-course`: CTR is simply disabled without it); `nav-aids` bundles everything advisory — bearing
+pointers, their signal flags, DME and the three marker lights — with no binding required, so a miss
+drops only that one cue.
+
 ## Error model
 
 Everything that crosses into the application layer is an `AvionixError` with a stable `code`

@@ -126,6 +126,17 @@ describe('theme tokens', () => {
     }
   });
 
+  it('keeps the F-30 navigation needle tokens legible on the instrument face', () => {
+    for (const theme of ALL_THEMES) {
+      expect(
+        contrastRatio(theme.instrument.navNeedle, theme.instrument.face),
+      ).toBeGreaterThanOrEqual(4.5);
+      expect(
+        contrastRatio(theme.instrument.gpsNeedle, theme.instrument.face),
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
   it('keeps the failure flag apart from the yellow and green arcs', () => {
     for (const theme of [lightTheme, darkTheme, nightTheme]) {
       const { flag, arcYellow, arcGreen } = theme.instrument;
