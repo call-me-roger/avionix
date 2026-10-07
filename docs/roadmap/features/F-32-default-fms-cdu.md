@@ -168,8 +168,9 @@ community-sourced mapping and breakage risk. Avionix will not screenshot or OCR 
 ## References
 
 1. https://developer.x-plane.com/article/datarefs-for-the-cdu-screen/
-2. http://www.dmax3d.com/resources/commands.php (community mirror of Laminar's `Commands.txt`;
-   every command name taken from it is marked unverified)
+2. http://www.dmax3d.com/resources/commands.php (a community mirror of Laminar's `Commands.txt`;
+   every `sim/FMS/`/`sim/FMS2/` command name used was verified against the `Commands.txt` shipped
+   with X-Plane, not taken on this mirror's word alone — see the X-Plane Web API mapping above)
 3. https://developer.x-plane.com/article/x-plane-web-api/
 4. https://github.com/waynepiekarski/XPlaneCDU
 5. docs/roadmap/research/fmc-cdu-apps.md, docs/roadmap/research/xplane-web-api.md

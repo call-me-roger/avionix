@@ -229,18 +229,19 @@ export function CduPanel() {
 
   // The web build's physical keyboard (spec §4.8): subscribed once for the component's life, so a
   // message or a layout change never tears it down and rebuilds it. `hardwareKeyToCdu` turns the
-  // raw event into a key id; a missing command or a gate that would make `press` a no-op anyway
-  // (C5, or the screen not live yet) leaves the key unconsumed, so the browser keeps its own
-  // binding for it. Everything the handler reads crosses through a ref, kept current by its own
-  // effect (refs may not be written during render), so the one subscription is never stale.
+  // raw event into a key id; a missing command, or the screen not actually showing a live keyboard
+  // (C5, waiting, no FMS, or the screen unavailable — the same `screen.state === 'live'` the
+  // on-screen keys require) leaves the key unconsumed, so the browser keeps its own binding for it.
+  // Everything the handler reads crosses through a ref, kept current by its own effect (refs may
+  // not be written during render), so the one subscription is never stale.
   const pressRef = useRef(keys.press);
   useEffect(() => {
     pressRef.current = keys.press;
   }, [keys.press]);
   const keysEnabledRef = useRef(false);
   useEffect(() => {
-    keysEnabledRef.current = link.controlsEnabled && !waiting;
-  }, [link.controlsEnabled, waiting]);
+    keysEnabledRef.current = link.controlsEnabled && screen.state === 'live';
+  }, [link.controlsEnabled, screen.state]);
   const missingIdsRef = useRef<ReadonlySet<string>>(new Set());
   useEffect(() => {
     missingIdsRef.current = new Set(

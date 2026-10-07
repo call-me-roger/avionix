@@ -1,16 +1,24 @@
 import React, { act } from 'react';
 import { type Root, createRoot } from 'react-dom/client';
 
+import { deriveAvailability } from '@/domain/aircraft/availability';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { createMemorySettingsStorage } from '@/application/settings-store';
-import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
+import {
+  FEATURE_CDU1_KEYS,
+  FEATURE_CDU1_SCREEN,
+  FEATURE_CDU2_KEYS,
+  FEATURE_CDU2_SCREEN,
+  GENERIC_PROFILE,
+} from '@/domain/aircraft/profiles/generic';
+import { cduTextLine } from '@/domain/cdu/keys';
 import type { ActivationResult } from '@/domain/panels/activation';
 import { CduPanel } from '@/features/panels/cdu/CduPanel';
 import type { PanelActions } from '@/features/panels/primitives/PanelContext';
 import { PanelScope } from '@/features/panels/primitives/PanelFrame';
 import { ThemeProvider } from '@/theme/theme-context';
 
-import { toyScreenTelemetry } from '../helpers/cdu';
+import { text, toyScreenTelemetry } from '../helpers/cdu';
 
 declare global {
   // React reads this flag to enable act() in non-RTL environments.
@@ -28,6 +36,64 @@ function liveSnapshot(): SessionSnapshot {
     state: 'connected',
     health: { ...base.health, activity: 'running', live: true, lastHeartbeatAt: NOW },
     telemetry: { ...toyScreenTelemetry(1, NOW), ...toyScreenTelemetry(2, NOW) },
+  };
+}
+
+/** CDU 1 connected but every line of its screen has been blank since identification: No FMS. */
+function noFmsSnapshot(): SessionSnapshot {
+  const telemetry: SessionSnapshot['telemetry'] = {};
+  for (let line = 0; line < 16; line += 1) {
+    telemetry[cduTextLine(1, line)] = { value: text(''), receivedAt: NOW };
+  }
+  return {
+    ...base,
+    state: 'connected',
+    health: { ...base.health, activity: 'running', live: true, lastHeartbeatAt: NOW },
+    telemetry,
+  };
+}
+
+/** CDU 1 connected but not every line has arrived yet: waiting for the screen. */
+function waitingSnapshot(): SessionSnapshot {
+  const telemetry: SessionSnapshot['telemetry'] = {
+    [cduTextLine(1, 0)]: { value: text('        TOY FMS'), receivedAt: NOW },
+  };
+  return {
+    ...base,
+    state: 'connected',
+    health: { ...base.health, activity: 'running', live: true, lastHeartbeatAt: NOW },
+    telemetry,
+  };
+}
+
+/** Both CDU screens unavailable on this aircraft: the panel shows unit 1's "doesn't publish" text. */
+function unavailableSnapshot(): SessionSnapshot {
+  const bindings: SessionSnapshot['compatibility']['bindings'] = {};
+  for (const id of [
+    FEATURE_CDU1_SCREEN,
+    FEATURE_CDU1_KEYS,
+    FEATURE_CDU2_SCREEN,
+    FEATURE_CDU2_KEYS,
+  ]) {
+    const feature = GENERIC_PROFILE.features.find((candidate) => candidate.id === id);
+    for (const binding of feature?.bindings ?? []) {
+      const missing = binding.name === cduTextLine(1, 0) || binding.name === cduTextLine(2, 0);
+      bindings[binding.name] = {
+        name: binding.name,
+        kind: binding.kind,
+        status: missing ? 'missing' : 'ok',
+      };
+    }
+  }
+  return {
+    ...base,
+    state: 'connected',
+    health: { ...base.health, activity: 'running', live: true, lastHeartbeatAt: NOW },
+    compatibility: {
+      ...base.compatibility,
+      bindings,
+      features: deriveAvailability(GENERIC_PROFILE, bindings),
+    },
   };
 }
 
@@ -54,11 +120,11 @@ describe('the CDU panel reads a physical keyboard on the web build', () => {
     container.remove();
   });
 
-  async function mount(): Promise<void> {
+  async function mount(snapshot: SessionSnapshot = liveSnapshot()): Promise<void> {
     await act(async () => {
       root.render(
         <ThemeProvider storage={THEME_STORAGE} systemSchemeOverride="light">
-          <PanelScope snapshot={liveSnapshot()} now={NOW} actions={actions}>
+          <PanelScope snapshot={snapshot} now={NOW} actions={actions}>
             <CduPanel />
           </PanelScope>
         </ThemeProvider>,
@@ -148,5 +214,26 @@ describe('the CDU panel reads a physical keyboard on the web build', () => {
     await unmount();
     await keydown({ key: 'k' });
     expect(activate).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing while the screen shows No FMS', async () => {
+    await mount(noFmsSnapshot());
+    await keydown({ key: 'k' });
+    expect(activate).not.toHaveBeenCalled();
+    await unmount();
+  });
+
+  it('sends nothing while the screen is unavailable on this aircraft', async () => {
+    await mount(unavailableSnapshot());
+    await keydown({ key: 'k' });
+    expect(activate).not.toHaveBeenCalled();
+    await unmount();
+  });
+
+  it('sends nothing while waiting for the screen to arrive', async () => {
+    await mount(waitingSnapshot());
+    await keydown({ key: 'k' });
+    expect(activate).not.toHaveBeenCalled();
+    await unmount();
   });
 });
