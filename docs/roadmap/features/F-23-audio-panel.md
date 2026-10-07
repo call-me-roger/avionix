@@ -5,7 +5,7 @@
 | ID | `F-23` |
 | Stage | `2` |
 | Category | Control |
-| Status | Proposed |
+| Status | Done |
 | Depends on | `F-21` |
 | Competitor prevalence | Matrix count 1 of 12 representative products (`research/competitors.md`). Wider set: 2 of 15 products researched offer it (Flight Sim Remote Panel, with a Bendix/King KM24 audio-control panel; Remote X-Plane Avionics, with the A330 stock ACP) |
 
@@ -16,6 +16,9 @@ receivers are being monitored, and whether marker audio is on. It sits directly 
 stack (F-21) and answers the question the radio stack cannot: not what is tuned, but what the pilot
 is actually listening to and talking on. It is used whenever a second frequency is being
 monitored and on an ILS approach.
+
+Delivered: design in `../../superpowers/specs/2026-10-07-audio-panel-design.md`, research in
+`../research/audio-panel.md`.
 
 ## Why now
 
@@ -79,23 +82,23 @@ and pairing tokens never appear in the UI and are never logged.
 
 ## X-Plane Web API mapping
 
-Reads use the WebSocket subscription; writes use dataref writes. Audio selections change rarely, so
-10 Hz is far more than enough.
+Reads use the WebSocket subscription; writes use the panel's own commands (never a direct dataref
+write). Audio selections change rarely, so 10 Hz is far more than enough.
 
 | Purpose | DataRef / command | Type, units | Read/Write | Source |
 |---|---|---|---|---|
-| COM transmit selection | exact name not identified; expected in the `sim/cockpit2/radios/actuators/audio_*` family (unverified) | expected int or per-radio boolean | Read/Write | — |
-| COM1/COM2 receive monitoring | exact name not identified; same family (unverified) | expected boolean per receiver | Read/Write | — |
-| NAV1/NAV2 receive monitoring | exact name not identified; same family (unverified) | expected boolean per receiver | Read/Write | — |
-| Marker beacon audio | exact name not identified; verify in `DataRefs.txt` | expected boolean | Read/Write | — |
-| ADF and DME monitoring, if offered | exact name not identified; verify in `DataRefs.txt` | expected boolean | Read/Write | — |
+| COM transmit selection | `sim/cockpit2/radios/actuators/audio_com_selection` | int, 6 COM1, 7 COM2 | Read/Write (via command) | Verified against `DataRefs.txt`, `Commands.txt` and the live 12.4.3 database |
+| COM auto-listen | `sim/cockpit2/radios/actuators/audio_selection_com_auto` | int, 0 or 1 | Read | Verified, as above |
+| COM1/COM2 receive monitoring | `sim/cockpit2/radios/actuators/audio_selection_com1`, `audio_selection_com2` | int, 0 or 1 | Read/Write (via command) | Verified, as above |
+| NAV1/NAV2 receive monitoring | `sim/cockpit2/radios/actuators/audio_selection_nav1`, `audio_selection_nav2` | int, 0 or 1 | Read/Write (via command) | Verified, as above |
+| ADF monitoring | `sim/cockpit2/radios/actuators/audio_selection_adf1` | int, 0 or 1 | Read/Write (via command) | Verified, as above |
+| DME monitoring | `sim/cockpit2/radios/actuators/audio_dme_enabled` | int, 0 or 1 | Read/Write (via command) | Verified, as above |
+| Marker beacon audio | `sim/cockpit2/radios/actuators/audio_marker_enabled` | int, 0 or 1 | Read/Write (via command) | Verified, as above |
 
-No audio-panel dataref name was found in any Laminar article or research report. The
-`sim/cockpit2/radios/actuators/audio_*` grouping above is an expectation drawn from the naming
-convention of the confirmed radio actuators, not a verified name, and is marked unverified for that
-reason. Every name must be read from the in-sim `DataRefs.txt` and confirmed with a live query
-before this feature is planned in detail. If they are not writable, the honest scope is display
-only, or the feature is dropped.
+Full command table in `docs/xplane.md`, "Audio panel (F-23)". All names verified against Laminar's
+`DataRefs.txt`, `Commands.txt` and the live 12.4.3 DataRef database — the risk this entry originally
+flagged (no name found in any article or report) did not hold up once the files were checked
+directly.
 
 ## Aircraft compatibility
 
@@ -131,14 +134,19 @@ C), and its panel is F-54. Aircraft with no modelled audio panel fall under R6.
 
 ## Risks and open questions
 
-- No dataref name for this feature is verified. This is the largest single risk in this file, and
-  identification in the simulator is a precondition for planning the work.
-- Open question: should per-receiver volume live here or in F-21? Both features currently defer it,
-  and neither has a verified dataref name for it.
-- Open question: is transmit selection modelled as one enumerated dataref or as one boolean per
-  radio? This changes what R2 has to enforce.
-- If the default aircraft model audio selection as read-only, this feature becomes a mirror rather
-  than a control, and the roadmap entry must say so rather than promise control.
+- Resolved: every dataref and command name is verified (`docs/xplane.md`); the largest risk this
+  entry originally flagged did not hold up once `DataRefs.txt` and `Commands.txt` were checked
+  directly.
+- Resolved: per-receiver volume stays deferred — out of scope for both this feature and F-21, since
+  neither the GMA 340 class panel nor X-Plane's own `audio_volume_*` floats are modelled here.
+- Resolved: transmit selection is one enumerated dataref, `audio_com_selection` (6 = COM1, 7 =
+  COM2), not one boolean per radio, which settles what R2 enforces — exclusivity by value, not by
+  clearing a second flag.
+- Resolved: X-Plane models COM1/COM2 only in the generic audio panel; COM3 is not modelled and is
+  out of scope (airliner add-ons with a third COM run their own ACP namespace, out of scope here,
+  F-54).
+- The default aircraft's audio selections are writable (verified), so this feature is a control, not
+  a mirror.
 - Ids are session-scoped and must never be persisted (`docs/roadmap/research/xplane-web-api.md`,
   risk 4).
 

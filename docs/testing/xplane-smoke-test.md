@@ -199,6 +199,15 @@ Record results at the bottom.
 | 170 | Cessna 172: ELEC page with the battery switch on, then off | Bus volts and battery amps match the G1000's electrical page; battery amps go negative with the alternator off | |
 | 171 | Connect with a flight loaded and time it against rows 124 and 143 | Connecting takes at most about a second longer than before F-12 (91 more names are checked) | |
 | 172 | Phone: the three pages; tablet: a twin in the wide layout | Pages switch and are remembered; on the tablet both engines' dials sit side by side, FUEL and ELEC below | |
+| 173 | C172: open Radios; compare AUDIO with the cockpit audio panel | MIC and monitor keys match the cockpit's lit keys; the transmitting COM row shows MIC | |
+| 174 | Press COM2 MIC | Within a second COM2 MIC is green, the COM2 row shows MIC, and the cockpit panel shows COM2 selected | |
+| 175 | After 174, note COM1's monitor key | Records X-Plane's behaviour: COM1 listening goes off (expected) or stays; if it stays, update `docs/xplane.md` | |
+| 176 | Tune ATIS on COM2 while on COM1 MIC; press COM2 (monitor) | ATIS becomes audible in X-Plane; COM2's key lights white | |
+| 177 | Press a monitor key in the cockpit | The app's key follows within about 200 ms | |
+| 178 | Press DME and ADF | Each lights and the cockpit's matching key follows; DME's read-back succeeds (settles that `audio_dme_enabled` is the DME key's state) | |
+| 179 | Fly an ILS with MKR on; then off | Lamps O/M/I light on the AUDIO unit over each marker; the tone stops with MKR off | |
+| 180 | With X-Plane ATC active, turn the transmitting COM's monitor off | The "aren't listening" line shows and ATC is no longer heard; turn it back on | |
+| 181 | Pull Wi-Fi, then reconnect | Keys go inert and bars dim; after reconnect the panel shows X-Plane's state, nothing replayed | |
 
 Rows 44 and 45 verify the keep-awake hold, and row 53 the safe areas: behaviour no automated test
 can observe.

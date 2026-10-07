@@ -370,6 +370,19 @@ width reaches `TWO_COLUMN_MIN_WIDTH` (720 dp); narrower, the keypad sits below t
 in portrait or landscape is never asked to fit a readable frequency and a thumb-sized keypad side by
 side.
 
+**Audio panel (F-23).** The AUDIO unit sits above COM1 on the Radios panel: MIC keys exclusive
+across COM1/COM2, independent monitor keys for both COMs, both NAVs, the ADF, the DME and the
+marker, and the three marker lamps reused from Navigation's own DataRefs. `src/domain/audio/` is the
+single catalogue, command and name source (`catalogue.ts`), the sentences (`messages.ts`) and the
+pure model (`audio-model.ts`): `audioModel` draws from an `AudioReader`, the same three-answer shape
+as the Engines panel's reader (F-12) — resolved, definitively missing, or not checked yet — so a key
+never shows a false "not available" sentence while names are still resolving after connect.
+`transmittingCom` (`src/features/panels/radios/audio-reader.ts`) reads the same model to feed the
+COM rows' own green MIC lamp, so the radio stack and the audio unit never disagree about which COM
+is live. `bindingMissing` (`src/features/panels/systems/availability.ts`) is the one helper both
+Systems and Audio call for that three-answer rule, so a unit with nothing drawn and nothing
+definitively missing stays silent instead of printing a sentence too early.
+
 ## Autopilot
 
 `src/features/panels/autopilot/` is the Autopilot panel (F-20): `AutopilotPanel` lays out

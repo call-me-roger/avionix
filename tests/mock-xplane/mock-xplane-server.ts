@@ -1430,7 +1430,10 @@ export class MockXPlaneServer {
     if (command !== undefined && this.ignoredCommands.has(command.name)) {
       return;
     }
-    if (command !== undefined && this.applySystemsCommand(command.name)) {
+    if (
+      command !== undefined &&
+      (this.applySystemsCommand(command.name) || this.applyAudioCommand(command.name))
+    ) {
       return;
     }
     const cdu = /^sim\/(FMS|FMS2)\/(.+)$/.exec(command?.name ?? '');
@@ -1589,6 +1592,28 @@ export class MockXPlaneServer {
     const detentsValue = this.getDataRefByName(FLAPS.detents)?.value;
     const detents = typeof detentsValue === 'number' && detentsValue > 0 ? detentsValue : 1;
     handle.value = Math.min(1, Math.max(0, handle.value + direction / detents));
+  }
+
+  /**
+   * As X-Plane: a MIC command selects that COM, hears it and mutes the other COM.
+   */
+  private applyAudioCommand(name: string): boolean {
+    for (const mic of MICS) {
+      if (name === mic.command) {
+        this.setScalar(TRANSMIT.selection, mic.value);
+        for (const spec of MONITORS.filter((candidate) => candidate.com !== undefined)) {
+          this.setScalar(spec.state, spec.com === mic.com ? 1 : 0);
+        }
+        return true;
+      }
+    }
+    for (const spec of MONITORS) {
+      if (name === spec.on || name === spec.off) {
+        this.setScalar(spec.state, name === spec.on ? 1 : 0);
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
