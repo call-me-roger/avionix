@@ -80,7 +80,8 @@ function SystemsPageKey({
 /**
  * F-24's Systems panel (spec §4.7–§4.8): a phone shows one page at a time behind a row of page
  * keys (the last one remembered under `avionix.systems`, FLIGHT on first use); a window 720 dp or
- * wider shows two scrolling columns instead, with no page keys. One `useReadBack` is owned here
+ * wider shows two columns instead, scrolling together in the frame's one ScrollView, with no page
+ * keys. One `useReadBack` is owned here
  * and passed to whichever sections are mounted, so a read-back failure survives switching pages,
  * and a held control's lease is released (its unit unmounts) when the page changes under it.
  */

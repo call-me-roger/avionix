@@ -197,11 +197,18 @@ second and must not churn the panel at that rate. A pure `HoldLease` (`src/domai
 an injected clock and timers, like the CDU key queue) owns the mechanics: a 0.5 s lease renewed
 every 200 ms, a configurable cap (10 s trim, 30 s starter), a 250 ms minimum so a tap — and a screen
 reader's single `onPress` — still nudges, and a best-effort release sent on every end, including
-cancellation. `useHoldControl` (`src/features/panels/primitives/useHoldControl.ts`) builds one lease
-per `(featureId, command)` while the app is foregrounded and the link's controls are enabled,
-replacing it (and ending any hold in flight) whenever either changes, and turns the lease's end into
-one of this panel's sentences: capped, no response (held at least a second and the driven value
-never moved), backgrounded, or link lost. `ControlButton` gained a `hold` prop (`onStart`, `onEnd`,
+cancellation. A press that lands in a tap's minimum-hold tail (released, but the 250 ms not yet up)
+merges into that hold rather than being swallowed: the pending release is dropped and the hold goes
+on with the same start, the same cap and uninterrupted renewals, and the next release ends it by the
+usual rule (at once, the minimum being met); a press while held with no release pending does
+nothing. `useHoldControl` (`src/features/panels/primitives/useHoldControl.ts`) builds one lease per
+`(featureId, command)` while the app is foregrounded, the link's controls are enabled and the key
+itself is usable (its `enabled` option: the command resolved and the feature usable), replacing it
+(and ending any hold in flight) whenever any of these changes, and turns the lease's end into one of
+this panel's sentences: capped, no response (held at least a second and the driven value never
+moved), backgrounded, or link lost — a key that merely became unusable ends silently, its unit
+already naming it. A merged touch keeps the joined hold's start value and moved flag, so the
+no-response check covers the whole hold. `ControlButton` gained a `hold` prop (`onStart`, `onEnd`,
 an optional armed legend) instead of a second primitive, so every existing rule — availability, the
 48 dp target, the confirm arm, haptics, notices — stays in the one control: press-in starts the hold
 and press-out ends it; a screen reader's single `onPress` nudges once (start then end); with
@@ -648,10 +655,13 @@ carried down to individual switches and selector positions here. `electrical` (b
 master, generators) goes beyond the roadmap's original list: the panel is meant to run a whole
 flight, and every switch panel simmers buy starts with the master switch; flap-handle writes stayed
 out of scope (commands only, so add-ons that hook them keep working). `sections.tsx` groups the ten
-features into the four sections the layout shows (ENGINE, LIGHTS, FLIGHT, ICE); `availability.ts`
-derives, per section, which of its controls draw and the one line naming what a missing binding left
-out ("Not available on the Cessna 172: STROBE, TAXI."), reusing the CDU keys' per-control
-resolution rather than hiding a whole section for one miss.
+features into the four sections the layout shows (ENGINE, LIGHTS, FLIGHT, ICE). `availability.ts`
+holds only small helpers (`bindingOk`, `presence`, `featureUsable`, `aircraftName`, `valueOf`,
+`sentenceCase`); each unit and section derives for itself, from those, which of its controls draw
+and the one line naming what a missing binding left out ("Not available on the Cessna 172: STROBE,
+TAXI.", printed by the shared `UnitLines`), reusing the CDU keys' per-control resolution rather than
+hiding a whole section for one miss. A parking brake whose ratio resolved read-only is drawn
+disabled and named in that same line (R7).
 
 **Momentary controls** — switches, dimmers, the fuel selector, magnetos, gear, flaps, the parking
 brake's two writes, takeoff trim and the centre commands — are `ControlButton`s exactly as every
@@ -666,9 +676,9 @@ armed by a first tap (`confirm`) before it can be held, so cranking never starts
 **Layout** (spec §4.7). A phone (window narrower than `WIDE_MIN_WIDTH`, the same 720 dp breakpoint
 the CDU and Navigation use) shows one of four pages behind a row of page keys — ENGINE, LIGHTS,
 FLIGHT, ICE — the last one remembered per device (`avionix.systems`, best-effort load and save,
-FLIGHT on first use); a window at or past that breakpoint shows two independently scrolling columns
-instead (ENGINE and LIGHTS; FLIGHT and ICE), with no page keys, so nothing is ever hidden on a
-tablet. `SystemsPanel` owns one `useReadBack` for the whole panel and passes it to whichever
+FLIGHT on first use); a window at or past that breakpoint shows two columns instead (ENGINE and
+LIGHTS; FLIGHT and ICE), side by side inside the panel frame's single `ScrollView`, so they scroll
+together; there are no page keys, so nothing is ever hidden on a tablet. `SystemsPanel` owns one `useReadBack` for the whole panel and passes it to whichever
 sections are mounted, so a read-back failure survives a page change, and a held control's lease is
 released (its unit unmounts) the moment the page changes under it. Registered fifth in the switcher
 (`src/features/panels/registry.ts`): Instruments, Radios, Autopilot, Navigation, **Systems**, CDU,
