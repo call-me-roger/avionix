@@ -51,8 +51,11 @@ function snapshot({
   operations = {},
   stale = false,
   noFlight = false,
+  absent = [],
 }: {
   values?: Record<string, DataRefValue>;
+  /** Names resolved but whose value has not arrived (dropped telemetry on a panel switch). */
+  absent?: readonly string[];
   bindings?: Partial<Record<string, Status>>;
   operations?: Record<string, OperationOutcome>;
   stale?: boolean;
@@ -67,7 +70,12 @@ function snapshot({
       live: true,
       lastHeartbeatAt: NOW,
     },
-    telemetry: audioTelemetry({ ...AUDIO_VALUES, ...values }, NOW),
+    telemetry: audioTelemetry(
+      Object.fromEntries(
+        Object.entries({ ...AUDIO_VALUES, ...values }).filter(([name]) => !absent.includes(name)),
+      ),
+      NOW,
+    ),
     compatibility: audioCompatibility(identified, bindings),
     operations,
   };
@@ -198,9 +206,29 @@ describe('the AUDIO unit', () => {
 
   it('selects no MIC for a selection X-Plane reports as neither COM', async () => {
     await render(tree(snapshot({ values: { [TRANSMIT.selection]: 9 } })));
-    expect(button('Transmit on COM1')).toBeTruthy();
-    expect(button('Transmit on COM2')).toBeTruthy();
+    expect(button('Transmit on COM1')).not.toBeDisabled();
+    expect(button('Transmit on COM2')).not.toBeDisabled();
     expect(screen.queryByText(/aren't listening/)).toBeNull();
+  });
+
+  it('keeps both MIC keys inert until X-Plane’s selection arrives', async () => {
+    await render(tree(snapshot({ absent: [TRANSMIT.selection] })));
+    expect(button('Transmit on COM1, unknown')).toBeDisabled();
+    expect(button('Transmit on COM2, unknown')).toBeDisabled();
+    await fireEvent.press(button('Transmit on COM1, unknown'));
+    expect(activate).not.toHaveBeenCalled();
+  });
+
+  it('does not blame a pending COM listen on a MIC press that rewrote it', async () => {
+    const { rerender } = await render(tree(snapshot()));
+    await fireEvent.press(button('Listen to COM2, off'));
+    await fireEvent.press(button('Transmit on COM2'));
+    expect(activate).toHaveBeenLastCalledWith(FEATURE_AUDIO_TRANSMIT, MIC2.command);
+    const operations = { ...accepted(monitorBy('COM2').on), ...accepted(MIC2.command) };
+    await rerender(
+      tree(snapshot({ values: { [TRANSMIT.selection]: 7 }, operations }), NOW + 3_100),
+    );
+    expect(screen.queryByText(/didn't start listening to COM2/)).toBeNull();
   });
 
   it('lists a definitively missing key and keeps the rest working', async () => {
@@ -230,6 +258,12 @@ describe('the AUDIO unit', () => {
     await render(tree(snapshot({ bindings: missing })));
     expect(screen.getByText("The audio panel isn't available on the Cessna 172.")).toBeTruthy();
     expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+
+  it('neither draws nor speaks the lamps before their values arrive', async () => {
+    await render(tree(snapshot({ absent: [MARKER_LAMPS[2]!.state] })));
+    expect(screen.queryByLabelText(/Marker beacon/)).toBeNull();
+    expect(screen.queryByText('I', HIDDEN)).toBeNull();
   });
 
   it('lights the marker lamp X-Plane reports and speaks it', async () => {

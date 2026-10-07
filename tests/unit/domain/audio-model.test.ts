@@ -67,13 +67,28 @@ describe('audioModel', () => {
     expect(model.lamps).toEqual({ outer: false, middle: false, inner: false });
   });
 
-  it('selects no MIC for a selection other than 6 or 7', () => {
-    for (const value of [0, 9, 6.4, null]) {
+  it('selects no MIC, keeping both pressable, for a known selection other than 6 or 7', () => {
+    for (const value of [0, 9, 6.4]) {
       const model = audioModel(reader({ [TRANSMIT.selection]: value }));
       expect(model.transmitting).toBeNull();
-      expect(model.mics.every((mic) => !mic.selected)).toBe(true);
+      expect(model.selectionKnown).toBe(true);
+      expect(model.mics.map((mic) => [mic.selected, mic.enabled])).toEqual([
+        [false, true],
+        [false, true],
+      ]);
       expect(model.notHeard).toBeNull();
     }
+  });
+
+  it('makes both MIC keys inert while the selection value has not arrived', () => {
+    const model = audioModel(reader({ [TRANSMIT.selection]: null }));
+    expect(model.transmitting).toBeNull();
+    expect(model.selectionKnown).toBe(false);
+    expect(model.mics.map((mic) => [mic.selected, mic.enabled])).toEqual([
+      [false, false],
+      [false, false],
+    ]);
+    expect(model.notHeard).toBeNull();
   });
 
   it('hears the transmitting COM through auto-listen, whatever its own flag says', () => {
@@ -90,6 +105,35 @@ describe('audioModel', () => {
   it('does not claim "not heard" when the COM’s flag is unknown or missing', () => {
     expect(audioModel(reader({ [MONITORS[0]!.state]: null })).notHeard).toBeNull();
     expect(audioModel(reader({}, { [MONITORS[0]!.state]: 'missing' })).notHeard).toBeNull();
+  });
+
+  it('keeps the transmitting COM unknown while the auto-listen value has not arrived', () => {
+    const model = audioModel(reader({ [TRANSMIT.autoListen]: null }));
+    expect(listening(model)).toMatchObject({ COM1: 'unknown', COM2: 'off' });
+    expect(model.monitors[0]!.listening).toBe('unknown');
+    expect(model.notHeard).toBeNull();
+  });
+
+  it('reads every flag, auto-listen and lamp as on only above one half', () => {
+    const half = audioModel(
+      reader({
+        [MONITORS[1]!.state]: 0.5,
+        [MONITORS[2]!.state]: 0.7,
+        [TRANSMIT.autoListen]: 0.5,
+        [MARKER_LAMPS[0]!.state]: 0.5,
+        [MARKER_LAMPS[2]!.state]: 0.8,
+      }),
+    );
+    expect(listening(half)).toMatchObject({ COM1: 'off', COM2: 'off', NAV1: 'on' });
+    expect(half.lamps).toEqual({ outer: false, middle: false, inner: true });
+    const auto = audioModel(reader({ [TRANSMIT.autoListen]: 0.8 }));
+    expect(listening(auto).COM1).toBe('auto');
+  });
+
+  it('keeps the transmitting COM unknown while the auto-listen name is unchecked', () => {
+    const model = audioModel(reader({}, { [TRANSMIT.autoListen]: 'unchecked' }));
+    expect(listening(model).COM1).toBe('unknown');
+    expect(model.notHeard).toBeNull();
   });
 
   it('treats a missing auto-listen flag as off', () => {
@@ -154,6 +198,10 @@ describe('audioModel', () => {
       inner: false,
     });
     expect(audioModel(reader({}, { [MARKER_LAMPS[2]!.state]: 'missing' })).lamps).toBeNull();
+  });
+
+  it('shows no lamps until all three values arrived', () => {
+    expect(audioModel(reader({ [MARKER_LAMPS[0]!.state]: null })).lamps).toBeNull();
   });
 });
 

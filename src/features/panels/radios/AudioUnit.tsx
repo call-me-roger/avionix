@@ -2,7 +2,7 @@ import React from 'react';
 import { Text, View } from 'react-native';
 
 import { type MicKey, type MonitorKey, audioModel } from '@/domain/audio/audio-model';
-import { FEATURE_AUDIO_TRANSMIT, MARKER_LAMPS, TRANSMIT } from '@/domain/audio/catalogue';
+import { FEATURE_AUDIO_TRANSMIT, MARKER_LAMPS, MONITORS, TRANSMIT } from '@/domain/audio/catalogue';
 import { audioUnavailable, listenNotTaken, micNotTaken, notHeard } from '@/domain/audio/messages';
 import { MARKER_LETTER, markerColour } from '@/features/panels/navigation/nav-presentation';
 import { AvionicsUnit } from '@/features/panels/primitives/AvionicsUnit';
@@ -39,6 +39,12 @@ const makeStyles = (theme: Theme) => ({
 });
 
 const SPOKEN = { on: 'on', off: 'off', auto: 'heard while transmitting', unknown: 'unknown' };
+
+/** The COM monitor keys X-Plane's MIC side effect rewrites (it re-selects the transmit listener). */
+const COM_MONITOR_KEYS = MONITORS.filter((spec) => spec.com !== undefined).map((spec) => spec.key);
+
+const micState = (mic: MicKey, selectionKnown: boolean) =>
+  mic.selected ? ', selected' : selectionKnown ? '' : ', unknown';
 
 /**
  * F-23: the GA audio panel at the top of the radio stack (spec §4). MIC keys are exclusive and lit
@@ -106,15 +112,19 @@ export function AudioUnit({ readBack }: { readBack: ReadBack }) {
     <ControlButton
       key={mic.spec.key}
       label={mic.spec.legend}
-      accessibilityLabel={`Transmit on COM${mic.spec.com}${mic.selected ? ', selected' : ''}`}
+      accessibilityLabel={`Transmit on COM${mic.spec.com}${micState(mic, model.selectionKnown)}`}
       annunciation={mic.selected ? 'engaged' : 'off'}
       featureId={FEATURE_AUDIO_TRANSMIT}
       target={mic.spec.command}
       compact
       style={styles.mic}
       // The selected MIC is inert: X-Plane would re-select its listener and mute the other COM.
+      // Both are inert (not enabled) until the selection's value arrives, for the same reason.
       invalid={!mic.enabled || mic.selected || readBack.pendingExpected(MIC_READ_BACK) !== null}
       onPress={() => {
+        // The MIC's side effect rewrites the COM listen flags: a pending COM watch would blame
+        // the wrong cause ("didn't start listening to COM2").
+        COM_MONITOR_KEYS.forEach((key) => readBack.clear(key));
         void activate(FEATURE_AUDIO_TRANSMIT, mic.spec.command);
         readBack.watch({
           key: MIC_READ_BACK,
