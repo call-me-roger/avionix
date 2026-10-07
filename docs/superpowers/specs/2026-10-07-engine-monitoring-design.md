@@ -120,8 +120,9 @@ A missing marking draws no band. A missing unit flag leaves the unit unknown (se
 ### 4.2 Gauge sets (R1, R2)
 
 Engines drawn: 1..min(count, 4). With more than 4, the page says "Engines 5 and up aren't shown."
-(F-24's sentence). With the count missing, the ENGINES page says only "The engines on the
-{aircraft} couldn't be identified." The FUEL and ELEC pages do not depend on the count.
+(F-24's sentence). With the count or type DataRef missing, the ENGINES page says only "The engines
+on the {aircraft} couldn't be identified." With a count of 0 (a glider), it says "The {aircraft} has
+no engines." The FUEL and ELEC pages do not depend on the count.
 
 Each engine's type (`acf_en_type[n − 1]`) chooses its gauge set. The primary gauge is a dial; the
 others are table rows, in this order:
@@ -137,7 +138,8 @@ others are table rows, in this order:
 
 Electric engines have no fuel flow or oil: the roadmap's "oil and fuel flow for every type" would
 show zeros there, which its own user story forbids. A turboprop's N1 is labelled NG, as the PT6
-gauges it mirrors. With mixed types (rare), the rows are the union in the order above, and a cell
+gauges it mirrors. With mixed types (rare), the rows are engine 1's, then any other engine's rows not yet listed, in its
+order; and a cell
 whose engine lacks that gauge is empty and spoken "not used on engine 2".
 
 ### 4.3 Values (R3)
@@ -179,7 +181,8 @@ EGT uses; shown as reported." Nothing is guessed from the value's size.
   RPM and PROP run from 0 to 110 % of the redline, with a red line at the redline; N1, NG and N2 run
   0–110 %; every other gauge without markings shows its number with no bar.
 - The pointer and the number take the colour of the band the value is in: red band → warning red;
-  yellow band → caution amber; otherwise the avionics legend white (G1000: white digits in the
+  yellow band → caution amber; above the redline (RPM and PROP without markings) → warning red;
+  otherwise the avionics legend white (G1000: white digits in the
   normal range). Spoken: "in the red band" or "in the yellow band"; nothing in green.
 - This is the aircraft's own instrument face, not an alert: no sound, haptics, banner or advice
   (the roadmap's out-of-scope line on caution and warning logic).
