@@ -693,11 +693,15 @@ marking, fuel and electrical DataRef, verified against Laminar's files (`docs/xp
 only the gauges it feeds (R6, R9).
 
 **Domain models.** `enginesPage`, `fuelPage` and `electricalPage` (`src/domain/engines/engine-page.ts`,
-`fuel.ts`, `electrical.ts`) are pure functions of an `EngineReader` (`has`/`number`, the same shape
-Systems' `availability.ts` reads through) and the pilot's unit preferences; `engineReader`
-(`src/features/panels/engines/engine-reader.ts`) is the one adapter from a `SessionSnapshot` to that
-shape. The panel components only draw what these functions return — no DataRef name or conversion
-lives in a component.
+`fuel.ts`, `electrical.ts`) are pure functions of an `EngineReader` and the pilot's unit preferences;
+`engineReader` (`src/features/panels/engines/engine-reader.ts`) is the one adapter from a
+`SessionSnapshot` to it. The reader keeps three answers apart: `has` (the name resolved), `missing`
+(the probe found the aircraft lacks it) and `arrived` (a value has come in). Only `missing` produces a
+"not available" or "couldn't be identified" sentence; a name the probe has not reached yet just
+waits, so no false sentence shows while a connection is being checked. `EnginesPanel` derives the
+ENGINES model once per snapshot (`EnginesModelProvider`) and every section reads it. The panel
+components only draw what these functions return — no DataRef name or conversion lives in a
+component.
 
 **Units.** `src/domain/engines/units.ts` turns a raw reading into the instrument's own value (torque
 N·m to ft-lb, fuel flow per second to per hour), resolves a temperature's source from its unit flag
@@ -720,7 +724,8 @@ comparing its EGT against the last one's peak.
 **Layout** (spec §4.10). A phone shows one of three pages — ENGINES, FUEL, ELEC — behind page keys,
 remembered per device under `avionix.engines` (ENGINES on first use); a window at or past
 `WIDE_MIN_WIDTH` (720 dp, the same breakpoint Systems, the CDU and Navigation use) shows ENGINES
-across the top and FUEL and ELEC side by side below, with no page keys. Every value's freshness is
+across the top and FUEL and ELEC side by side below, with no page keys. The page keys and LEAN use
+the shared `PanelKey` primitive, as Systems' page keys do. Every value's freshness is
 the link's own, the same `panelLinkStatus` F-11 uses, not a per-value timestamp (R5). Registered
 sixth in the switcher (`src/features/panels/registry.ts`): Instruments, Radios, Autopilot,
 Navigation, Systems, **Engines**, CDU, Flight data.
