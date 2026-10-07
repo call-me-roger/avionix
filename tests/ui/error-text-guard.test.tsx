@@ -23,6 +23,8 @@ import { PANELS } from '@/features/panels/registry';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
 import { ThemeProvider } from '@/theme/theme-context';
 
+import { toyScreenTelemetry } from '../helpers/cdu';
+
 const mockShareText = jest.fn(async (_text: string, _title: string) => undefined);
 // jest.mock is hoisted above every const, so the factory may only close over a `mock`-prefixed name.
 jest.mock('@/platform/share', () => ({
@@ -132,11 +134,17 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
               <PanelFrame
                 key={descriptor.id}
                 title={descriptor.title}
-                snapshot={{ ...snapshotFor(code), operations: failedOperationsFor(code) }}
+                fillsFrame={descriptor.fillsFrame === true}
+                snapshot={{
+                  ...snapshotFor(code),
+                  operations: failedOperationsFor(code),
+                  // The CDU's live glass and keys, not its waiting state: a screen on both units.
+                  telemetry: { ...toyScreenTelemetry(1, 9_000), ...toyScreenTelemetry(2, 9_000) },
+                }}
                 now={10_000}
                 actions={{
                   write: jest.fn(async () => undefined),
-                  activate: jest.fn(async () => undefined),
+                  activate: jest.fn(async () => 'ok' as const),
                 }}
               >
                 <Component />
@@ -146,6 +154,9 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
         </UnitsProvider>
       </ThemeProvider>,
     );
+    // The CDU is covered live: its glass is drawn and its keys are there, not the waiting state.
+    expect(screen.getByLabelText('TOY FMS')).toBeTruthy();
+    expect(screen.queryByText('Waiting for the CDU screen…')).toBeNull();
     expect(screen.queryByText(new RegExp('http://'))).toBeNull();
     expect(screen.queryByText(/HTTP 403/)).toBeNull();
     expect(screen.queryByText(/avx_secret/)).toBeNull();

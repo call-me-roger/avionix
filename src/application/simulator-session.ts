@@ -42,6 +42,7 @@ import { type ConnectionState, transition } from '@/domain/connection/connection
 import type { ConnectorInfo } from '@/domain/connector/connector-info';
 import { AvionixError, toAvionixError } from '@/domain/errors/avionix-error';
 import type { ConnectStep } from '@/domain/health/failure-explanation';
+import type { ActivationResult } from '@/domain/panels/activation';
 import { type ApiVersion, negotiateApiVersion } from '@/domain/simulator/api-version';
 import { decodeDataRefString } from '@/domain/simulator/dataref-string';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
@@ -468,12 +469,17 @@ export class SimulatorSession {
     );
   }
 
-  /** Presses (or, with `durationSec`, holds) a command binding of `featureId`. */
-  async activate(featureId: string, name: string, durationSec = 0): Promise<void> {
+  /**
+   * Presses (or, with `durationSec`, holds) a command binding of `featureId`. Never rejects:
+   * every outcome, including a refusal, is recorded through `refuse`/`recordOutcome`/
+   * `recordFailure` as before. Resolves to how it ended so a caller that sequences presses (the
+   * CDU queue) need not read the store.
+   */
+  async activate(featureId: string, name: string, durationSec = 0): Promise<ActivationResult> {
     const epoch = this.operationsEpoch;
     const active = this.connectedOrRefuse(epoch, name);
     if (active === null) {
-      return;
+      return 'refused';
     }
     const binding = findFeature(active.profile, featureId)?.bindings.find(
       (candidate) => candidate.kind === 'command' && candidate.name === name,
@@ -482,7 +488,7 @@ export class SimulatorSession {
     const resolvedOk = this.store.getSnapshot().compatibility.bindings[name]?.status === 'ok';
     if (command === undefined || !resolvedOk || !this.featureUsable(featureId)) {
       this.refuse(epoch, name, 'unavailable');
-      return;
+      return 'refused';
     }
     this.recordOutcome(epoch, name, { status: 'pending', failure: null, refusal: null });
     try {
@@ -490,12 +496,14 @@ export class SimulatorSession {
         active.client.activateCommand(command.id, durationSec),
       );
       this.recordOutcome(epoch, name, { status: 'ok', failure: null, refusal: null });
+      return 'ok';
     } catch (error) {
       this.recordFailure(
         epoch,
         name,
         toAvionixError(error, { code: 'COMMAND_FAILED', message: 'Command failed' }),
       );
+      return 'failed';
     }
   }
 

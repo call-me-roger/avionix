@@ -92,7 +92,10 @@ function liveWithBindings(bindingOverrides: Partial<Record<string, Status>>): Se
   return { ...live(), compatibility: compatibilityFor(bindingOverrides) };
 }
 
-const actions = { write: jest.fn(async () => undefined), activate: jest.fn(async () => undefined) };
+const actions = {
+  write: jest.fn(async () => undefined),
+  activate: jest.fn(async () => 'ok' as const),
+};
 
 function Harness() {
   const readBack = useReadBack();

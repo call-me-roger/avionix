@@ -15,6 +15,7 @@ import type { Theme } from '@/theme/tokens';
 
 const makeStyles = (theme: Theme) => ({
   scroll: { flex: 1 },
+  fill: { flex: 1, padding: theme.spacing.lg, gap: theme.touch.spacing },
   content: { padding: theme.spacing.lg, gap: theme.touch.spacing },
   title: {
     color: theme.colors.text,
@@ -78,22 +79,42 @@ export function PanelScope({
 /**
  * The chrome every panel sits in. It computes the link status once and publishes it with the
  * snapshot and the actions, so every Readout and ControlButton agrees, and it renders R7's single
- * explanation at the top — never one per control.
+ * explanation at the top — never one per control. `fillsFrame` (from the panel's descriptor) gives
+ * the panel the fixed-height space under the title instead of a scroll view: the panel scrolls
+ * its own parts, so a part it pins stays put.
  */
 export function PanelFrame({
   title,
   snapshot,
   now,
   actions,
+  fillsFrame = false,
   children,
 }: {
   title: string;
   snapshot: SessionSnapshot;
   now: number;
   actions: PanelActions;
+  fillsFrame?: boolean;
   children: React.ReactNode;
 }) {
   const styles = useThemedStyles(makeStyles);
+  const heading = (
+    <Text accessibilityRole="header" style={styles.title}>
+      {title}
+    </Text>
+  );
+  if (fillsFrame) {
+    return (
+      <PanelScope snapshot={snapshot} now={now} actions={actions}>
+        <View testID="panel-frame" style={styles.fill}>
+          {heading}
+          <PanelNotice />
+          {children}
+        </View>
+      </PanelScope>
+    );
+  }
   return (
     <PanelScope snapshot={snapshot} now={now} actions={actions}>
       <ScrollView
@@ -104,9 +125,7 @@ export function PanelFrame({
         // iOS: scroll a focused ValueEntry clear of the keyboard instead of leaving it under it.
         automaticallyAdjustKeyboardInsets
       >
-        <Text accessibilityRole="header" style={styles.title}>
-          {title}
-        </Text>
+        {heading}
         <PanelNotice />
         {children}
       </ScrollView>

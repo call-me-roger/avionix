@@ -136,7 +136,8 @@ describe.each(['v2', 'v3'] as const)('XPlaneClient over %s', (apiVersion) => {
   });
 
   it('reports the dataref count', async () => {
-    await expect(client.getDataRefCount()).resolves.toBe(94);
+    // 94 pre-F-32 DataRefs plus the CDU's 66 (32 screen cells per unit, two EXEC lights).
+    await expect(client.getDataRefCount()).resolves.toBe(160);
   });
 
   it('reads scalar, array, indexed and data values', async () => {

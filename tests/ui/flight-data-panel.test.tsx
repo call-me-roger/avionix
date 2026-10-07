@@ -64,7 +64,10 @@ function PoundsButton() {
   );
 }
 
-const actions = { write: jest.fn(async () => undefined), activate: jest.fn(async () => undefined) };
+const actions = {
+  write: jest.fn(async () => undefined),
+  activate: jest.fn(async () => 'ok' as const),
+};
 
 async function renderPanel(snapshot: SessionSnapshot) {
   const storage = createMemorySettingsStorage();

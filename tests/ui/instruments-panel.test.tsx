@@ -91,7 +91,7 @@ function withIdentity(snapshot: SessionSnapshot, icaoType: string | null): Sessi
 
 const actions: PanelActions = {
   write: jest.fn(async () => undefined),
-  activate: jest.fn(async () => undefined),
+  activate: jest.fn(async () => 'ok' as const),
 };
 
 function tree(snapshot: SessionSnapshot, storage = createMemorySettingsStorage()) {

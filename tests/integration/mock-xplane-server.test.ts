@@ -405,3 +405,46 @@ describe('F-30 navigation in the mock', () => {
     }
   });
 });
+
+/** Decodes a CDU text line as X-Plane sends it: base64 → UTF-8, trailing NULs stripped. */
+function cduLineText(server: MockXPlaneServer, name: string): string {
+  const value = server.getDataRefByName(name)?.value;
+  return typeof value === 'string'
+    ? Buffer.from(value, 'base64').toString('utf8').replace(/\0+$/, '')
+    : '';
+}
+
+describe('F-32 toy FMS CDU in the mock', () => {
+  it('types into the scratchpad, LSK 1L moves it to the origin and lights EXEC, EXEC clears it', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      await activate(server, server.commandIdByName('sim/FMS/key_K'));
+      await activate(server, server.commandIdByName('sim/FMS/key_L'));
+      await activate(server, server.commandIdByName('sim/FMS/key_A'));
+      await activate(server, server.commandIdByName('sim/FMS/key_X'));
+      expect(cduLineText(server, 'sim/cockpit2/radios/indicators/fms_cdu1_text_line13')).toBe(
+        'KLAX',
+      );
+
+      await activate(server, server.commandIdByName('sim/FMS/ls_1l'));
+      expect(cduLineText(server, 'sim/cockpit2/radios/indicators/fms_cdu1_text_line2')).toBe(
+        'KLAX',
+      );
+      expect(cduLineText(server, 'sim/cockpit2/radios/indicators/fms_cdu1_text_line13')).toBe('');
+      expect(
+        server.getDataRefByName('sim/cockpit2/radios/indicators/fms_exec_light_pilot')?.value,
+      ).toBe(1);
+
+      await activate(server, server.commandIdByName('sim/FMS/exec'));
+      expect(
+        server.getDataRefByName('sim/cockpit2/radios/indicators/fms_exec_light_pilot')?.value,
+      ).toBe(0);
+
+      await activate(server, server.commandIdByName('sim/FMS2/key_A'));
+      expect(cduLineText(server, 'sim/cockpit2/radios/indicators/fms_cdu2_text_line13')).toBe('A');
+      expect(cduLineText(server, 'sim/cockpit2/radios/indicators/fms_cdu1_text_line13')).toBe('');
+    } finally {
+      await server.stop();
+    }
+  });
+});

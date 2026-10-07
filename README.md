@@ -22,12 +22,15 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
   against what X-Plane reports), Navigation (a Garmin-style HSI standing on the heading alone, with
   course, lateral and glideslope deviation in dots, TO/FROM, bearing pointers, DME and marker
   beacons; a NAV control unit to pick the source, set the course by keypad or stepper, and centre it
-  with CTR, all in NAV green or GPS magenta, never colour alone) and Flight data (ground speed, true
-  airspeed, track, wind, OAT/TAT, fuel remaining, sim zulu and local time, paused/replay, the GPS
-  destination) round out the switcher. A compact strip with ground speed, wind, fuel and sim zulu
-  docks under the status bar on every other panel and opens Flight data when tapped; a Setup toggle
-  turns it off. The WebSocket subscribes only the visible panel's DataRefs (plus the strip's, while
-  shown), identification and connection health, and follows a panel switch within one update cycle.
+  with CTR, all in NAV green or GPS magenta, never colour alone), CDU (a faithful mirror of the
+  default FMS's 16-line screen, line select keys down each side, a Boeing-style keyboard, CDU 1 and
+  CDU 2, a physical keyboard on the web build) and Flight data (ground speed, true airspeed, track,
+  wind, OAT/TAT, fuel remaining, sim zulu and local time, paused/replay, the GPS destination) round
+  out the switcher. A compact strip with ground speed, wind, fuel and sim zulu docks under the
+  status bar on every panel but Setup, Flight data and the CDU (which already fill the screen with
+  their own numbers), and opens Flight data when tapped; a Setup toggle turns it off. The WebSocket
+  subscribes only the visible panel's DataRefs (plus the strip's, while shown), identification and
+  connection health, and follows a panel switch within one update cycle.
 - A **cockpit look and feel**: dark bezels, glass display windows, the B612 and B612 Mono fonts
   (Airbus's own cockpit-legibility research, open licence) for every live number, and cockpit colour
   meanings throughout (green engaged, white armed, cyan selected, amber caution, red warning).

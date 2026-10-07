@@ -1,4 +1,13 @@
 import type { AircraftProfile, BindingSpec, FeatureSpec } from '@/domain/aircraft/profile';
+import {
+  CDU_KEYS,
+  CDU_LINE_COUNT,
+  cduCommand,
+  cduExecLight,
+  cduStyleLine,
+  cduTextLine,
+  type CduUnit,
+} from '@/domain/cdu/keys';
 
 /**
  * Laminar names, verified against Laminar Research's `DataRefs.txt` and `Commands.txt`
@@ -155,6 +164,65 @@ export const FEATURE_NAV_SOURCE = 'nav-source';
 export const FEATURE_NAV_COURSE = 'nav-course';
 export const FEATURE_NAV_AIDS = 'nav-aids';
 
+export const FEATURE_CDU1_SCREEN = 'cdu1-screen';
+export const FEATURE_CDU1_KEYS = 'cdu1-keys';
+export const FEATURE_CDU2_SCREEN = 'cdu2-screen';
+export const FEATURE_CDU2_KEYS = 'cdu2-keys';
+
+export function cduScreenFeatureId(unit: CduUnit): string {
+  return unit === 1 ? FEATURE_CDU1_SCREEN : FEATURE_CDU2_SCREEN;
+}
+
+export function cduKeysFeatureId(unit: CduUnit): string {
+  return unit === 1 ? FEATURE_CDU1_KEYS : FEATURE_CDU2_KEYS;
+}
+
+const CDU_LINES = Array.from({ length: CDU_LINE_COUNT }, (_, line) => line);
+
+/** `cdu{n}-screen`: the 16 text lines (required) and 16 style lines (optional) for one unit. */
+function cduScreenFeature(unit: CduUnit): FeatureSpec {
+  return {
+    id: cduScreenFeatureId(unit),
+    label: `CDU ${unit} screen`,
+    bindings: [
+      ...CDU_LINES.map((line) => ({
+        kind: 'dataref' as const,
+        name: cduTextLine(unit, line),
+        required: true,
+        purpose: `CDU ${unit} screen, line ${line + 1}`,
+      })),
+      ...CDU_LINES.map((line) => ({
+        kind: 'dataref' as const,
+        name: cduStyleLine(unit, line),
+        required: false,
+        purpose: `CDU ${unit} colours and fonts, line ${line + 1}`,
+      })),
+    ],
+  };
+}
+
+/** `cdu{n}-keys`: the EXEC light and every one of the 70 key commands for one unit, all optional. */
+function cduKeysFeature(unit: CduUnit): FeatureSpec {
+  return {
+    id: cduKeysFeatureId(unit),
+    label: `CDU ${unit} keys`,
+    bindings: [
+      {
+        kind: 'dataref',
+        name: cduExecLight(unit),
+        required: false,
+        purpose: `CDU ${unit} EXEC light`,
+      },
+      ...CDU_KEYS.map((entry) => ({
+        kind: 'command' as const,
+        name: cduCommand(unit, entry.id),
+        required: false,
+        purpose: `CDU ${unit} ${entry.name} key`,
+      })),
+    ],
+  };
+}
+
 const D = GENERIC_DATAREFS;
 const C = GENERIC_COMMANDS;
 
@@ -233,12 +301,15 @@ function modeFeature(
  * features so a miss disables only the NAV unit's write, not the needles; course direct-to
  * (`obs_HSI_direct`) is optional because CTR is simply disabled without it (no fallback write
  * exists); and `nav-aids` bundles everything advisory — bearings, signal flags, DME and markers —
- * with no binding required, so a miss drops only that one cue.
+ * with no binding required, so a miss drops only that one cue. The four CDU features (F-32) split
+ * each unit into its screen and its keys: every screen text line is required (a missing one means
+ * the aircraft does not publish that unit's CDU at all), every style line and every key is
+ * optional, so a missing key just disables that one key instead of the whole unit.
  */
 export const GENERIC_PROFILE: AircraftProfile = {
   id: 'avionix.generic',
   name: 'Generic X-Plane aircraft',
-  version: '1.5.0',
+  version: '1.6.0',
   match: { kind: 'generic' },
   features: [
     {
@@ -777,5 +848,9 @@ export const GENERIC_PROFILE: AircraftProfile = {
         },
       ],
     },
+    cduScreenFeature(1),
+    cduKeysFeature(1),
+    cduScreenFeature(2),
+    cduKeysFeature(2),
   ],
 };

@@ -2,6 +2,7 @@ import type React from 'react';
 
 import type { PanelDescriptor } from '@/domain/panels/panel';
 import { AUTOPILOT_PANEL, AutopilotPanel } from '@/features/panels/autopilot/AutopilotPanel';
+import { CDU_PANEL, CduPanel } from '@/features/panels/cdu/CduPanel';
 import { FLIGHT_DATA_PANEL, FlightDataPanel } from '@/features/panels/flight-data/FlightDataPanel';
 import {
   INSTRUMENTS_PANEL,
@@ -21,6 +22,7 @@ export const PANELS: readonly RegisteredPanel[] = [
   { descriptor: RADIOS_PANEL, Component: RadiosPanel },
   { descriptor: AUTOPILOT_PANEL, Component: AutopilotPanel },
   { descriptor: NAVIGATION_PANEL, Component: NavigationPanel },
+  { descriptor: CDU_PANEL, Component: CduPanel },
   { descriptor: FLIGHT_DATA_PANEL, Component: FlightDataPanel },
 ];
 

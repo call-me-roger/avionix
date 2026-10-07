@@ -16,6 +16,7 @@ import { silentLogger } from '@/infrastructure/logging/logger';
 import { holdScreenAwake, releaseScreenAwake } from '@/platform/keep-awake';
 import { ThemeProvider } from '@/theme/theme-context';
 
+import { toyScreenTelemetry } from '../helpers/cdu';
 import { createFakeServiceBrowser } from '../support/fake-service-browser';
 
 let mockLayout: DeviceLayout = { deviceClass: 'phone', orientation: 'portrait' };
@@ -57,7 +58,7 @@ function makeServices(snapshot: Partial<SessionSnapshot> = {}, storage?: Setting
     disconnect: jest.fn(),
     pair: jest.fn(async () => undefined),
     write: jest.fn(async () => undefined),
-    activate: jest.fn(async () => undefined),
+    activate: jest.fn(async () => 'ok' as const),
     setDemand: jest.fn(),
     recheckCompatibility: jest.fn(async () => undefined),
   };
@@ -264,3 +265,77 @@ describe('touch targets on the Autopilot panel in a wide layout', () => {
     }
   });
 });
+
+/**
+ * The sweep above renders the CDU with no screen telemetry, so it only ever measures the waiting
+ * state. This case gives it the toy FMS's screen on both units, so the live glass, both columns
+ * of line-select keys and every function, alpha and numeric key are measured, at a window size
+ * typical of each layout: a phone in portrait gets the narrow layout (keys scrolling under the
+ * pinned unit), every other the wide one — asserted, not assumed.
+ */
+const CDU_WINDOWS: Record<string, { width: number; height: number; wide: boolean }> = {
+  'phone portrait': { width: 390, height: 844, wide: false },
+  'phone landscape': { width: 844, height: 390, wide: true },
+  'tablet portrait': { width: 820, height: 1180, wide: true },
+  'tablet landscape': { width: 1180, height: 820, wide: true },
+};
+
+describe.each(LAYOUTS)(
+  'touch targets on the live CDU on a $deviceClass in $orientation',
+  (layout) => {
+    it('every key, the line-select keys included, is at least 48 dp', async () => {
+      mockLayout = layout;
+      const original = Dimensions.get('window');
+      const size = CDU_WINDOWS[`${layout.deviceClass} ${layout.orientation}`];
+      if (size === undefined) {
+        throw new Error(`no CDU window for ${layout.deviceClass} ${layout.orientation}`);
+      }
+      Dimensions.set({
+        window: { width: size.width, height: size.height, scale: 1, fontScale: 1 },
+      });
+      try {
+        const snapshot = liveSnapshot();
+        const { services } = makeServices(
+          {
+            ...snapshot,
+            telemetry: { ...toyScreenTelemetry(1, NOW), ...toyScreenTelemetry(2, NOW) },
+          },
+          await seeded('cdu'),
+        );
+        await render(tree(services));
+        await screen.findByTestId('panel-cdu');
+        // Live, not waiting: the toy screen's title is on the glass and a key can be pressed.
+        expect(screen.getByLabelText('TOY FMS')).toBeTruthy();
+        expect(screen.getByLabelText('K').props.accessibilityState?.disabled).toBe(false);
+        expect(screen.getByLabelText('Line select right 6')).toBeTruthy();
+        if (size.wide) {
+          expect(screen.getByTestId('cdu-wide-left')).toBeTruthy();
+          expect(screen.getByTestId('cdu-wide-right')).toBeTruthy();
+        } else {
+          expect(screen.queryByTestId('cdu-wide-left')).toBeNull();
+          expect(screen.getByTestId('cdu-keys-scroll')).toBeTruthy();
+        }
+        const targets = panelTargets();
+        expect(targets.length).toBeGreaterThanOrEqual(70);
+        for (const target of targets) {
+          const style = StyleSheet.flatten(target.props.style) ?? {};
+          const label = String(
+            target.props.accessibilityLabel ?? target.props.testID ?? 'unlabelled',
+          );
+          expect({ label, minHeight: Number(style.minHeight ?? style.height ?? 0) >= 48 }).toEqual({
+            label,
+            minHeight: true,
+          });
+          expect({ label, minWidth: Number(style.minWidth ?? style.width ?? 0) >= 48 }).toEqual({
+            label,
+            minWidth: true,
+          });
+        }
+      } finally {
+        await act(async () => {
+          Dimensions.set({ window: original });
+        });
+      }
+    });
+  },
+);

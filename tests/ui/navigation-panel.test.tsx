@@ -90,7 +90,10 @@ function live(overrides: Partial<SessionSnapshot> = {}): SessionSnapshot {
   };
 }
 
-const actions = { write: jest.fn(async () => undefined), activate: jest.fn(async () => undefined) };
+const actions = {
+  write: jest.fn(async () => undefined),
+  activate: jest.fn(async () => 'ok' as const),
+};
 
 function tree(snapshot: SessionSnapshot, storage: SettingsStorage = createMemorySettingsStorage()) {
   return (

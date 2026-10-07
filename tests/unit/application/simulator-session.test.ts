@@ -15,6 +15,15 @@ import {
   GENERIC_DATAREFS,
   GENERIC_PROFILE,
 } from '@/domain/aircraft/profiles/generic';
+import {
+  CDU_KEYS,
+  CDU_LINE_COUNT,
+  type CduUnit,
+  cduCommand,
+  cduExecLight,
+  cduStyleLine,
+  cduTextLine,
+} from '@/domain/cdu/keys';
 import type { XPlaneConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
@@ -183,6 +192,29 @@ const NAV_FAKE_DATAREFS: Record<string, FakeDataRef> = {
   [GENERIC_DATAREFS.innerMarker]: { id: 118, valueType: 'int' },
 };
 
+/**
+ * F-32's CDU bindings (all four features, both units), absent from `DEFAULT_FAKE_DATAREFS` for the
+ * same reason as the other feature datarefs above.
+ */
+const CDU_FAKE_DATAREFS: Record<string, FakeDataRef> = (() => {
+  const refs: Record<string, FakeDataRef> = {};
+  let nextId = 120;
+  for (const unit of [1, 2] as const) {
+    for (let line = 0; line < CDU_LINE_COUNT; line += 1) {
+      refs[cduTextLine(unit, line)] = { id: nextId++, valueType: 'data' };
+      refs[cduStyleLine(unit, line)] = { id: nextId++, valueType: 'data' };
+    }
+    refs[cduExecLight(unit)] = { id: nextId++, valueType: 'int' };
+  }
+  return refs;
+})();
+
+/** Every command name `FakeClient.findCommand` recognises by default: a fully-equipped aircraft. */
+const ALL_FAKE_COMMAND_NAMES = new Set<string>([
+  ...(Object.values(GENERIC_COMMANDS) as string[]),
+  ...([1, 2] as const).flatMap((unit: CduUnit) => CDU_KEYS.map((key) => cduCommand(unit, key.id))),
+]);
+
 class FakeClient implements SimulatorClient {
   updateListeners = new Set<(updates: DataRefUpdate[]) => void>();
   closeListeners = new Set<(info: SocketCloseInfo) => void>();
@@ -212,7 +244,7 @@ class FakeClient implements SimulatorClient {
   });
 
   findCommand = jest.fn(async (name: string) =>
-    (Object.values(GENERIC_COMMANDS) as string[]).includes(name) && name !== this.missingCommand
+    ALL_FAKE_COMMAND_NAMES.has(name) && name !== this.missingCommand
       ? { id: 9, name, description: 'up' }
       : null,
   );
@@ -713,7 +745,8 @@ describe('SimulatorSession operations', () => {
   it('activates a command binding of the feature', async () => {
     const { session, clients, snapshot } = setup();
     await session.connect('192.168.1.100', 8086);
-    await session.activate(FEATURE_HEADING_CONTROL, HEADING_UP);
+    const result = await session.activate(FEATURE_HEADING_CONTROL, HEADING_UP);
+    expect(result).toBe('ok');
     expect(clients[0]?.activations).toEqual([9]);
     expect(snapshot().operations[HEADING_UP]).toMatchObject({ status: 'ok', failure: null });
   });
@@ -731,7 +764,8 @@ describe('SimulatorSession operations', () => {
     clients[0]?.activateCommand.mockRejectedValueOnce(
       new AvionixError({ code: 'COMMAND_FAILED', message: 'X-Plane answered HTTP 500' }),
     );
-    await session.activate(FEATURE_HEADING_CONTROL, HEADING_UP);
+    const result = await session.activate(FEATURE_HEADING_CONTROL, HEADING_UP);
+    expect(result).toBe('failed');
     expect(snapshot().operations[HEADING_UP]).toMatchObject({
       status: 'failed',
       failure: { code: 'COMMAND_FAILED', step: 'operation' },
@@ -742,7 +776,8 @@ describe('SimulatorSession operations', () => {
   it('refuses while not connected, without calling the client', async () => {
     const { session, clients, snapshot } = setup();
     await session.write(FEATURE_HEADING_CONTROL, HEADING, 10);
-    await session.activate(FEATURE_HEADING_CONTROL, HEADING_UP);
+    const result = await session.activate(FEATURE_HEADING_CONTROL, HEADING_UP);
+    expect(result).toBe('refused');
     expect(clients[0]?.setDataRefValue).not.toHaveBeenCalled();
     expect(clients[0]?.activateCommand).not.toHaveBeenCalled();
     expect(snapshot().operations[HEADING]).toMatchObject({
@@ -769,7 +804,8 @@ describe('SimulatorSession operations', () => {
   it('refuses to activate a DataRef as if it were a command', async () => {
     const { session, clients, snapshot } = setup();
     await session.connect('192.168.1.100', 8086);
-    await session.activate(FEATURE_HEADING_CONTROL, HEADING);
+    const result = await session.activate(FEATURE_HEADING_CONTROL, HEADING);
+    expect(result).toBe('refused');
     expect(clients[0]?.activations).toEqual([]);
     expect(snapshot().operations[HEADING]?.refusal).toBe('unavailable');
   });
@@ -1784,6 +1820,7 @@ describe('aircraft compatibility', () => {
       ...RADIO_FAKE_DATAREFS,
       ...AUTOPILOT_FAKE_DATAREFS,
       ...NAV_FAKE_DATAREFS,
+      ...CDU_FAKE_DATAREFS,
     };
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
@@ -2094,9 +2131,10 @@ describe('aircraft changes', () => {
     expect(scheduler.queue.filter((entry) => !entry.cancelled)).toHaveLength(1);
     await scheduler.runNext();
     // One re-check pass probes every command binding in the profile: headingUp, the five radio
-    // and transponder commands added in 1.3.0, the fifteen autopilot commands added in 1.4.0, and
-    // the HSI direct-to command added in 1.5.0.
-    expect(client.findCommand.mock.calls.length).toBe(before + 22);
+    // and transponder commands added in 1.3.0, the fifteen autopilot commands added in 1.4.0, the
+    // HSI direct-to command added in 1.5.0, and the 140 CDU key commands (70 per unit) added in
+    // 1.6.0.
+    expect(client.findCommand.mock.calls.length).toBe(before + 162);
   });
 
   it('ignores an update that repeats the identification already on record', async () => {

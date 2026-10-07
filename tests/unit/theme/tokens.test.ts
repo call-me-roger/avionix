@@ -202,4 +202,33 @@ describe('theme tokens', () => {
   it('shares one avionics palette between light and dark, as a real panel is dark in daylight', () => {
     expect(darkTheme.avionics).toBe(lightTheme.avionics);
   });
+
+  it('defines the same cdu keys in every mode with hex values', () => {
+    const keys = Object.keys(lightTheme.cdu).sort();
+    for (const theme of ALL_THEMES) {
+      expect(Object.keys(theme.cdu).sort()).toEqual(keys);
+      for (const value of Object.values(theme.cdu)) {
+        expect(value).toMatch(HEX);
+      }
+    }
+  });
+
+  it('meets 4.5:1 for every F-32 CDU colour on its glass in every mode', () => {
+    const CDU_COLOURS = ['white', 'cyan', 'red', 'yellow', 'green', 'magenta', 'amber'] as const;
+    for (const theme of ALL_THEMES) {
+      for (const key of CDU_COLOURS) {
+        expect(contrastRatio(theme.cdu[key], theme.cdu.glass) >= 4.5).toBe(true);
+      }
+    }
+  });
+
+  it('keeps every night CDU colour dark', () => {
+    for (const [key, value] of Object.entries(nightTheme.cdu)) {
+      expect({ key, luminance: relativeLuminance(value) <= 0.3 }).toEqual({ key, luminance: true });
+    }
+  });
+
+  it('shares one CDU palette between light and dark, as a real panel is dark in daylight', () => {
+    expect(darkTheme.cdu).toBe(lightTheme.cdu);
+  });
 });

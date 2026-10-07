@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
+import { StyleSheet, Text } from 'react-native';
 
 import { SETUP_ROUTE } from '@/application/panel-layout';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
@@ -36,7 +37,7 @@ function live(overrides: Partial<SessionSnapshot> = {}): SessionSnapshot {
 }
 
 function makeActions(): PanelActions & { write: jest.Mock; activate: jest.Mock } {
-  return { write: jest.fn(async () => undefined), activate: jest.fn(async () => undefined) };
+  return { write: jest.fn(async () => undefined), activate: jest.fn(async () => 'ok' as const) };
 }
 
 async function renderPanel(
@@ -55,7 +56,14 @@ async function renderPanel(
 
 describe('panel registry', () => {
   it('lists each panel once, in switcher order, never under the reserved Setup id', () => {
-    expect(PANEL_IDS).toEqual(['instruments', 'radios', 'autopilot', 'navigation', 'flight-data']);
+    expect(PANEL_IDS).toEqual([
+      'instruments',
+      'radios',
+      'autopilot',
+      'navigation',
+      'cdu',
+      'flight-data',
+    ]);
     expect(new Set(PANEL_IDS).size).toBe(PANEL_IDS.length);
     expect(PANEL_IDS).not.toContain(SETUP_ROUTE);
   });
@@ -72,6 +80,50 @@ describe('panel registry', () => {
   it('finds a panel by id', () => {
     expect(findPanel(PANELS, 'autopilot')?.descriptor.title).toBe('Autopilot');
     expect(findPanel(PANELS, 'nope')).toBeNull();
+  });
+});
+
+describe('PanelFrame fillsFrame', () => {
+  function framed(fillsFrame?: boolean) {
+    return (
+      <ThemeProvider storage={createMemorySettingsStorage()} systemSchemeOverride="light">
+        <PanelFrame
+          title="Framed"
+          snapshot={live({ state: 'disconnected' })}
+          now={NOW}
+          actions={makeActions()}
+          fillsFrame={fillsFrame}
+        >
+          <Text>Body</Text>
+        </PanelFrame>
+      </ThemeProvider>
+    );
+  }
+
+  it('scrolls the panel by default', async () => {
+    await render(framed());
+    const frame = screen.getByTestId('panel-frame');
+    // Only the ScrollView takes keyboardShouldPersistTaps; a plain View never carries it.
+    expect(frame.props.keyboardShouldPersistTaps).toBe('handled');
+    expect(screen.getByRole('header', { name: 'Framed' })).toBeTruthy();
+  });
+
+  it('gives a fillsFrame panel a fixed-height View, keeping the title and the link notice', async () => {
+    await render(framed(true));
+    const frame = screen.getByTestId('panel-frame');
+    expect(frame.props.keyboardShouldPersistTaps).toBeUndefined();
+    expect(StyleSheet.flatten(frame.props.style)).toEqual(expect.objectContaining({ flex: 1 }));
+    expect(screen.getByRole('header', { name: 'Framed' })).toBeTruthy();
+    expect(screen.getByTestId('panel-notice')).toBeTruthy();
+    expect(screen.getByText('Body')).toBeTruthy();
+  });
+
+  it('is set by the CDU alone', () => {
+    expect(
+      PANELS.filter(({ descriptor }) => descriptor.fillsFrame === true).map(
+        ({ descriptor }) => descriptor.id,
+      ),
+    ).toEqual(['cdu']);
   });
 });
 
