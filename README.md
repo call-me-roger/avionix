@@ -22,7 +22,12 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
   against what X-Plane reports), Navigation (a Garmin-style HSI standing on the heading alone, with
   course, lateral and glideslope deviation in dots, TO/FROM, bearing pointers, DME and marker
   beacons; a NAV control unit to pick the source, set the course by keypad or stepper, and centre it
-  with CTR, all in NAV green or GPS magenta, never colour alone), CDU (a faithful mirror of the
+  with CTR, all in NAV green or GPS magenta, never colour alone), Systems (battery, avionics master
+  and generators; the fuel selector and pumps; magnetos and starter; exterior and interior lights;
+  flaps, trim, landing gear and parking brake; pitot heat and the anti-ice switches — every control
+  reads X-Plane's own state and sends explicit on/off commands, never a toggle; trim and the
+  starters are held rather than pressed, with a lease X-Plane itself lets lapse if the phone goes
+  silent; four pages on a phone, two scrolling columns on a tablet), CDU (a faithful mirror of the
   default FMS's 16-line screen, line select keys down each side, a Boeing-style keyboard, CDU 1 and
   CDU 2, a physical keyboard on the web build) and Flight data (ground speed, true airspeed, track,
   wind, OAT/TAT, fuel remaining, sim zulu and local time, paused/replay, the GPS destination) round

@@ -358,4 +358,84 @@ default the simulator's own popup draws plain text with. Colour indices 8–15 r
 invisible and the simulator's own popup never draws invisible text; reverse video with colour 0
 draws as plain white text.
 
+## Systems controls (F-24)
+
+Every name below was verified against Laminar's `DataRefs.txt` and `Commands.txt`, the same files
+the F-30 and F-32 names were checked against; none are community-sourced. Engine number `n` is
+1..4; DataRef arrays are zero-based, so engine `n` is index `n − 1`.
+
+**Lights**
+
+| Control | State (int 0/1 unless noted) | On / off commands |
+|---|---|---|
+| Beacon | `sim/cockpit2/switches/beacon_on` | `sim/lights/beacon_lights_on` / `_off` |
+| Nav | `sim/cockpit2/switches/navigation_lights_on` | `sim/lights/nav_lights_on` / `_off` |
+| Strobe | `sim/cockpit2/switches/strobe_lights_on` | `sim/lights/strobe_lights_on` / `_off` |
+| Taxi | `sim/cockpit2/switches/taxi_light_on` | `sim/lights/taxi_lights_on` / `_off` |
+| Landing | `sim/cockpit2/switches/landing_lights_on` | `sim/lights/landing_lights_on` / `_off` |
+| Panel (flood) | `sim/cockpit2/switches/panel_brightness_ratio` float[4], index 0 | `sim/instruments/panel_bright_down` / `_up` |
+| Instruments | `sim/cockpit2/switches/instrument_brightness_ratio` float[32], index 0 | `sim/instruments/instrument_bright_down` / `_up` |
+
+**Gear, flaps, brakes**
+
+| Purpose | Name | Type |
+|---|---|---|
+| Gear handle | `sim/cockpit2/controls/gear_handle_down` | int, 0 up, 1 down |
+| Gear position | `sim/flightmodel2/gear/deploy_ratio` | float[10], 0 up, 1 down; entries 0–2 drive the lamps |
+| Retractable gear | `sim/aircraft/gear/acf_gear_retract` | int, 0 fixed |
+| Gear commands | `sim/flight_controls/landing_gear_up`, `sim/flight_controls/landing_gear_down` | commands |
+| Flap handle | `sim/cockpit2/controls/flap_handle_request_ratio` | float 0..1 |
+| Flap position | `sim/cockpit2/controls/flap_system_deploy_ratio` | float 0..1 |
+| Flap detents | `sim/aircraft/controls/acf_flap_detents` | int |
+| Flap commands | `sim/flight_controls/flaps_up`, `sim/flight_controls/flaps_down` | one notch each |
+| Parking brake | `sim/cockpit2/controls/parking_brake_ratio` | float 0..1, writable |
+
+**Trim**
+
+| Axis | Position (float −1..1, normalised to the trim range) | Hold commands | Set commands |
+|---|---|---|---|
+| Pitch | `sim/flightmodel/controls/elv_trim` (−1 nose down, 1 nose up) | `sim/flight_controls/pitch_trim_down` / `_up` | `sim/flight_controls/pitch_trim_takeoff` |
+| Roll | `sim/flightmodel/controls/ail_trim` (−1 left) | `sim/flight_controls/aileron_trim_left` / `_right` | `sim/flight_controls/aileron_trim_center` |
+| Yaw | `sim/flightmodel/controls/rud_trim` (−1 left) | `sim/flight_controls/rudder_trim_left` / `_right` | `sim/flight_controls/rudder_trim_center` |
+| Takeoff mark | `sim/aircraft/controls/acf_takeoff_trim` | float −1..1, same scale as `elv_trim` | — |
+
+**Anti-ice** (state int 0/1; commands `sim/ice/<x>_on` / `_off`)
+
+| Control | State | Command stem |
+|---|---|---|
+| Pitot heat | `sim/cockpit2/ice/ice_pitot_heat_on_pilot` | `pitot_heat0` |
+| Window heat | `sim/cockpit2/ice/ice_window_heat_on` | `window_heat` |
+| Prop heat | `sim/cockpit2/ice/ice_prop_heat_on` | `prop_heat` |
+| Engine inlet | `sim/cockpit2/ice/ice_inlet_heat_on` | `inlet_heat` |
+| Wing heat | `sim/cockpit2/ice/ice_surfce_heat_on` (Laminar's spelling) | `wing_heat` |
+| Wing boots | `sim/cockpit2/ice/ice_surface_boot_on` | `wing_boot` |
+
+**Electrical, fuel, engines**
+
+| Purpose | State | Commands |
+|---|---|---|
+| Battery | `sim/cockpit2/electrical/battery_on` int[8], index 0 | `sim/electrical/battery_1_on` / `_off` |
+| Avionics master | `sim/cockpit2/switches/avionics_power_on` | `sim/systems/avionics_on` / `_off` |
+| Generator n | `sim/cockpit2/electrical/generator_on` int[8] | `sim/electrical/generator_n_on` / `_off` |
+| Fuel selector | `sim/cockpit2/fuel/fuel_tank_selector` int (0 none, 1 left, 2 centre, 3 right, 4 all) | `sim/fuel/fuel_selector_none` / `_lft` / `_all` / `_rgt` |
+| Selector present | `sim/aircraft/overflow/acf_has_fuel_any`, `acf_has_fuel_all` | int 0/1 |
+| Fuel pump n | `sim/cockpit2/engine/actuators/fuel_pump_on` int[16] | `sim/fuel/fuel_pump_n_on` / `_off` |
+| Magnetos n | `sim/cockpit2/engine/actuators/ignition_key` int[16] (0 off, 1 left, 2 right, 3 both, 4 starting) | `sim/magnetos/magnetos_off_n` / `_right_n` / `_left_n` / `_both_n` |
+| Starter n | `sim/cockpit2/engine/actuators/starter_hit` int[16] (read-only) | `sim/starters/engage_starter_n` (held) |
+| Engine running | `sim/flightmodel/engine/ENGN_running` int[16] | — |
+| Engine count, type | `sim/aircraft/engine/acf_num_engines` int; `sim/aircraft/prop/acf_en_type` int[16] (0, 1 piston) | — (`acf_en_type` is already bound by the instruments, F-10) |
+
+Total: 118 new names (35 DataRefs, 83 commands), probed at connect like every other binding (row
+143 of the smoke test).
+
+**Holds.** Trim (six keys) and the starters are held rather than pressed. The WebSocket message is
+`command_set_is_active` (API v2): `{"commands": [{"id", "is_active", "duration"?}]}`. On press,
+`{is_active: true, duration: 0.5}`; every 200 ms while held, the same message renews it; on
+release, `{is_active: false}`. The lease is X-Plane's own: it ends the hold itself 0.5 s after the
+last renewal, so a phone that goes silent (Wi-Fi lost without the socket closing) stops the command
+within half a second even though neither the connector nor X-Plane notices the phone is gone.
+X-Plane also clears every hold of a socket that closes, and a renewal never resumes a hold across a
+reconnect (it carries the connection generation it was pressed on). Avionix bounds a single hold
+itself at 10 s for trim and 30 s for the starter.
+
 Verified against `DataRefs.txt` / `Commands.txt`, 2026-10-06.

@@ -5,7 +5,7 @@
 | ID | `F-24` |
 | Stage | `2` |
 | Category | Control |
-| Status | Proposed |
+| Status | Done |
 | Depends on | `F-03`, `F-04` |
 | Competitor prevalence | Matrix count 2 of 12 representative products (`research/competitors.md`). Wider set: 2 of 15 products researched offer it (Air Manager, as a generic switch and knob host; Flight Deck ONE, in its cockpit dashboard), plus the deck-controller tier (Touch Portal XP-FlightDeck, Stream Deck plugins) where users build the grid themselves |
 
@@ -82,9 +82,9 @@ and pairing tokens never appear in the UI and are never logged.
 
 ## X-Plane Web API mapping
 
-States are read over the WebSocket subscription. Momentary controls use command activation; hold
-controls use the WebSocket command activity message, which is the only mechanism with the right
-semantics.
+States are read over the WebSocket subscription. Momentary controls use command activation; held
+controls (trim, the starters) use the WebSocket `command_set_is_active` message with a 0.5 s lease
+renewed every 200 ms, the only mechanism with the right semantics (design spec §4.3).
 
 Command duration semantics, from the Web API documentation [1] as summarised in
 `docs/roadmap/research/xplane-web-api.md`, section A: over REST, `POST /command/{id}/activate`
@@ -93,20 +93,14 @@ where 0 means press and release, and omitting it holds the command until explici
 to 24 hours. WebSocket durations are cleared per connection when the connection drops, which is what
 makes R5 safe: a dropped connection cannot leave trim running.
 
-| Purpose | DataRef / command | Type, units | Read/Write | Source |
-|---|---|---|---|---|
-| Exterior and interior lights | not identified; verify in `DataRefs.txt` and `Commands.txt` | expected boolean per light plus toggle commands | Read/Write | — |
-| Landing gear position and lever | not identified; verify in both files | expected float 0..1 per gear plus up/down commands | Read/Write | — |
-| Flap handle and actual flap position | not identified; verify in both files | expected float 0..1 plus up/down commands | Read/Write | — |
-| Pitch, roll and yaw trim | not identified; verify in both files | expected float -1..1 plus hold-type up/down commands | Read/Write | — |
-| Parking brake, pitot heat, anti-ice | not identified; verify in `DataRefs.txt` | expected float 0..1 and boolean per switch | Read/Write | — |
-| Fuel pumps, tank selection, magnetos, starter | not identified; verify in both files | expected boolean and int enum per engine plus a starter command | Read/Write | — |
-
-No name in this table was found in a Laminar-authored source. The community command catalogue the
-research cites is a third-party mirror whose names "should be re-verified against the in-sim
-`DataRefs.txt`/`Commands.txt` before shipping" (`docs/roadmap/research/xplane-web-api.md`, section
-B). Identifying every name in the simulator is a precondition for planning this feature; under the
-safety rule, any control whose state name is missing is simply not built.
+Verified names: see `docs/xplane.md`, "Systems controls (F-24)". Every DataRef and command was
+checked against Laminar's own `DataRefs.txt` and `Commands.txt`, the same files the F-30 and F-32
+names were checked against; none of the "not identified" placeholders below shipped. Electrical
+controls (battery, avionics master, generators) were added beyond this file's original scope: the
+panel is meant to run a whole flight from start to shutdown, and every switch panel simmers buy
+starts with the master switch (design spec §9, decision 6). Detent-by-detent flap selection by
+writing the flap handle ratio was left out of scope; flaps move by the existing notch commands only,
+so add-ons that hook those commands keep working (design spec §8).
 
 ## Aircraft compatibility
 
@@ -141,15 +135,19 @@ exists to catch. The Zibo 737 overhead is F-53; F-03 decides which controls to o
 
 ## Risks and open questions
 
-- Every name in the mapping table is unidentified. This feature cannot be planned in detail until
-  the default aircraft names are read from the simulator.
-- Open questions: which lights and anti-ice switches belong in the default set; flaps as detents or
-  as a continuous control; whether trim offers a centre control.
-- R4 depends on the WebSocket hold semantics reaching every client platform through the connector,
-  the web build included. A client limited to REST can hold for only 10 seconds [1], which would
-  force trim behaviour to be reconsidered.
-- Ids are session-scoped and must never be persisted (`docs/roadmap/research/xplane-web-api.md`,
-  risk 4).
+1. **Answered: verified.** Every name is Laminar's own, checked against the `DataRefs.txt` and
+   `Commands.txt` shipped with X-Plane (`docs/xplane.md`); none are community-sourced.
+2. **Answered.** Lights and anti-ice: beacon, nav, strobe, taxi, landing, panel and instrument
+   dimmers; pitot heat, window heat, prop heat, engine inlet heat, wing heat and wing boots. Flaps
+   stayed a notch control (`flaps_up`/`flaps_down`), not a continuous handle write, so add-ons that
+   hook the commands keep working. Trim offers a centre control for roll and yaw, and a takeoff
+   mark for pitch.
+3. **Answered.** R4's hold semantics reach every client the same way: `SimulatorSession.holdCommand`
+   sends `command_set_is_active` over the same WebSocket every other control uses, so the web build
+   (through the Avionix Connector) holds exactly as the native apps do; nothing here is bounded by
+   REST's 10-second cap.
+4. Ids are session-scoped and must never be persisted (`docs/roadmap/research/xplane-web-api.md`,
+   risk 4).
 
 ## References
 
@@ -158,3 +156,4 @@ exists to catch. The Zibo 737 overhead is F-53; F-03 decides which controls to o
 3. `docs/roadmap/research/xplane-web-api.md`
 4. `docs/roadmap/research/remote-control-apps.md`
 5. `docs/roadmap/research/panel-builders.md`
+6. Design spec: `docs/superpowers/specs/2026-10-06-systems-controls-design.md`

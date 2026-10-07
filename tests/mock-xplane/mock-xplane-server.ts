@@ -25,6 +25,7 @@ import {
   FUEL_SELECTOR,
   GEAR,
   PARKING_BRAKE,
+  type SwitchSpec,
   TAKEOFF_TRIM,
   TRIMS,
   fuelPumpSwitch,
@@ -149,18 +150,29 @@ function dimmerByKey(key: string): (typeof DIMMERS)[number] {
   return dimmer;
 }
 
+/** F-24: every on/off switch the toy aircraft models, for `applyCommand`'s single switch branch. */
+const ALL_SWITCHES: readonly SwitchSpec[] = [
+  ...EXTERIOR_LIGHTS,
+  ...ANTI_ICE,
+  BATTERY,
+  AVIONICS_MASTER,
+  ...ENGINE_NUMBERS.map(generatorSwitch),
+  ...ENGINE_NUMBERS.map(fuelPumpSwitch),
+];
+
 /**
  * F-24's systems DataRefs: every switch's and selector's state, gear, flaps, trim and the engines.
  * `ENGINES.type` is `sim/aircraft/prop/acf_en_type`, already present among the instrument DataRefs
  * above, so it is not declared again here. Array lengths are Laminar's own (DataRefs.txt): 8
  * batteries and generators, 32 instrument dimmer zones but only 4 panel ones, and 16 engines for
  * the per-engine fuel pump, ignition key, starter and running state. Everything else named here is
- * scalar in DataRefs.txt.
+ * scalar in DataRefs.txt. Every name here is writable but `starter_hit`, X-Plane's own read-only
+ * indicator of the starter motor.
  */
 function systemsDataRefs(startId: number): MockDataRef[] {
   const refs: MockDataRef[] = [];
   let nextId = startId;
-  const push = (name: string, valueType: DataRefValueType, value: DataRefValue, writable = false) =>
+  const push = (name: string, valueType: DataRefValueType, value: DataRefValue, writable = true) =>
     refs.push({ id: nextId++, name, valueType, value, ...(writable ? { writable: true } : {}) });
   const panelLights = dimmerByKey('panelLights');
   const instrumentLights = dimmerByKey('instrumentLights');
@@ -176,25 +188,26 @@ function systemsDataRefs(startId: number): MockDataRef[] {
   push(generatorSwitch(1).state, 'int_array', padded([1, 1, 1, 1], 8));
   push(panelLights.state, 'float_array', padded([0.8], 4));
   push(instrumentLights.state, 'float_array', padded([0.8], 32));
-  push(GEAR.handle, 'int', 1, true);
+  push(GEAR.handle, 'int', 1);
   push(GEAR.deployment, 'float_array', [1, 1, 1, 0, 0, 0, 0, 0, 0, 0]);
   push(GEAR.retractable, 'int', 1);
   push(FLAPS.handle, 'float', 0);
   push(FLAPS.position, 'float', 0);
   push(FLAPS.detents, 'int', 4);
   for (const trim of TRIMS) {
-    push(trim.position, 'float', 0, true);
+    push(trim.position, 'float', 0);
   }
   push(TAKEOFF_TRIM, 'float', 0);
-  push(PARKING_BRAKE.ratio, 'float', 0, true);
+  push(PARKING_BRAKE.ratio, 'float', 0);
   push(FUEL_SELECTOR.state, 'int', 4);
   push(FUEL_SELECTOR.hasSelector, 'int', 1);
   push(FUEL_SELECTOR.hasBoth, 'int', 1);
   push(fuelPumpSwitch(1).state, 'int_array', padded([1, 1, 1, 1], 16));
   push(ENGINES.count, 'int', 1);
   push(ENGINES.key, 'int_array', padded([3, 0, 0, 0], 16));
-  push(ENGINES.starter, 'int_array', padded([0, 0, 0, 0], 16));
-  push(ENGINES.running, 'int_array', padded([1, 0, 0, 0], 16));
+  push(ENGINES.starter, 'int_array', padded([0, 0, 0, 0], 16), false);
+  // Not yet running, so an integration test can watch the starter bring it to life.
+  push(ENGINES.running, 'int_array', padded([0, 0, 0, 0], 16));
   return refs;
 }
 
@@ -768,8 +781,14 @@ export class MockXPlaneServer {
   rejectWritesWith: string | null = null;
   /** Tokens handed out by `/avionix/pair`, in issue order. */
   readonly issuedTokens: string[] = [];
+  /** F-24: true while the toy aircraft is on the ground, so `landing_gear_up` is refused. */
+  onGround = false;
 
   private readonly ignoredWrites = new Set<string>();
+  private readonly ignoredCommands = new Set<string>();
+  /** F-24: command id → when its starter began cranking, real time, while its hold is live. */
+  private readonly starterCranking = new Map<number, number>();
+  private lastTickAt = Date.now();
 
   private readonly apiVersions: string[];
   private readonly xplaneVersion: string;
@@ -809,7 +828,10 @@ export class MockXPlaneServer {
     this.connector = options.connector;
     this.reportWritability = options.reportWritability ?? true;
     this.rejectAllTokens = options.connector?.rejectAllTokens ?? false;
-    this.timer = setInterval(() => this.pushUpdates(), options.updateIntervalMs ?? 20);
+    this.timer = setInterval(() => {
+      this.tick();
+      this.pushUpdates();
+    }, options.updateIntervalMs ?? 20);
     this.timer.unref();
     this.renderCdu(1);
     this.renderCdu(2);
@@ -918,6 +940,15 @@ export class MockXPlaneServer {
   /** Simulates an add-on that accepts a write to `name` and then ignores it (F-21 R4). */
   ignoreWritesTo(name: string): void {
     this.ignoredWrites.add(name);
+  }
+
+  /**
+   * Simulates an aircraft that accepts a command but does nothing with it (F-24 §4.5): the
+   * activation (or hold) is still recorded, but `applyCommand` and `tick`'s held-command effects
+   * are no-ops for it.
+   */
+  ignoreCommand(name: string): void {
+    this.ignoredCommands.add(name);
   }
 
   /** Simulates a command this aircraft does not have. */
@@ -1247,6 +1278,12 @@ export class MockXPlaneServer {
 
   private applyCommand(id: number): void {
     const command = this.commands.get(id);
+    if (command !== undefined && this.ignoredCommands.has(command.name)) {
+      return;
+    }
+    if (command !== undefined && this.applySystemsCommand(command.name)) {
+      return;
+    }
     const cdu = /^sim\/(FMS|FMS2)\/(.+)$/.exec(command?.name ?? '');
     if (cdu !== null) {
       const [, prefix, keyId] = cdu;
@@ -1365,6 +1402,222 @@ export class MockXPlaneServer {
         break;
       default:
         break;
+    }
+  }
+
+  private setScalar(name: string, value: number): void {
+    const ref = this.getDataRefByName(name);
+    if (ref !== undefined) {
+      ref.value = value;
+    }
+  }
+
+  /** Sets element `index` of an array-valued DataRef, or the whole value when it is a scalar. */
+  private setSwitchElement(name: string, index: number, value: number): void {
+    const ref = this.getDataRefByName(name);
+    if (ref === undefined) {
+      return;
+    }
+    ref.value = Array.isArray(ref.value)
+      ? ref.value.map((v, i) => (i === index ? value : v))
+      : value;
+  }
+
+  private stepDimmer(name: string, delta: number): void {
+    const ref = this.getDataRefByName(name);
+    if (ref === undefined || !Array.isArray(ref.value)) {
+      return;
+    }
+    const clamped = Math.min(1, Math.max(0, ref.value[0]! + delta));
+    ref.value = ref.value.map((v, i) => (i === 0 ? clamped : v));
+  }
+
+  private stepFlapsHandle(direction: 1 | -1): void {
+    const handle = this.getDataRefByName(FLAPS.handle);
+    if (handle === undefined || typeof handle.value !== 'number') {
+      return;
+    }
+    const detentsValue = this.getDataRefByName(FLAPS.detents)?.value;
+    const detents = typeof detentsValue === 'number' && detentsValue > 0 ? detentsValue : 1;
+    handle.value = Math.min(1, Math.max(0, handle.value + direction / detents));
+  }
+
+  /**
+   * F-24's switches, selectors and set commands: every command named in the systems catalogue
+   * that isn't held (those move in `tick`). Returns whether `name` was one of them, so
+   * `applyCommand` can fall through to its other branches otherwise.
+   */
+  private applySystemsCommand(name: string): boolean {
+    for (const spec of ALL_SWITCHES) {
+      if (name === spec.on) {
+        this.setSwitchElement(spec.state, spec.index, 1);
+        return true;
+      }
+      if (name === spec.off) {
+        this.setSwitchElement(spec.state, spec.index, 0);
+        return true;
+      }
+    }
+    for (const dimmer of DIMMERS) {
+      if (name === dimmer.down) {
+        this.stepDimmer(dimmer.state, -0.1);
+        return true;
+      }
+      if (name === dimmer.up) {
+        this.stepDimmer(dimmer.state, 0.1);
+        return true;
+      }
+    }
+    if (name === GEAR.down) {
+      this.setScalar(GEAR.handle, 1);
+      return true;
+    }
+    if (name === GEAR.up) {
+      if (!this.onGround) {
+        this.setScalar(GEAR.handle, 0);
+      }
+      return true;
+    }
+    if (name === FLAPS.down) {
+      this.stepFlapsHandle(1);
+      return true;
+    }
+    if (name === FLAPS.up) {
+      this.stepFlapsHandle(-1);
+      return true;
+    }
+    for (const position of FUEL_SELECTOR.positions) {
+      if (name === position.command) {
+        this.setScalar(FUEL_SELECTOR.state, position.value);
+        return true;
+      }
+    }
+    for (const engine of ENGINE_NUMBERS) {
+      for (const position of magnetoPositions(engine)) {
+        if (name === position.command) {
+          this.setSwitchElement(ENGINES.key, engine - 1, position.value);
+          return true;
+        }
+      }
+    }
+    const pitch = TRIMS[0]!;
+    if (name === pitch.set.command) {
+      const takeoff = this.getDataRefByName(TAKEOFF_TRIM)?.value;
+      this.setScalar(pitch.position, typeof takeoff === 'number' ? takeoff : 0);
+      return true;
+    }
+    for (const trim of TRIMS) {
+      if (trim.axis !== 'pitch' && name === trim.set.command) {
+        this.setScalar(trim.position, 0);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * F-24: advances the toy aircraft by the real time elapsed since the last tick. Gear deployment
+   * and flap position chase their handles at 0.5/s; every held, unlapsed, unignored trim command
+   * moves its axis at 0.1/s (clamped −1..1); a held, unignored starter sets the ignition key to 4
+   * and `starter_hit` to 1, and after 2 s of cranking with the fuel selector not OFF sets
+   * `ENGN_running` to 1. Releasing (or lapsing) a starter hold restores `starter_hit` to 0 and the
+   * ignition key to 3 (BOTH). Expired leases are removed here.
+   */
+  private tick(): void {
+    const now = Date.now();
+    const dt = Math.max(0, (now - this.lastTickAt) / 1000);
+    this.lastTickAt = now;
+
+    for (const held of this.holds.values()) {
+      for (const [id, until] of held) {
+        if (until !== null && until <= now) {
+          held.delete(id);
+        }
+      }
+    }
+    const heldIds = new Set<number>();
+    for (const held of this.holds.values()) {
+      for (const id of held.keys()) {
+        heldIds.add(id);
+      }
+    }
+    const isHeld = (name: string): boolean => {
+      if (this.ignoredCommands.has(name)) {
+        return false;
+      }
+      const id = [...this.commands.values()].find((c) => c.name === name)?.id;
+      return id !== undefined && heldIds.has(id);
+    };
+    const moveToward = (value: number, target: number, step: number): number => {
+      if (value < target) {
+        return Math.min(target, value + step);
+      }
+      if (value > target) {
+        return Math.max(target, value - step);
+      }
+      return value;
+    };
+
+    const handle = this.getDataRefByName(GEAR.handle);
+    const deployment = this.getDataRefByName(GEAR.deployment);
+    if (
+      handle !== undefined &&
+      typeof handle.value === 'number' &&
+      deployment !== undefined &&
+      Array.isArray(deployment.value)
+    ) {
+      const target = handle.value;
+      const step = 0.5 * dt;
+      deployment.value = deployment.value.map((v, i) => (i < 3 ? moveToward(v, target, step) : v));
+    }
+
+    const flapHandle = this.getDataRefByName(FLAPS.handle);
+    const flapPosition = this.getDataRefByName(FLAPS.position);
+    if (
+      flapHandle !== undefined &&
+      typeof flapHandle.value === 'number' &&
+      flapPosition !== undefined &&
+      typeof flapPosition.value === 'number'
+    ) {
+      flapPosition.value = moveToward(flapPosition.value, flapHandle.value, 0.5 * dt);
+    }
+
+    for (const trim of TRIMS) {
+      const position = this.getDataRefByName(trim.position);
+      if (position === undefined || typeof position.value !== 'number') {
+        continue;
+      }
+      const step = 0.1 * dt;
+      if (isHeld(trim.decrease.command)) {
+        position.value = Math.max(-1, position.value - step);
+      }
+      if (isHeld(trim.increase.command)) {
+        position.value = Math.min(1, position.value + step);
+      }
+    }
+
+    const selector = this.getDataRefByName(FUEL_SELECTOR.state)?.value;
+    const selectorOff = selector === 0;
+    for (const engine of ENGINE_NUMBERS) {
+      const name = starterCommand(engine);
+      const id = [...this.commands.values()].find((c) => c.name === name)?.id;
+      if (id === undefined) {
+        continue;
+      }
+      const index = engine - 1;
+      if (isHeld(name)) {
+        const crankStart = this.starterCranking.get(id) ?? now;
+        this.starterCranking.set(id, crankStart);
+        this.setSwitchElement(ENGINES.key, index, 4);
+        this.setSwitchElement(ENGINES.starter, index, 1);
+        if (now - crankStart >= 2000 && !selectorOff) {
+          this.setSwitchElement(ENGINES.running, index, 1);
+        }
+      } else if (this.starterCranking.has(id)) {
+        this.starterCranking.delete(id);
+        this.setSwitchElement(ENGINES.starter, index, 0);
+        this.setSwitchElement(ENGINES.key, index, 3);
+      }
     }
   }
 

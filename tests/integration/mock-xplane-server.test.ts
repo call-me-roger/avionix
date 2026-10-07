@@ -1,4 +1,22 @@
-import { MockXPlaneServer } from '../mock-xplane/mock-xplane-server';
+import {
+  BATTERY,
+  DIMMERS,
+  ENGINES,
+  EXTERIOR_LIGHTS,
+  FLAPS,
+  FUEL_SELECTOR,
+  GEAR,
+  TAKEOFF_TRIM,
+  TRIMS,
+  generatorSwitch,
+  magnetoPositions,
+  starterCommand,
+} from '@/domain/systems/controls';
+import {
+  DEFAULT_MOCK_COMMANDS,
+  DEFAULT_MOCK_DATAREFS,
+  MockXPlaneServer,
+} from '../mock-xplane/mock-xplane-server';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -526,6 +544,289 @@ describe('F-32 toy FMS CDU in the mock', () => {
       await activate(server, server.commandIdByName('sim/FMS2/key_A'));
       expect(cduLineText(server, 'sim/cockpit2/radios/indicators/fms_cdu2_text_line13')).toBe('A');
       expect(cduLineText(server, 'sim/cockpit2/radios/indicators/fms_cdu1_text_line13')).toBe('');
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
+function arrayValue(server: MockXPlaneServer, name: string): number[] {
+  const value = server.getDataRefByName(name)?.value;
+  return Array.isArray(value) ? value : [];
+}
+
+describe('F-24 systems in the toy aircraft', () => {
+  it('registers the systems names at the ids after the CDU (35 DataRefs from 1161, 83 commands from 2164)', () => {
+    const refs = DEFAULT_MOCK_DATAREFS.filter((ref) => ref.id >= 1161);
+    expect(refs).toHaveLength(35);
+    expect(Math.min(...refs.map((ref) => ref.id))).toBe(1161);
+
+    const commands = DEFAULT_MOCK_COMMANDS.filter((command) => command.id >= 2164);
+    expect(commands).toHaveLength(83);
+    expect(Math.min(...commands.map((command) => command.id))).toBe(2164);
+  });
+
+  it('marks every systems DataRef writable except starter_hit', () => {
+    for (const ref of DEFAULT_MOCK_DATAREFS) {
+      if (ref.id < 1161) {
+        continue;
+      }
+      if (ref.name === ENGINES.starter) {
+        expect(ref.writable).not.toBe(true);
+      } else {
+        expect(ref.writable).toBe(true);
+      }
+    }
+  });
+
+  it('sets a scalar and an array switch state from its on/off command', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      const beacon = EXTERIOR_LIGHTS[0]!;
+      await activate(server, server.commandIdByName(beacon.on));
+      expect(server.getDataRefByName(beacon.state)?.value).toBe(1);
+      await activate(server, server.commandIdByName(beacon.off));
+      expect(server.getDataRefByName(beacon.state)?.value).toBe(0);
+
+      await activate(server, server.commandIdByName(BATTERY.off));
+      expect(arrayValue(server, BATTERY.state)[0]).toBe(0);
+      await activate(server, server.commandIdByName(BATTERY.on));
+      expect(arrayValue(server, BATTERY.state)[0]).toBe(1);
+
+      const generator2 = generatorSwitch(2);
+      await activate(server, server.commandIdByName(generator2.off));
+      expect(arrayValue(server, generator2.state)).toEqual([1, 0, 1, 1, 0, 0, 0, 0]);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('steps a dimmer up and down, clamped to 0..1', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      const panel = DIMMERS[0]!;
+      await activate(server, server.commandIdByName(panel.down));
+      expect(arrayValue(server, panel.state)[0]).toBeCloseTo(0.7, 5);
+
+      server.setDataRefValue(panel.state, [0, 0, 0, 0]);
+      await activate(server, server.commandIdByName(panel.down));
+      expect(arrayValue(server, panel.state)[0]).toBe(0);
+
+      server.setDataRefValue(panel.state, [1, 0, 0, 0]);
+      await activate(server, server.commandIdByName(panel.up));
+      expect(arrayValue(server, panel.state)[0]).toBe(1);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('moves the gear handle at once, and refuses GEAR UP while onGround is true', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      await activate(server, server.commandIdByName(GEAR.up));
+      expect(server.getDataRefByName(GEAR.handle)?.value).toBe(0);
+      await activate(server, server.commandIdByName(GEAR.down));
+      expect(server.getDataRefByName(GEAR.handle)?.value).toBe(1);
+
+      server.onGround = true;
+      await activate(server, server.commandIdByName(GEAR.up));
+      expect(server.getDataRefByName(GEAR.handle)?.value).toBe(1);
+
+      server.onGround = false;
+      await activate(server, server.commandIdByName(GEAR.up));
+      expect(server.getDataRefByName(GEAR.handle)?.value).toBe(0);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('moves the flap handle by one detent, clamped at the ends', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      await activate(server, server.commandIdByName(FLAPS.down));
+      expect(server.getDataRefByName(FLAPS.handle)?.value).toBeCloseTo(0.25, 5);
+      await activate(server, server.commandIdByName(FLAPS.up));
+      expect(server.getDataRefByName(FLAPS.handle)?.value).toBeCloseTo(0, 5);
+      await activate(server, server.commandIdByName(FLAPS.up));
+      expect(server.getDataRefByName(FLAPS.handle)?.value).toBe(0);
+
+      server.setDataRefValue(FLAPS.handle, 1);
+      await activate(server, server.commandIdByName(FLAPS.down));
+      expect(server.getDataRefByName(FLAPS.handle)?.value).toBe(1);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('sets the fuel selector and a magneto position', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      const left = FUEL_SELECTOR.positions.find((position) => position.key === 'left')!;
+      await activate(server, server.commandIdByName(left.command));
+      expect(server.getDataRefByName(FUEL_SELECTOR.state)?.value).toBe(left.value);
+
+      const leftMagneto = magnetoPositions(1).find((position) => position.key === 'left')!;
+      await activate(server, server.commandIdByName(leftMagneto.command));
+      expect(arrayValue(server, ENGINES.key)[0]).toBe(leftMagneto.value);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('sets takeoff trim and centres roll and yaw trim', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      server.setDataRefValue(TAKEOFF_TRIM, 0.3);
+      await activate(server, server.commandIdByName(TRIMS[0]!.set.command));
+      expect(server.getDataRefByName(TRIMS[0]!.position)?.value).toBe(0.3);
+
+      server.setDataRefValue(TRIMS[1]!.position, 0.5);
+      await activate(server, server.commandIdByName(TRIMS[1]!.set.command));
+      expect(server.getDataRefByName(TRIMS[1]!.position)?.value).toBe(0);
+
+      server.setDataRefValue(TRIMS[2]!.position, -0.4);
+      await activate(server, server.commandIdByName(TRIMS[2]!.set.command));
+      expect(server.getDataRefByName(TRIMS[2]!.position)?.value).toBe(0);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('tick() moves gear deployment and flap position toward their handles over time', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      server.setDataRefValue(GEAR.deployment, [0.1, 0.1, 0.1, 0.4, 0, 0, 0, 0, 0, 0]);
+      await activate(server, server.commandIdByName(GEAR.up));
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const deployment = arrayValue(server, GEAR.deployment);
+      expect(deployment[0]).toBe(0);
+      expect(deployment[1]).toBe(0);
+      expect(deployment[2]).toBe(0);
+      expect(deployment[3]).toBe(0.4); // entries past 2 are untouched
+
+      server.setDataRefValue(FLAPS.handle, 0.1);
+      server.setDataRefValue(FLAPS.position, 0);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(server.getDataRefByName(FLAPS.position)?.value).toBeCloseTo(0.1, 5);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('moves a held trim command over time and stops when released', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      const { socket, next } = await openSocket(`ws://${server.host}:${server.port}/api/v3`);
+      const id = server.commandIdByName(TRIMS[0]!.increase.command);
+      const pressed = next((m) => isRecord(m) && m.req_id === 1);
+      socket.send(
+        JSON.stringify({
+          req_id: 1,
+          type: 'command_set_is_active',
+          params: { commands: [{ id, is_active: true, duration: 0.5 }] },
+        }),
+      );
+      await pressed;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const moved = server.getDataRefByName(TRIMS[0]!.position)?.value as number;
+      expect(moved).toBeGreaterThan(0);
+      expect(moved).toBeLessThan(0.2);
+
+      const released = next((m) => isRecord(m) && m.req_id === 2);
+      socket.send(
+        JSON.stringify({
+          req_id: 2,
+          type: 'command_set_is_active',
+          params: { commands: [{ id, is_active: false }] },
+        }),
+      );
+      await released;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const after = server.getDataRefByName(TRIMS[0]!.position)?.value as number;
+      expect(Math.abs(after - moved)).toBeLessThan(0.03);
+      socket.close();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('cranks a held starter and starts the engine after 2 s, reverting on release', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      const { socket, next } = await openSocket(`ws://${server.host}:${server.port}/api/v3`);
+      const id = server.commandIdByName(starterCommand(1));
+      let reqId = 1;
+      const send = async (isActive: boolean): Promise<void> => {
+        const thisReq = reqId;
+        reqId += 1;
+        const reply = next((m) => isRecord(m) && m.req_id === thisReq);
+        socket.send(
+          JSON.stringify({
+            req_id: thisReq,
+            type: 'command_set_is_active',
+            params: { commands: [{ id, is_active: isActive, duration: 0.5 }] },
+          }),
+        );
+        await reply;
+      };
+
+      await send(true);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(arrayValue(server, ENGINES.key)[0]).toBe(4);
+      expect(arrayValue(server, ENGINES.starter)[0]).toBe(1);
+      expect(arrayValue(server, ENGINES.running)[0]).toBe(0);
+
+      for (let elapsed = 100; elapsed < 2300; elapsed += 200) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        await send(true);
+      }
+      expect(arrayValue(server, ENGINES.running)[0]).toBe(1);
+
+      const release = next((m) => isRecord(m) && m.req_id === reqId);
+      socket.send(
+        JSON.stringify({
+          req_id: reqId,
+          type: 'command_set_is_active',
+          params: { commands: [{ id, is_active: false }] },
+        }),
+      );
+      await release;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(arrayValue(server, ENGINES.starter)[0]).toBe(0);
+      expect(arrayValue(server, ENGINES.key)[0]).toBe(3);
+      socket.close();
+    } finally {
+      await server.stop();
+    }
+  }, 10_000);
+
+  it('does nothing for an ignored command, press or hold, while still recording it', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      const beacon = EXTERIOR_LIGHTS[0]!;
+      server.ignoreCommand(beacon.on);
+      const beaconId = server.commandIdByName(beacon.on);
+      await activate(server, beaconId);
+      expect(server.getDataRefByName(beacon.state)?.value).toBe(0);
+      expect(server.activations).toEqual([{ id: beaconId, duration: 0 }]);
+
+      const trimUp = TRIMS[0]!.increase.command;
+      server.ignoreCommand(trimUp);
+      const { socket, next } = await openSocket(`ws://${server.host}:${server.port}/api/v3`);
+      const id = server.commandIdByName(trimUp);
+      const pressed = next((m) => isRecord(m) && m.req_id === 1);
+      socket.send(
+        JSON.stringify({
+          req_id: 1,
+          type: 'command_set_is_active',
+          params: { commands: [{ id, is_active: true, duration: 0.5 }] },
+        }),
+      );
+      await pressed;
+      expect(server.heldCommandNames()).toEqual([trimUp]);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(server.getDataRefByName(TRIMS[0]!.position)?.value).toBe(0);
+      socket.close();
     } finally {
       await server.stop();
     }
