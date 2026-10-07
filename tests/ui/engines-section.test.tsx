@@ -33,7 +33,6 @@ function snapshot(
     description: 'Cessna 172',
     icaoType: 'C172',
   },
-  heartbeatAt = NOW,
 ): SessionSnapshot {
   const compatibility = enginesCompatibility(
     base.compatibility,
@@ -42,7 +41,7 @@ function snapshot(
   return {
     ...base,
     state: 'connected',
-    health: { ...base.health, activity: 'running', live: true, lastHeartbeatAt: heartbeatAt },
+    health: { ...base.health, activity: 'running', live: true, lastHeartbeatAt: NOW },
     telemetry: enginesTelemetry(values, NOW),
     compatibility: {
       ...compatibility,
@@ -132,7 +131,7 @@ describe('the ENGINES page (spec §4.2–§4.6)', () => {
     const view = await render(tree(snapshot(hot)));
     const chtText = within(screen.getByTestId('engine-cell-cht-1')).getByText('250');
     expect(StyleSheet.flatten(chtText.props.style).color).toBe(WARNING);
-    await view.rerender(tree(snapshot(hot, [], undefined, NOW - 10_000)));
+    await view.rerender(tree({ ...snapshot(hot), state: 'reconnecting' }));
     const dimmed = within(screen.getByTestId('engine-cell-cht-1')).getByText('250');
     expect(StyleSheet.flatten(dimmed.props.style).color).toBe(DIM);
   });
