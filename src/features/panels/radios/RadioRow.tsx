@@ -81,7 +81,7 @@ export function RadioRow({
   const noFlight = snapshot.state === 'connected' && snapshot.health.activity === 'noFlight';
   // The G1000 draws the transmitting COM in green; this stack names it (spec §4.6).
   const transmitting =
-    radio.kind === 'com' && !noFlight && transmittingCom(snapshot) === Number(radio.key.slice(3));
+    radio.com !== undefined && !noFlight && transmittingCom(snapshot) === radio.com;
   const micLamp = transmitting ? (
     <Text
       style={[styles.mic, link.valuesCurrent ? null : styles.micStale]}
