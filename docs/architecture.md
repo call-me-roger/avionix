@@ -8,7 +8,7 @@
 | Infrastructure | `src/infrastructure` | domain | zod schemas and mappers for X-Plane payloads, `HttpTransport`, `WebSocketTransport` + `RequestManager`, `XPlaneClient`, `ConnectorClient`, logging, AsyncStorage adapter, `ZeroconfServiceBrowser` and the null browser |
 | Application | `src/application` | domain, infrastructure | `SimulatorSession` (connect flow, diagnostics, telemetry, reconnect), `PairingTokenStore`, `Store`, snapshot types, settings, `ConnectorDiscovery`, `panel-layout`, `subscription-demand` |
 | UI | `src/app`, `src/hooks`, `src/features` | application | composition root, React context, hooks, plain React Native components |
-| Platform | `src/platform` | infrastructure | the only platform-specific code: the web connection default, the `ServiceBrowser` factory (`service-browser.ts` for native, `service-browser.web.ts` for the web), the keep-awake wrapper and the haptics adapter (`haptics.ts` for native, `haptics.web.ts` for the web) |
+| Platform | `src/platform` | infrastructure | the only platform-specific code: the web connection default, the `ServiceBrowser` factory (`service-browser.ts` for native, `service-browser.web.ts` for the web), the keep-awake wrapper, the haptics adapter (`haptics.ts` for native, `haptics.web.ts` for the web) and the CDU's physical-keyboard adapter (`hardware-keys.ts` for native, a no-op; `hardware-keys.web.ts` for the web, a `keydown` listener) |
 
 Dependencies point downwards only. `src/domain` and `src/application` never import React or
 React Native; `tests/unit` and `tests/integration` run them in plain Node.
@@ -233,8 +233,10 @@ a number.
 
 **The docked strip.** `FlightDataStrip` renders one row of four values — ground speed, wind, fuel,
 sim zulu — plus the badge, mounted by `AppShell` between the status bar and the body on every panel
-route except Setup (no demand there) and Flight data itself (it would repeat the panel). The whole
-row is one pressable at least 48 dp tall that opens Flight data, or a plain (non-pressable) view when
+route except Setup (no demand there), Flight data itself (it would repeat the panel) and the CDU
+(`STRIPLESS_PANELS`; the CDU's own glass already fills the screen with numbers, and the strip would
+crowd the scratchpad on a phone). The whole row is one pressable at least 48 dp tall that opens
+Flight data, or a plain (non-pressable) view when
 Flight data is hidden from the switcher. Its visibility is a setting, `strip: boolean` in
 `avionix.panels` (default `true`), toggled from Setup → Panels ("Show the flight data strip on every
 panel"). The shell's `setDemand` call is the union of the active panel's own features and, only while
@@ -509,6 +511,89 @@ only the NAV unit's write, never the needles (course direct-to is an optional bi
 `nav-course`: CTR is simply disabled without it); `nav-aids` bundles everything advisory — bearing
 pointers, their signal flags, DME and the three marker lights — with no binding required, so a miss
 drops only that one cue.
+
+## CDU
+
+`src/features/panels/cdu/` is the CDU panel (F-32): a faithful mirror of the default X-Plane FMS's
+16-line screen, with a Boeing-style keyboard beneath it. `src/domain/cdu/` holds every calculation
+as pure functions with no React and no simulator types: `keys.ts` (the key catalogue, 70 keys per
+unit in the Boeing-style layout, and the DataRef/command name builders), `screen.ts`
+(`decodeTextLine`, `decodeStyleLine` and `decodeStyleByte`, decoding each glyph's colour, size,
+reverse video, underline and flash from its style byte), `key-queue.ts` (`CduKeyQueue`) and
+`hardware-keys.ts` (`hardwareKeyToCdu`, the physical-keyboard mapping below). Four more profile
+features back it (`GENERIC_PROFILE` 1.6.0): `cdu{1,2}-screen` (16 text lines required, 16 style
+lines optional) and `cdu{1,2}-keys` (the EXEC light and all 70 key commands, every one optional),
+so a name an aircraft lacks costs only that line or key (see `docs/xplane.md`). `CduPanel` declares
+all four, so both units stream while the panel is visible — the Web API sends only changes, so an
+idle second unit costs little — and nothing CDU-related is subscribed while another panel is shown.
+`PanelDescriptor` gained `fillsFrame`: most panels are scrolled by `PanelFrame`, but the CDU pins
+its own bezel and scrolls only its keys (see Layout below), so its descriptor sets `fillsFrame` and
+lays out its own scrolling. The flight data strip (F-11) is hidden while the CDU panel is shown, the
+same way it already hides itself on the Flight data panel, since both already spend a glass's worth
+of numbers.
+
+**Screen states.** `useCduScreen(unit)` reduces the unit's 16 text and 16 style lines to one of five
+states: *unavailable* (the screen feature itself is unavailable on this aircraft — no keys);
+*waiting* (connected, but not every line has arrived yet — the glass is drawn with "Waiting for the
+CDU screen…" and the keys disabled); *noFms* (every line has been blank since the aircraft was
+identified — a sentence names the aircraft and offers no keyboard, never a blank glass); *live* (any
+text has appeared since identification — the mirror and keys); and *stale*, layered on live when
+`link.valuesCurrent` is false (the last screen at 50% opacity, an amber `NOT LIVE` tag on the bezel,
+every key disabled, C5). Rows 14–15, which the default layout leaves empty, are added below the
+scratchpad only once either has shown a non-blank character in the session, kept per unit (switching
+CDU 1 → CDU 2 → CDU 1 never resets unit 1's own "seen" and rows-14–15 memory); only a new aircraft
+identity resets both units'.
+
+**The key queue (why serial).** A real FMS takes keys one at a time, in order: typing `KLAX`
+quickly must never arrive as `KLXA`, which sending every press as soon as it is tapped could do over
+a network link with varying latency. `CduKeyQueue` (`src/domain/cdu/key-queue.ts`) holds up to 24
+waiting keys (one scratchpad line) and activates them one at a time, waiting for X-Plane's answer
+before sending the next (C2). A press beyond the limit is refused with one message; when a key
+fails, every key still queued behind it is dropped — sending them would type a different string
+than the pilot meant — and one message says so, naming the key and how many were dropped. Losing the
+link or switching CDU unit clears the queue outright. `useCduKeys(unit)` (the hook `CduPanel` reads)
+owns one queue per `(unit, link.controlsEnabled)` pair, rebuilding it — and so dropping whatever
+waited — whenever either changes; `press()` is a no-op while no queue exists (controls disabled,
+C5), so every caller (the on-screen keys and the web's physical keyboard) gets C5 for free rather
+than needing to re-check it themselves. A key whose answer takes longer than 500 ms lights an amber
+`SLOW` tag on the bezel for 5 s after the last slow answer. There is no local echo: the glass only
+ever shows what X-Plane actually drew, never a predicted character, so a key's own pressed state and
+haptic tick are the only immediate feedback.
+
+**`ActivationResult`.** `SimulatorSession.activate` resolves to `'ok' | 'failed' | 'refused'`
+(`src/domain/panels/activation.ts`) instead of only throwing or resolving to `void`, so the queue
+learns a key's outcome without reading back through the store — the one caller (besides the CDU)
+that needs to sequence its own presses in order.
+
+**Keys.** `CduKeyButton` (`src/features/panels/cdu/CduKeyboard.tsx`) is quiet (the one message line
+speaks for every key, never a per-key notice) and `repeatable` (a press still in flight never
+disables the key, so `LL` sends two presses through the queue); `isKeyMissing` disables and labels a
+key whose command is missing on the aircraft (R9), and `ControlButton` gained both props for it. The
+line-select keys span the two glass rows they select, centred on them; `cduGeometry` derives the row
+height, and so the font size, from the glass's measured width divided by 24 columns. Narrow
+(window width below `TWO_COLUMN_MIN_WIDTH`, 720 dp — this is the one panel the *window*, not the
+measured content width, decides it by, since a landscape phone's switcher rail and insets would
+otherwise shrink the measured width below the glass's natural size), the bezel is pinned above the
+scrolling keys while the frame leaves room for at least two 48 dp key rows under it; below that — a
+short phone, a large system font — the bezel and keys scroll together instead, so the scratchpad is
+never pushed out of view and the keys are never left unreachable. Wide, the bezel and the keys are
+two independently scrolling columns. CDU 1 and CDU 2 are two keys in the bezel's label row, beside
+the `SLOW` and `NOT LIVE` tags; the chosen unit is a per-device preference (`avionix.cdu`,
+best-effort load and save, default 1) kept per unit across an aircraft that does not publish one of
+the two screens, so the saved choice is never overwritten by a fallback.
+
+**Physical keyboard (web, spec §4.8).** `src/platform/hardware-keys.ts` is a no-op on native (iOS
+and Android expose no hardware-key API without a native module); `hardware-keys.web.ts` adds one
+`keydown` listener on `window`, skipped while an `<input>`, `<textarea>`, `<select>` or anything
+`contenteditable` has focus. `hardwareKeyToCdu` (`src/domain/cdu/hardware-keys.ts`) maps the event to
+a key id — letters and digits uppercase to `key_<letter>`, `.`/`-`/`/`/space/Delete/Backspace/Escape
+to their named keys, Page Up/Down to `prev`/`next` — and returns null for anything else, including
+every key held with Ctrl, Alt or Meta (left to the browser) and Enter (deliberately unmapped: EXEC
+commits a route change and stays a tap, never a keyboard reflex). `CduPanel` subscribes once for its
+whole mounted life; the handler reads the current unit, `press`, and whether the key would do
+anything (`link.controlsEnabled` and the screen not still waiting) through refs, so the one
+subscription never races a render. A key it cannot act on (missing command, or the gate closed) is
+left unconsumed, so the browser's own binding for it (Page Down scrolling the page) still runs.
 
 ## Error model
 

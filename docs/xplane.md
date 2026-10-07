@@ -313,3 +313,49 @@ per-source name instead.
 **Course stepping.** `Commands.txt` also defines `sim/radios/obs_HSI_up` and `obs_HSI_down`, but
 Avionix's course steppers (−10, −1, +1, +10) write `hsi_obs_deg_mag_pilot` directly, the same write
 the keypad uses, rather than activating those commands; only `obs_HSI_direct` is used, as CTR.
+
+## CDU (F-32)
+
+Every name below was verified against Laminar's `DataRefs.txt` and `Commands.txt`, the same files
+the F-30 names were checked against; none are community-sourced any more.
+
+**Screen and EXEC light (per unit `n` = 1 or 2, line `k` = 0..15):**
+
+| Name | Type | Meaning |
+|---|---|---|
+| `sim/cockpit2/radios/indicators/fms_cdu{n}_text_line{k}` | `byte[96]`, base64 `data` | UTF-8 text of line `k`; a character may take more than one byte |
+| `sim/cockpit2/radios/indicators/fms_cdu{n}_style_line{k}` | `byte[24]`, base64 `data` | One style byte per glyph, not per UTF-8 byte |
+| `sim/cockpit2/radios/indicators/fms_exec_light_pilot` | int | EXEC light, CDU 1 |
+| `sim/cockpit2/radios/indicators/fms_exec_light_copilot` | int | EXEC light, CDU 2 |
+
+Style byte (Laminar, "Datarefs for the CDU screen"): bit 7 large font, bit 6 reverse video, bit 5
+flashing, bit 4 underscore, bits 0–3 colour (0 black, 1 cyan, 2 red, 3 yellow, 4 green, 5 magenta,
+6 amber, 7 white). The scratchpad is line 13. Laminar names these special glyphs: `°`, `☐`
+(U+2610), `←↑→↓` (U+2190–2193), `Δ`, `⬡` (U+2B21), `◀` (U+25C0), `▶` (U+25B6).
+
+**Keys (prefix `sim/FMS/` for CDU 1, `sim/FMS2/` for CDU 2; 70 per unit, 140 total):**
+
+| Group | Names |
+|---|---|
+| Line select | `ls_1l`..`ls_6l`, `ls_1r`..`ls_6r` |
+| Page and function | `index`, `fpln`, `clb`, `crz`, `des`, `dir_intc`, `legs`, `dep_arr`, `hold`, `prog`, `exec`, `fix`, `navrad`, `prev`, `next` |
+| Alphanumeric | `key_A`..`key_Z`, `key_0`..`key_9` |
+| Editing and punctuation | `key_period`, `key_minus`, `key_slash`, `key_space`, `key_delete`, `key_clear`, `key_back` |
+
+The roadmap's original key list named `perf`, `menu`, `data` and `key_overfly`: none exist in
+`Commands.txt`, and they are dropped; `clb`, `crz`, `des` and `key_back` (labelled `BACK`), which
+the roadmap missed, are added. `CDU_popup` and `CDU_popout` are deliberately not offered — they
+change the simulator's own windows, not the pilot's screen.
+
+**Decoding.** `decodeDataRefBytes` returns a `data` value's raw bytes without stopping at the first
+NUL (unlike `decodeDataRefString` above, which is right for identifiers and wrong here, where 0 is
+a valid style byte). A text line decodes as UTF-8 (a malformed sequence becomes U+FFFD), trailing
+NULs are dropped, any other NUL becomes a space, and the result is split into glyphs (code points),
+padded with spaces or cut to exactly 24 cells. A style line decodes to 24 bytes; a missing byte, a
+missing style DataRef, or a value that cannot be decoded reads as `0x87` (large white) — the same
+default the simulator's own popup draws plain text with. Colour indices 8–15 render white; colour 0
+(black) without reverse video also renders white, since a black glyph on the black glass would be
+invisible and the simulator's own popup never draws invisible text; reverse video with colour 0
+draws as plain white text.
+
+Verified against `DataRefs.txt` / `Commands.txt`, 2026-10-06.

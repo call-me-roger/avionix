@@ -5,7 +5,7 @@
 | ID | `F-32` |
 | Stage | `2` |
 | Category | Navigation |
-| Status | Proposed |
+| Status | Done |
 | Depends on | `F-03`, `F-04` |
 | Competitor prevalence | Matrix count 2 of 12 representative products (`research/competitors.md`). Wider set: 7 of 13 remote-panel and CDU products researched offer a remote CDU (WebFMC Pro, AirFMC, Flight Deck ONE / Flight Deck FMS, XPlaneCDU, X-CDU, XpRemotePanel, Remote X-Plane Avionics) |
 
@@ -91,21 +91,24 @@ never reach the UI, and pairing tokens are never logged.
 
 Screen text and style are ordinary datarefs, so they can be subscribed over the WebSocket at the
 documented ~10 Hz; key input is ordinary command activation. Nothing here needs an endpoint the
-Web API lacks. The command names below come from a community mirror of `Commands.txt` and are
-marked unverified; they must be confirmed against the `Commands.txt` shipped with the simulator or
-by a live command query before implementation.
+Web API lacks. Every name below was verified against the `DataRefs.txt` and `Commands.txt` shipped
+with X-Plane (`docs/xplane.md`); none are community-sourced any more. The key set is X-Plane's, not
+the one first proposed here: `perf`, `menu`, `data` and `key_overfly` do not exist in `Commands.txt`
+and were dropped; `clb`, `crz`, `des` and `key_back` (labelled `BACK`), missed the first time, were
+added.
 
 | Purpose | DataRef / command | Type, units | Read/Write | Source |
 |---|---|---|---|---|
 | CDU1 screen text | `sim/cockpit2/radios/indicators/fms_cdu1_text_line0` .. `_line15` | byte/string, 24 chars per line | R | [1] |
 | CDU1 character style | `sim/cockpit2/radios/indicators/fms_cdu1_style_line0` .. `_line15` | byte array; bit 7 large, 6 reverse, 5 flash, 4 underscore, bits 0-3 colour | R | [1] |
 | CDU2 screen text and style | `sim/cockpit2/radios/indicators/fms_cdu2_text_line0..15`, `fms_cdu2_style_line0..15` | as above | R | [1] |
-| Line-select keys | `sim/FMS/ls_1l` .. `ls_6l`, `ls_1r` .. `ls_6r` (unverified) | command | Activate | [2] |
-| Alphanumeric keys | `sim/FMS/key_A` .. `key_Z`, `key_0` .. `key_9` (unverified) | command | Activate | [2] |
-| Editing and punctuation | `sim/FMS/key_period`, `key_minus`, `key_slash`, `key_space`, `key_clear`, `key_delete`, `key_back`, `key_overfly` (unverified) | command | Activate | [2] |
-| Page keys | `sim/FMS/fpln`, `legs`, `dep_arr`, `hold`, `prog`, `perf`, `index`, `menu`, `navrad`, `dir_intc`, `fix`, `data`, `next`, `prev` (unverified) | command | Activate | [2] |
-| Execute | `sim/FMS/exec` (unverified) | command | Activate | [2] |
-| Second CDU keys | `sim/FMS2/...` equivalents (unverified) | command | Activate | [2] |
+| EXEC lights | `sim/cockpit2/radios/indicators/fms_exec_light_pilot` (CDU1), `fms_exec_light_copilot` (CDU2) | int | R | [1] |
+| Line-select keys | `sim/FMS/ls_1l` .. `ls_6l`, `ls_1r` .. `ls_6r` | command | Activate | [2] |
+| Alphanumeric keys | `sim/FMS/key_A` .. `key_Z`, `key_0` .. `key_9` | command | Activate | [2] |
+| Editing and punctuation | `sim/FMS/key_period`, `key_minus`, `key_slash`, `key_space`, `key_clear`, `key_delete`, `key_back` | command | Activate | [2] |
+| Page and function keys | `sim/FMS/index`, `fpln`, `clb`, `crz`, `des`, `dir_intc`, `legs`, `dep_arr`, `hold`, `prog`, `fix`, `navrad`, `prev`, `next` | command | Activate | [2] |
+| Execute | `sim/FMS/exec` | command | Activate | [2] |
+| Second CDU keys | `sim/FMS2/...` equivalents | command | Activate | [2] |
 
 ## Aircraft compatibility
 
@@ -145,16 +148,22 @@ community-sourced mapping and breakage risk. Avionix will not screenshot or OCR 
 
 ## Risks and open questions
 
-1. Every `sim/FMS/...` command name above is community-sourced and unverified; the full key set,
-   and the exact `sim/FMS2/...` naming, must be confirmed against `Commands.txt`.
+1. **Answered: verified.** Every `sim/FMS/...` and `sim/FMS2/...` command name, and every
+   `fms_cdu*`/`fms_exec_light_*` dataref name, was checked against the `DataRefs.txt` and
+   `Commands.txt` shipped with X-Plane (`docs/xplane.md`); none are community-sourced any more.
 2. Whether key commands go over REST or the WebSocket, and with what duration value, has latency
-   consequences (R6) that must be measured.
-3. The ~10 Hz rate bounds how fast the mirror follows a fast typist; whether a short-lived local
-   echo of the pressed key helps or misleads is an open product question.
-4. Byte/string datarefs arrive base64-encoded; line length, padding and trailing-null handling
-   need checking against a live screen.
-5. Whether CDU2 exists and is populated on default aircraft, and whether both CDUs can be
-   subscribed at once without noticeable cost, is unverified.
+   consequences (R6) that must be measured. Avionix activates every key with a REST
+   `POST /command/{id}/activate` (`duration: 0`), the same call every other control uses, one key at
+   a time through a queue; the latency device check is smoke test row 130.
+3. **Answered: no local echo.** The mirror never shows a predicted character; a pressed key gives
+   only the R-01 pressed state and a haptic tick, and the screen shows exactly what X-Plane drew,
+   nothing more (design spec §4.5, decision 4).
+4. **Answered: decoding rules.** Byte/string datarefs arrive base64, NUL-padded to 96 (text) or 24
+   (style) bytes. A text line decodes as UTF-8 (a malformed sequence becomes U+FFFD), trailing NULs
+   are dropped, any other NUL becomes a space, and the result is split into glyphs, then padded or
+   cut to 24 cells. A missing or undecodable style byte reads as large white (`0x87`); colours 8–15
+   and black without reverse video also render white (design spec §4.2, `docs/xplane.md`).
+5. Whether CDU2 exists and is populated on default aircraft is a device check: smoke test row 129.
 
 ## References
 

@@ -94,7 +94,7 @@ aircraft-agnostic.
 | F-23 | Audio panel | Completes the radio stack | [F-23](features/F-23-audio-panel.md) |
 | F-24 | Aircraft systems controls | Lights, gear, flaps, trim: the button-box use case of Touch Portal and Stream Deck | [F-24](features/F-24-aircraft-systems-controls.md) |
 | F-30 | HSI, CDI and navigation indicators | Needed to use the NAV radios for real | [F-30](features/F-30-hsi-cdi-indicators.md) |
-| F-32 | CDU remote for the default X-Plane FMS | The most requested remote panel; the default FMS is fully supported by the API | [F-32](features/F-32-default-fms-cdu.md) |
+| F-32 | CDU remote for the default X-Plane FMS | The most requested remote panel; the default FMS is fully supported by the API | [spec](../superpowers/specs/2026-10-06-default-fms-cdu-design.md) |
 
 Build order (decided 2026-10-06 from competitor prevalence and pilot value): F-30, F-32, F-24, F-12, F-23,
 then F-05 last so the demo covers every panel. Rationale in

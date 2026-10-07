@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   type LayoutChangeEvent,
@@ -17,12 +17,18 @@ import {
   cduScreenFeatureId,
 } from '@/domain/aircraft/profiles/generic';
 import { CDU_COLUMNS } from '@/domain/cdu/screen';
-import { type CduKey, type CduUnit, LSK_LEFT, LSK_RIGHT } from '@/domain/cdu/keys';
+import { CDU_KEYS, type CduKey, type CduUnit, LSK_LEFT, LSK_RIGHT } from '@/domain/cdu/keys';
+import { type HardwareKeyEvent, hardwareKeyToCdu } from '@/domain/cdu/hardware-keys';
 import { missingKeysMessage } from '@/domain/cdu/messages';
 import { TWO_COLUMN_MIN_WIDTH } from '@/domain/panels/device-layout';
 import { EVERYWHERE, type PanelDescriptor } from '@/domain/panels/panel';
 import { useCduUnit } from '@/features/panels/cdu/CduPreferenceProvider';
-import { CduKeyButton, CduKeyboard, missingKeyCount } from '@/features/panels/cdu/CduKeyboard';
+import {
+  CduKeyButton,
+  CduKeyboard,
+  isKeyMissing,
+  missingKeyCount,
+} from '@/features/panels/cdu/CduKeyboard';
 import { CduScreen } from '@/features/panels/cdu/CduScreen';
 import { LSK_COLUMN, cduGeometry } from '@/features/panels/cdu/cdu-geometry';
 import { useCduKeys } from '@/features/panels/cdu/useCduKeys';
@@ -31,6 +37,7 @@ import { AVIONICS_UNIT_PADDING, AvionicsUnit } from '@/features/panels/primitive
 import { ControlButton } from '@/features/panels/primitives/ControlButton';
 import { useKeyEnabled } from '@/features/panels/primitives/KeyEnabledContext';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
+import { subscribeHardwareKeys } from '@/platform/hardware-keys';
 import { BodyText } from '@/theme/primitives';
 import { useTheme, useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
@@ -170,7 +177,7 @@ function LskBar() {
 export function CduPanel() {
   const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const { snapshot } = usePanel();
+  const { snapshot, link } = usePanel();
   const window = useWindowDimensions();
   const [preferred, setPreferred] = useCduUnit();
   const unit = shownCduUnit(preferred, snapshot.compatibility);
@@ -219,6 +226,39 @@ export function CduPanel() {
       AccessibilityInfo.announceForAccessibility(missing);
     }
   }, [missing]);
+
+  // The web build's physical keyboard (spec §4.8): subscribed once for the component's life, so a
+  // message or a layout change never tears it down and rebuilds it. `hardwareKeyToCdu` turns the
+  // raw event into a key id; a missing command or a gate that would make `press` a no-op anyway
+  // (C5, or the screen not live yet) leaves the key unconsumed, so the browser keeps its own
+  // binding for it. Everything the handler reads crosses through a ref, kept current by its own
+  // effect (refs may not be written during render), so the one subscription is never stale.
+  const pressRef = useRef(keys.press);
+  useEffect(() => {
+    pressRef.current = keys.press;
+  }, [keys.press]);
+  const keysEnabledRef = useRef(false);
+  useEffect(() => {
+    keysEnabledRef.current = link.controlsEnabled && !waiting;
+  }, [link.controlsEnabled, waiting]);
+  const missingIdsRef = useRef<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    missingIdsRef.current = new Set(
+      CDU_KEYS.filter((entry) => isKeyMissing(snapshot, unit, entry.id)).map((entry) => entry.id),
+    );
+  }, [snapshot, unit]);
+  useEffect(
+    () =>
+      subscribeHardwareKeys((event: HardwareKeyEvent) => {
+        const id = hardwareKeyToCdu(event);
+        if (id === null || missingIdsRef.current.has(id) || !keysEnabledRef.current) {
+          return false;
+        }
+        pressRef.current(id);
+        return true;
+      }),
+    [],
+  );
 
   const lskColumn = (side: readonly CduKey[]) => (
     <View style={[styles.lskColumn, { height: glassHeight }]}>
