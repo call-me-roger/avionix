@@ -47,25 +47,31 @@ export function GaugeDial({
   const stroke = Math.max(4, Math.round(size / 18));
   const centre = size / 2;
   const radius = centre - stroke;
-  const height = dialHeight(size);
   const { scale } = reading;
   const at = (value: number): number => (scale === null ? 0 : scaleFraction(value, scale));
   const colour = toneColour(theme, reading.tone, stale);
   const fontSize = Math.min(28, Math.max(14, Math.round(size * 0.16)));
+  const lineHeight = Math.round(fontSize * 1.25);
+  const height = Math.max(dialHeight(size), Math.ceil(centre + stroke + lineHeight));
   const needle =
     scale !== null && reading.value !== null
       ? dialPoint(centre, centre, radius - stroke, at(reading.value))
       : null;
   const redline = scale?.redline ?? null;
+  const redlineInner =
+    redline === null ? null : dialPoint(centre, centre, radius - stroke, at(redline));
+  const redlineOuter =
+    redline === null ? null : dialPoint(centre, centre, radius + stroke / 2, at(redline));
 
   return (
     <View
       testID={`dial-${reading.engine}`}
       accessible
+      accessibilityRole="image"
       accessibilityLabel={reading.spoken}
       style={[styles.root, { width: size }]}
     >
-      <View style={{ width: size, height }}>
+      <View testID={`dial-face-${reading.engine}`} style={{ width: size, height }}>
         <Svg width={size} height={height}>
           <Path
             d={arcPath(centre, centre, radius, 0, 1)}
@@ -85,13 +91,13 @@ export function GaugeDial({
                   fill="none"
                 />
               ))}
-          {redline === null ? null : (
+          {redlineInner === null || redlineOuter === null ? null : (
             <Line
               testID="dial-redline"
-              x1={dialPoint(centre, centre, radius - stroke, at(redline)).x}
-              y1={dialPoint(centre, centre, radius - stroke, at(redline)).y}
-              x2={dialPoint(centre, centre, radius + stroke / 2, at(redline)).x}
-              y2={dialPoint(centre, centre, radius + stroke / 2, at(redline)).y}
+              x1={redlineInner.x}
+              y1={redlineInner.y}
+              x2={redlineOuter.x}
+              y2={redlineOuter.y}
               stroke={bandColour(theme, 'red', stale)}
               strokeWidth={3}
             />
@@ -111,7 +117,7 @@ export function GaugeDial({
         </Svg>
         <Text
           testID={`dial-value-${reading.engine}`}
-          style={[styles.value, { top: centre + stroke, fontSize, color: colour }]}
+          style={[styles.value, { top: centre + stroke, fontSize, lineHeight, color: colour }]}
         >
           {reading.text}
         </Text>

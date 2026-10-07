@@ -110,6 +110,7 @@ describe('GaugeDial', () => {
   it('is one element spoken as the reading, with its number, legend, needle and redline', async () => {
     await render(themed(<GaugeDial reading={RPM} size={180} stale={false} />));
     expect(screen.getByLabelText('Engine 1 RPM 2,350')).toBeTruthy();
+    expect(screen.getByTestId('dial-1').props.accessibilityRole).toBe('image');
     expect(screen.getByTestId('dial-value-1').props.children).toBe('2,350');
     expect(screen.getByText('RPM')).toBeTruthy();
     expect(screen.getByTestId('dial-needle')).toBeTruthy();
@@ -155,5 +156,14 @@ describe('GaugeDial', () => {
     );
     expect(screen.queryByTestId('dial-needle')).toBeNull();
     expect(StyleSheet.flatten(screen.getByTestId('dial-value-1').props.style).color).toBe(DIM);
+  });
+
+  it.each([64, 180])('keeps the value text inside its box at size %d', async (size) => {
+    await render(themed(<GaugeDial reading={RPM} size={size} stale={false} />));
+    const face = StyleSheet.flatten(screen.getByTestId('dial-face-1').props.style);
+    const value = StyleSheet.flatten(screen.getByTestId('dial-value-1').props.style);
+    const top = value.top as number;
+    const lineHeight = value.lineHeight as number;
+    expect(top + lineHeight).toBeLessThanOrEqual(face.height as number);
   });
 });
