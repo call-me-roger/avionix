@@ -279,7 +279,9 @@ describe('touch targets on the Engines panel with a piston twin', () => {
           });
         }
       } finally {
-        Dimensions.set({ window: original });
+        await act(async () => {
+          Dimensions.set({ window: original });
+        });
       }
     },
   );
