@@ -522,8 +522,8 @@ export class SimulatorSession {
    * `activate`'s is, and its success is recorded once; a renewal or release records only a
    * failure, because a held key renews five times a second and the store must not churn the
    * panel at that rate. A renewal or release sends the command id resolved at press time, never a
-   * fresh lookup, and belongs to the connection its press was made on: after a reconnect, or a
-   * re-check that replaces the command map, it is refused (R5: a hold never resumes).
+   * fresh lookup (a re-check that replaces the command map cannot redirect it), and belongs to the
+   * connection its press was made on: after a reconnect it is refused (R5: a hold never resumes).
    */
   async holdCommand(
     featureId: string,
