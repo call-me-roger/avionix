@@ -50,9 +50,10 @@ interface ProbeProps {
   value: number | null;
   capMs?: number;
   atLimit?: (value: number | null) => boolean;
+  enabled?: boolean;
 }
 
-function Probe({ value, capMs = 10_000, atLimit }: ProbeProps) {
+function Probe({ value, capMs = 10_000, atLimit, enabled }: ProbeProps) {
   const control = useHoldControl({
     featureId: FEATURE,
     command: COMMAND,
@@ -62,6 +63,7 @@ function Probe({ value, capMs = 10_000, atLimit }: ProbeProps) {
     cappedMessage: CAPPED,
     noResponseMessage: NO_RESPONSE,
     atLimit,
+    enabled,
   });
   return (
     <>
@@ -141,6 +143,27 @@ describe('useHoldControl', () => {
     expect(screen.getByTestId('held').props.children).toBe('free');
   });
 
+  it('keeps holding when a new touch lands inside a tap’s minimum-hold tail', async () => {
+    await render(tree(live(), { value: 0 }));
+    await fireEvent(key(), 'pressIn');
+    await fireEvent.press(key());
+    await fireEvent(key(), 'pressOut');
+    await advance(150);
+    await fireEvent(key(), 'pressIn');
+    for (let elapsed = 0; elapsed < 2000; elapsed += 200) {
+      await advance(200);
+      expect(screen.getByTestId('held').props.children).toBe('held');
+    }
+    expect(phases().filter((phase) => phase === 'press')).toHaveLength(1);
+    expect(phases().filter((phase) => phase === 'release')).toHaveLength(0);
+    // Renewed every 200 ms from the first press, without a gap: 2150 ms / 200 ms.
+    expect(phases().filter((phase) => phase === 'renew')).toHaveLength(10);
+    await fireEvent(key(), 'pressOut');
+    expect(phases().filter((phase) => phase === 'release')).toHaveLength(1);
+    expect(phases().at(-1)).toBe('release');
+    expect(screen.getByTestId('held').props.children).toBe('free');
+  });
+
   it('releases when controls disable mid-hold, says why, and never resumes', async () => {
     const { rerender } = await render(tree(live(), { value: 0 }));
     await fireEvent(key(), 'pressIn');
@@ -153,6 +176,20 @@ describe('useHoldControl', () => {
     await rerender(tree(live(), { value: 0 }));
     await advance(1000);
     expect(phases()).toEqual(['press', 'renew', 'release']);
+  });
+
+  it('releases, without a link sentence, when the key itself becomes unusable mid-hold', async () => {
+    const { rerender } = await render(tree(live(), { value: 0, enabled: true }));
+    await fireEvent(key(), 'pressIn');
+    await advance(400);
+    await rerender(tree(live(), { value: 0, enabled: false }));
+    expect(phases()).toEqual(['press', 'renew', 'renew', 'release']);
+    expect(screen.getByTestId('held').props.children).toBe('free');
+    expect(message()).toBeNull();
+    await advance(1000);
+    expect(phases()).toEqual(['press', 'renew', 'renew', 'release']);
+    await fireEvent(key(), 'pressOut');
+    expect(phases()).toEqual(['press', 'renew', 'renew', 'release']);
   });
 
   it('releases when the app goes to the background mid-hold', async () => {

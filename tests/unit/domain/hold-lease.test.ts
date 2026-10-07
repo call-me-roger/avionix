@@ -177,6 +177,41 @@ describe('HoldLease (spec §4.3)', () => {
     expect(ends).toHaveLength(1);
   });
 
+  it('merges a press inside the minimum-hold tail into the same hold', async () => {
+    const { lease, timers, sent, ends } = setup();
+    lease.press();
+    await timers.advance(50);
+    lease.release();
+    expect(lease.releasing).toBe(true);
+    await timers.advance(100);
+    lease.press();
+    expect(lease.held).toBe(true);
+    expect(lease.releasing).toBe(false);
+    await timers.advance(1000);
+    expect(sent.filter((phase) => phase === 'press')).toHaveLength(1);
+    expect(sent.filter((phase) => phase === 'release')).toHaveLength(0);
+    // Renewals every 200 ms from the first press, never interrupted: 1150 ms / 200 ms.
+    expect(sent.filter((phase) => phase === 'renew')).toHaveLength(5);
+    expect(ends).toEqual([]);
+    lease.release();
+    await flush();
+    expect(sent.filter((phase) => phase === 'release')).toHaveLength(1);
+    expect(sent.at(-1)).toBe('release');
+    expect(ends).toEqual([['released', 1150]]);
+    expect(timers.pending()).toBe(0);
+  });
+
+  it('keeps the first cap on a merged hold', async () => {
+    const { lease, timers, ends } = setup({}, 1000);
+    lease.press();
+    await timers.advance(50);
+    lease.release();
+    await timers.advance(100);
+    lease.press();
+    await timers.advance(850);
+    expect(ends).toEqual([['capped', 1000]]);
+  });
+
   it('treats a send that throws as failed', async () => {
     const timers = fakeTimers();
     const ends: HoldEnd[] = [];

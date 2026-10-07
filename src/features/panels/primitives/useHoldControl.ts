@@ -19,6 +19,11 @@ export interface HoldControlOptions {
   noResponseMessage: string;
   /** Not moving is no failure here (trim already at the end it was driven toward). */
   atLimit?: (value: number | null) => boolean;
+  /**
+   * The key's own availability (its command resolved, its feature usable); default true. A hold
+   * ends, release sent, when it turns false, without a sentence: the unit already names the key.
+   */
+  enabled?: boolean;
 }
 
 export interface HoldControl {
@@ -29,12 +34,13 @@ export interface HoldControl {
 }
 
 /**
- * One hold key's lease (F-24 §4.3, R4, R5). A lease exists only while controls are enabled and
- * the app is in the foreground; a fresh one replaces it when the command or either condition
- * changes, and the old one is cancelled (release sent), which also covers unmount. The message
- * for a hold the panel ended (link lost, backgrounded) is set while rendering, from the same
- * props that end it, so it can never be missed; the lease's own end (cap, no response) sets it
- * from `onEnd`. Refs are read and written only in effects and handlers.
+ * One hold key's lease (F-24 §4.3, R4, R5). A lease exists only while controls are enabled, the
+ * app is in the foreground and the key itself is enabled; a fresh one replaces it when the command
+ * or any condition changes, and the old one is cancelled (release sent), which also covers
+ * unmount. The message for a hold the panel ended (link lost, backgrounded) is set while
+ * rendering, from the same props that end it, so it can never be missed; the lease's own end
+ * (cap, no response) sets it from `onEnd`. A touch inside a tap's minimum-hold tail joins that
+ * hold (HoldLease's merge). Refs are read and written only in effects and handlers.
  */
 export function useHoldControl(options: HoldControlOptions): HoldControl {
   const { hold, link } = usePanel();
@@ -62,10 +68,15 @@ export function useHoldControl(options: HoldControlOptions): HoldControl {
     valueRef.current = options.value;
   }, [options.value]);
 
-  const active = link.controlsEnabled && foreground;
+  const linked = link.controlsEnabled && foreground;
+  const active = linked && options.enabled !== false;
   if (held && !active) {
     setHeld(false);
-    setMessage(link.controlsEnabled ? holdBackgrounded(options.name) : holdLinkLost(options.name));
+    if (!linked) {
+      setMessage(
+        link.controlsEnabled ? holdBackgrounded(options.name) : holdLinkLost(options.name),
+      );
+    }
   }
 
   const { featureId, command, capMs } = options;
@@ -103,7 +114,15 @@ export function useHoldControl(options: HoldControlOptions): HoldControl {
 
   const start = useCallback(() => {
     const built = leaseRef.current;
-    if (built === null || built.tag !== tag || !active || built.lease.held) {
+    if (built === null || built.tag !== tag || !active) {
+      return;
+    }
+    if (built.lease.held) {
+      // A touch inside a tap's minimum-hold tail continues that hold (HoldLease merges it): its
+      // start value, moved flag and message stay those of the hold it joins.
+      if (built.lease.releasing) {
+        built.lease.press();
+      }
       return;
     }
     startValueRef.current = valueRef.current;

@@ -39,9 +39,9 @@ export interface HoldLeaseOptions {
 /**
  * One hold control's lease on a held X-Plane command (R4, R5, S4). `press` sends the command with
  * a 0.5 s lease and renews it every 200 ms; `release` ends it (after HOLD_MIN_MS at the earliest,
- * so a tap is a fixed nudge); `cancel` ends it now. Every end sends a release, best effort: if the
- * link is gone the lease lapses in X-Plane by itself within 0.5 s, which is the safety this class
- * exists for. A late answer from an earlier hold never touches a later one (`generation`).
+ * so a tap is a fixed nudge; a press during that tail merges into the hold); `cancel` ends it now.
+ * Every end sends a release, best effort: if the link is gone the lease lapses in X-Plane by itself
+ * within 0.5 s, which is the safety this class exists for. A late answer from an earlier hold never touches a later one (`generation`).
  */
 export class HoldLease {
   private holding = false;
@@ -60,8 +60,22 @@ export class HoldLease {
     return this.holding;
   }
 
+  /** Held, with a release waiting out the minimum hold (the tail of a tap). */
+  get releasing(): boolean {
+    return this.holding && this.releaseTimer !== null;
+  }
+
+  /**
+   * Starts a hold. A press inside a tap's minimum-hold tail merges into that hold: the pending
+   * release is dropped and the hold goes on (same start, same cap, renewals uninterrupted), so a
+   * quick re-touch is never swallowed. A press while held otherwise does nothing.
+   */
   press(): void {
     if (this.holding) {
+      if (this.releaseTimer !== null) {
+        this.timers.clearTimeout(this.releaseTimer);
+        this.releaseTimer = null;
+      }
       return;
     }
     this.holding = true;
