@@ -81,7 +81,7 @@ export function EnginesSection() {
   const available = leanAvailable(model);
   // Until the first layout pass, assume the window minus the unit's own padding; tests never run a
   // layout pass. The window alone overstates it in landscape, where the switcher rail (and safe-area
-  // insets) sit beside the panel, so dials sized from it can overflow (R-01 review).
+  // insets) sit beside the panel, so dials sized from it would overflow.
   const [measured, setMeasured] = useState<number | null>(null);
 
   useEffect(() => {
