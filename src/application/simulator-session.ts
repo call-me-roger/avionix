@@ -223,8 +223,13 @@ export class SimulatorSession {
    * new session's control.
    */
   private operationsEpoch = 0;
-  /** Command name → the connection generation its hold was pressed on (F-24 §4.3). */
-  private readonly holds = new Map<string, number>();
+  /**
+   * Command name → the connection generation and command id its hold was pressed with (F-24
+   * §4.3). The id is resolved once, at press time: a renewal or release sends that same id
+   * rather than looking the name up again, so a re-check that replaces the command map mid-hold
+   * cannot redirect a renewal to a different command.
+   */
+  private readonly holds = new Map<string, { generation: number; id: number }>();
 
   constructor(private readonly deps: SimulatorSessionDeps) {
     this.policy = deps.reconnectPolicy ?? DEFAULT_RECONNECT_POLICY;
@@ -516,8 +521,9 @@ export class SimulatorSession {
    * what stops trim if this phone goes silent. Never rejects. A press is refused and recorded as
    * `activate`'s is, and its success is recorded once; a renewal or release records only a
    * failure, because a held key renews five times a second and the store must not churn the
-   * panel at that rate. A renewal or release belongs to the connection its press was made on:
-   * after a reconnect it is refused (R5: a hold never resumes).
+   * panel at that rate. A renewal or release sends the command id resolved at press time, never a
+   * fresh lookup, and belongs to the connection its press was made on: after a reconnect, or a
+   * re-check that replaces the command map, it is refused (R5: a hold never resumes).
    */
   async holdCommand(
     featureId: string,
@@ -528,23 +534,22 @@ export class SimulatorSession {
     const epoch = this.operationsEpoch;
     if (phase !== 'press') {
       const active = this.active;
-      const pressedOn = this.holds.get(name);
+      const pressed = this.holds.get(name);
       if (phase === 'release') {
         this.holds.delete(name);
       }
-      const command = active?.commandsByName.get(name);
       if (
         active === null ||
-        command === undefined ||
-        pressedOn !== active.generation ||
+        pressed === undefined ||
+        pressed.generation !== active.generation ||
         this.store.getSnapshot().state !== 'connected'
       ) {
         return 'refused';
       }
       try {
         await (phase === 'renew'
-          ? active.client.setCommandActive(command.id, true, leaseSec)
-          : active.client.setCommandActive(command.id, false));
+          ? active.client.setCommandActive(pressed.id, true, leaseSec)
+          : active.client.setCommandActive(pressed.id, false));
         return 'ok';
       } catch (error) {
         this.holds.delete(name);
@@ -571,7 +576,7 @@ export class SimulatorSession {
       this.refuse(epoch, name, 'unavailable');
       return 'refused';
     }
-    this.holds.set(name, active.generation);
+    this.holds.set(name, { generation: active.generation, id: command.id });
     try {
       await this.timed(active.generation, () =>
         active.client.setCommandActive(command.id, true, leaseSec),
@@ -626,6 +631,9 @@ export class SimulatorSession {
       this.cancelReconnect();
       this.cancelReconnect = null;
     }
+    // Every held command belongs to the connection that is going away; a hold pressed on it
+    // must never be renewed or released against whatever connects next (R5).
+    this.holds.clear();
     const active = this.active;
     this.active = null;
     if (active !== null) {

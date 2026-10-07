@@ -1017,6 +1017,61 @@ describe('holding a command (F-24 §4.3)', () => {
     expect(snapshot().operations[PITCH_UP]?.failure?.code).toBe('COMMAND_FAILED');
     expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew')).toBe('refused');
   });
+
+  it('records a failed renewal and forgets the hold; a failed release records nothing', async () => {
+    const { session, clients, snapshot } = setup();
+    await session.connect('192.168.1.100', 8086);
+    await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press');
+    clients[0]?.setCommandActive.mockRejectedValueOnce(new Error('socket gone'));
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew')).toBe('failed');
+    expect(snapshot().operations[PITCH_UP]?.failure?.code).toBe('COMMAND_FAILED');
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew')).toBe('refused');
+
+    // A fresh press, then a release that fails: it is never recorded (the hold renews or
+    // lapses in X-Plane within 0.5 s regardless, and a release must not churn the store).
+    await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press');
+    const listener = jest.fn();
+    session.store.subscribe(listener);
+    clients[0]?.setCommandActive.mockRejectedValueOnce(new Error('socket gone'));
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'release')).toBe('failed');
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('refuses a press whose command resolved but whose feature is unavailable', async () => {
+    const { session, clients, snapshot } = setup();
+    await session.connect('192.168.1.100', 8086);
+    // Pinned directly on the store, the same way the write/activate 'partial' tests do: no
+    // bundled profile can currently put a resolved command behind an unavailable feature on
+    // its own.
+    session.store.setState((prev) => ({
+      ...prev,
+      compatibility: {
+        ...prev.compatibility,
+        features: prev.compatibility.features.map((feature) =>
+          feature.id === FEATURE_TRIM ? { ...feature, status: 'unavailable' as const } : feature,
+        ),
+      },
+    }));
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press')).toBe('refused');
+    expect(snapshot().operations[PITCH_UP]?.refusal).toBe('unavailable');
+    expect(clients[0]?.setCommandActive).not.toHaveBeenCalled();
+  });
+
+  it('renews with the id resolved at press time, even after a re-check replaces the command map', async () => {
+    const { session, clients } = setup();
+    await session.connect('192.168.1.100', 8086);
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press')).toBe('ok');
+
+    const client = clients[0]!;
+    const defaultFindCommand = client.findCommand;
+    client.findCommand = jest.fn(async (name: string) =>
+      name === PITCH_UP ? { id: 999, name, description: 'up' } : defaultFindCommand(name),
+    );
+    await session.recheckCompatibility();
+
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew')).toBe('ok');
+    expect(client.setCommandActive).toHaveBeenLastCalledWith(COMMAND_ID, true, 0.5);
+  });
 });
 
 describe('SimulatorSession reconnect', () => {
