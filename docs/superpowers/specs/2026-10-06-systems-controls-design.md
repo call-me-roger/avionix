@@ -129,11 +129,16 @@ it backs (the CDU keys' rule):
 | `fuel` | Fuel | selector, its two flags, 4 selector commands; pump state + 8 commands |
 | `engine-start` | Engine start | count, type, key, starter, running; 16 magneto and 4 starter commands |
 
-A **control** is offered only when its own state binding and every command it sends resolved
-(R1). A control whose names did not all resolve is drawn disabled, and its section prints one
-line: "Not on the {aircraft}: STROBE, TAXI." A section whose controls are all missing shows
-only "{Section} isn't available on the {aircraft}." The parking brake's ratio resolving read-only
-makes it unavailable the same way (R7).
+Availability is decided per **control**, from its own bindings' resolution
+(`compatibility.bindings[name].status === 'ok'`):
+
+- its state DataRef did not resolve: the control is **not drawn** (R1: no state, no control);
+- its state resolved but a command it sends did not: it is drawn **disabled**, still showing the
+  state;
+- either way its section prints one line naming them: "Not available on the Cessna 172: STROBE,
+  TAXI.";
+- a section with no control drawn shows only "{Section} isn't available on the {aircraft}.";
+- the parking brake's ratio resolving read-only makes it unavailable the same way (R7).
 
 ### 4.2 Momentary controls (R2, R3)
 
