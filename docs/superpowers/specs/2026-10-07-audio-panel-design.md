@@ -84,9 +84,8 @@ Two rows of hardware keys (`ControlButton`, `compact`), wrapping on narrow phone
 
 Presses send the explicit command (`_on` when off, `_off` when on; the MIC command for the other
 COM) and are read back on the state DataRef with the shared `useReadBack` (3 s, settles once). A
-key is inert while its own read-back waits. A failed read-back prints one danger sentence under the
-unit: "The Cessna 172 didn't turn COM2 listening on." / "The Cessna 172 didn't switch the
-microphone to COM2."
+key is inert while its own read-back waits. The selected MIC key is inert too: pressing it again
+would make X-Plane re-select its listener and mute the other COM.
 
 ### 4.3 COM auto-listen
 
@@ -97,14 +96,15 @@ its own flag. A missing auto flag counts as 0.
 
 ### 4.4 Lines under the unit
 
-In this order, each only when it applies:
+In this order (the shared `UnitLines` order), each only when it applies:
 
-1. **Not heard:** when the transmit COM is not heard (no auto-listen and its flag is 0): "You
-   transmit on COM1 but aren't listening to it." A statement of state, muted, no alert — it names
-   the exact cause of "I can't hear ATC".
-2. **Missing keys:** "Not available on the Cessna 172: DME, MKR." Lists keys whose state or command
-   is **definitively** missing or read-only on this aircraft.
-3. Read-back failures (danger).
+1. **Missing keys** (muted): "Not available on the Cessna 172: DME, MKR." Lists keys whose state or
+   command is **definitively** missing on this aircraft.
+2. **Read-back failures** (danger): "The Cessna 172 didn't start listening to COM2." / "The Cessna
+   172 didn't switch the microphone to COM2."
+3. **Not heard** (plain): when the transmit COM is not heard (no auto-listen and its flag is 0):
+   "You transmit on COM1 but aren't listening to it." A statement of state, not an alert — it
+   names the exact cause of "I can't hear ATC".
 
 ### 4.5 Availability (F-12's three answers)
 
