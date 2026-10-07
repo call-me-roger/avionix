@@ -21,6 +21,7 @@ import {
   MARKING_COLOURS,
   MARKING_EDGES,
   MARKING_KEYS,
+  MARKING_LABELS,
   markingName,
 } from '@/domain/engines/catalogue';
 import {
@@ -439,7 +440,7 @@ const ENGINES_FEATURE_SPECS: readonly FeatureSpec[] = [
         MARKING_EDGES.map((edge) =>
           dataRef(
             markingName(colour, edge, key),
-            `${key} ${colour} band, ${edge === 'lo' ? 'low' : 'high'} edge`,
+            `${MARKING_LABELS[key]} ${colour} band, ${edge === 'lo' ? 'low' : 'high'} edge`,
           ),
         ),
       ),

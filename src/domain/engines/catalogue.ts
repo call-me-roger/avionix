@@ -68,6 +68,20 @@ export const MARKING_KEYS = [
 ] as const;
 export type MarkingKey = (typeof MARKING_KEYS)[number];
 
+/** Each marking key in words, for the Compatibility screen: never Laminar's spelling. */
+export const MARKING_LABELS: Record<MarkingKey, string> = {
+  MP: 'Manifold pressure',
+  TRQ: 'Torque',
+  N1: 'N1',
+  N2: 'N2',
+  EPR: 'EPR',
+  ITT: 'ITT',
+  EGT: 'EGT',
+  CHT: 'CHT',
+  oilT: 'Oil temperature',
+  oilP: 'Oil pressure',
+};
+
 export const MARKING_COLOURS = ['green', 'yellow', 'red'] as const;
 export type MarkingColour = (typeof MARKING_COLOURS)[number];
 

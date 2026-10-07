@@ -796,7 +796,16 @@ describe('the F-12 engine features (profile 1.8.0)', () => {
 
   it('gives the markings feature the 60 marking names, and fuel and electrical their seven each', () => {
     expect(bindings(FEATURE_ENGINE_MARKINGS).map((binding) => binding.name)).toEqual(MARKING_NAMES);
-    expect(bindings(FEATURE_ENGINE_MARKINGS)[0]?.purpose).toBe('MP green band, low edge');
+    expect(bindings(FEATURE_ENGINE_MARKINGS)[0]?.purpose).toBe(
+      'Manifold pressure green band, low edge',
+    );
+    expect(bindings(FEATURE_ENGINE_MARKINGS).at(-1)?.purpose).toBe(
+      'Oil pressure red band, high edge',
+    );
+    // Spoken names on the Compatibility screen, never Laminar's keys.
+    for (const binding of bindings(FEATURE_ENGINE_MARKINGS)) {
+      expect(binding.purpose).not.toMatch(/\b(MP|TRQ|oilT|oilP)\b/);
+    }
     expect(bindings(FEATURE_FUEL_QUANTITY).map((binding) => binding.name)).toEqual(
       Object.values(FUEL),
     );
