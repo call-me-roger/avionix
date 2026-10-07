@@ -128,6 +128,19 @@ describe('useHoldControl', () => {
     expect(screen.getByTestId('held').props.children).toBe('free');
   });
 
+  it('releases a quick tap whose press arrives before its press-out', async () => {
+    await render(tree(live(), { value: 0 }));
+    await fireEvent(key(), 'pressIn');
+    await fireEvent.press(key());
+    await fireEvent(key(), 'pressOut');
+    await advance(1000);
+    const sent = phases();
+    expect(sent.filter((phase) => phase === 'press')).toHaveLength(1);
+    expect(sent.filter((phase) => phase === 'release')).toHaveLength(1);
+    expect(sent.at(-1)).toBe('release');
+    expect(screen.getByTestId('held').props.children).toBe('free');
+  });
+
   it('releases when controls disable mid-hold, says why, and never resumes', async () => {
     const { rerender } = await render(tree(live(), { value: 0 }));
     await fireEvent(key(), 'pressIn');

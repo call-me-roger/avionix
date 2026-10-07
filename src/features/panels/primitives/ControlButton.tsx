@@ -116,11 +116,27 @@ export function ControlButton(props: Props) {
     // control that goes inert must not come back armed.
     setArmed(false);
   }
+  // Hold keys (`props.hold`). Pressability's real event order: a press held 130 ms or more gives
+  // pressIn → pressOut → press, but a shorter one gives pressIn → press → pressOut, the press-out
+  // delayed to the 130 ms minimum (and dropped if a new touch starts first); a touch the system
+  // cancels (a scroll takes it) gives pressIn → pressOut and no press. So:
+  // - `holdOwed`: a hold was started and its `onEnd` has not been called. Whichever of press-out,
+  //   press or the next press-in comes first ends it, exactly once.
+  // - `pressedIn`: this touch's press-in started a hold, so its trailing `onPress` must not nudge.
+  // Both are touched only in handlers and timer callbacks.
+  const holdOwed = useRef(false);
+  const pressedIn = useRef(false);
+
   useEffect(() => {
     if (!armed) {
       return;
     }
-    const timer = setTimeout(() => setArmed(false), CONFIRM_WINDOW_MS);
+    const timer = setTimeout(() => {
+      // A START held past the window stays armed until the hold ends (`endHold` disarms it).
+      if (!holdOwed.current) {
+        setArmed(false);
+      }
+    }, CONFIRM_WINDOW_MS);
     return () => clearTimeout(timer);
   }, [armed]);
 
@@ -130,33 +146,42 @@ export function ControlButton(props: Props) {
   const shown = armed ? (props.hold?.armedLegend ?? `Tap again: ${props.label}`) : props.label;
   const accessibleName = armed ? shown : (props.accessibilityLabel ?? props.label);
 
-  // Whether this press started a hold: `onPress` follows `onPressOut`, and must not nudge again.
-  // Reset on every press-in: a touch the system cancels (a scroll takes it) ends with press-out
-  // and no `onPress`, and must not swallow the next tap.
-  const holdStarted = useRef(false);
+  const endHold = () => {
+    if (!holdOwed.current) {
+      return;
+    }
+    holdOwed.current = false;
+    setArmed(false);
+    props.hold?.onEnd();
+  };
 
   const onPressIn = () => {
-    holdStarted.current = false;
+    // A re-touch inside 130 ms drops the earlier touch's delayed press-out: end its hold first.
+    // On a confirm key that end disarmed it, so the re-touch does not start another.
+    const endedOwed = holdOwed.current;
+    endHold();
+    pressedIn.current = false;
     if (props.hold === undefined || !enabled) {
       return;
     }
-    if (props.confirm === true && !armed) {
+    if (props.confirm === true && (!armed || endedOwed)) {
       return;
     }
-    holdStarted.current = true;
+    pressedIn.current = true;
+    holdOwed.current = true;
     haptics.press();
     props.hold.onStart();
   };
   const onPressOut = () => {
-    if (props.hold !== undefined && holdStarted.current) {
-      props.hold.onEnd();
-    }
+    endHold();
   };
   const onPress = () => {
     if (props.hold !== undefined) {
-      if (holdStarted.current) {
-        // The hold already ran from press-in to press-out.
-        holdStarted.current = false;
+      if (pressedIn.current) {
+        // This touch's press-in started the hold: end it if press-out has not yet (a quick tap),
+        // and never nudge on top of it.
+        pressedIn.current = false;
+        endHold();
         setArmed(false);
         return;
       }
