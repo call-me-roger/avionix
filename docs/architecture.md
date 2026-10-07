@@ -184,6 +184,37 @@ Controls act through `SimulatorSession.write(featureId, name, value)` and
 active profile. Outcomes are keyed by binding name, reset by `connect()`, and never carry error
 text: a failure is a `{ code, step }` pair rendered by `FailureNotice`.
 
+**Held commands (F-24 §4.3).** Trim and the starters are held rather than pressed.
+`PanelActions.hold(featureId, name, phase)` (`phase: 'press' | 'renew' | 'release'`) sits beside
+`write` and `activate`; `PanelScopeActions` makes it optional (`Partial`), so a scope that never
+holds a command — the flight data strip — can leave it out and get `REFUSE_HOLD` instead.
+`SimulatorSession.holdCommand` resolves the binding and records a store outcome only on `press`,
+the way `activate` does, remembering the command id and the connection's generation; a `renew` or
+`release` resends that same id with no fresh lookup, and either is refused once the generation has
+moved on, so a hold never resumes after a reconnect (R5). Neither a renewal nor a release records a
+success in the store — only `press` and a failure do — because a held key renews five times a
+second and must not churn the panel at that rate. A pure `HoldLease` (`src/domain/panels/hold-lease.ts`,
+an injected clock and timers, like the CDU key queue) owns the mechanics: a 0.5 s lease renewed
+every 200 ms, a configurable cap (10 s trim, 30 s starter), a 250 ms minimum so a tap — and a screen
+reader's single `onPress` — still nudges, and a best-effort release sent on every end, including
+cancellation. A press that lands in a tap's minimum-hold tail (released, but the 250 ms not yet up)
+merges into that hold rather than being swallowed: the pending release is dropped and the hold goes
+on with the same start, the same cap and uninterrupted renewals, and the next release ends it by the
+usual rule (at once, the minimum being met); a press while held with no release pending does
+nothing. `useHoldControl` (`src/features/panels/primitives/useHoldControl.ts`) builds one lease per
+`(featureId, command)` while the app is foregrounded, the link's controls are enabled and the key
+itself is usable (its `enabled` option: the command resolved and the feature usable), replacing it
+(and ending any hold in flight) whenever any of these changes, and turns the lease's end into one of
+this panel's sentences: capped, no response (held at least a second and the driven value never
+moved), backgrounded, or link lost — a key that merely became unusable ends silently, its unit
+already naming it. A merged touch keeps the joined hold's start value and moved flag, so the
+no-response check covers the whole hold. `ControlButton` gained a `hold` prop (`onStart`, `onEnd`,
+an optional armed legend) instead of a second primitive, so every existing rule — availability, the
+48 dp target, the confirm arm, haptics, notices — stays in the one control: press-in starts the hold
+and press-out ends it; a screen reader's single `onPress` nudges once (start then end); with
+`confirm`, a first tap arms the key and only an armed key can be held (the starter's "Hold to
+start").
+
 The shell calls `setDemand` with the visible panel's features. The session keeps identification,
 connection health and those features' DataRefs subscribed, reconciling the socket as a delta
 (added before removed, one change at a time; a re-check installs its new bindings under the same
@@ -604,6 +635,54 @@ scrolling the page) still runs. A consumed key gets `preventDefault` and `stopPr
 the capture phase, the listener stops it before react-native-web's own key handling, so Space on a
 focused on-screen key presses SP alone, never that key too. A held key's auto-repeat
 (`event.repeat`) is consumed but never pressed: one press, one activation (C2).
+
+## Systems
+
+`src/features/panels/systems/` is the Systems panel (F-24): one control per switch, selector and
+axis, enough to run a flight from battery to shutdown. `src/domain/systems/controls.ts` is the
+single catalogue — every DataRef and command name, verified against Laminar's files
+(`docs/xplane.md`) — that both the profile and the panel read, so a name lives in one place.
+`readouts.ts` turns raw telemetry into the labels the units show (gear lamps, flap detent text,
+trim percentage, the engine columns' running and starter state) as pure functions with no React;
+`messages.ts` holds the sentences (not-adopted read-backs, a hold ended by its cap or by nothing
+moving, a missing section) in the pilot's words, with no DataRef or command name in any of them
+(R10).
+
+Ten more profile features back it (`GENERIC_PROFILE` 1.7.0): `lights-exterior`, `lights-interior`,
+`gear`, `flaps`, `trim`, `parking-brake`, `anti-ice`, `electrical`, `fuel` and `engine-start`, every
+binding optional, so a name an aircraft lacks costs only the control it backs — the CDU keys' rule,
+carried down to individual switches and selector positions here. `electrical` (battery, avionics
+master, generators) goes beyond the roadmap's original list: the panel is meant to run a whole
+flight, and every switch panel simmers buy starts with the master switch; flap-handle writes stayed
+out of scope (commands only, so add-ons that hook them keep working). `sections.tsx` groups the ten
+features into the four sections the layout shows (ENGINE, LIGHTS, FLIGHT, ICE). `availability.ts`
+holds only small helpers (`bindingOk`, `presence`, `featureUsable`, `aircraftName`, `valueOf`,
+`sentenceCase`); each unit and section derives for itself, from those, which of its controls draw
+and the one line naming what a missing binding left out ("Not available on the Cessna 172: STROBE,
+TAXI.", printed by the shared `UnitLines`), reusing the CDU keys' per-control resolution rather than
+hiding a whole section for one miss. A parking brake whose ratio resolved read-only is drawn
+disabled and named in that same line (R7).
+
+**Momentary controls** — switches, dimmers, the fuel selector, magnetos, gear, flaps, the parking
+brake's two writes, takeoff trim and the centre commands — are `ControlButton`s exactly as every
+other panel's: an explicit on/off (or positional) command chosen from the state X-Plane reports,
+never a toggle, and a `useReadBack` watch once X-Plane accepts one, so a switch that did not move
+says so in one sentence naming the aircraft and the state it still reports. Gear, magnetos, the fuel
+selector's OFF and battery OFF take `confirm` (a second tap within the window): a stray touch here
+either stops an engine or the electrics in flight. **Held controls** — the six trim keys and up to
+four starters — use `useHoldControl` and `ControlButton.hold` (see Panels above); a starter is also
+armed by a first tap (`confirm`) before it can be held, so cranking never starts by accident.
+
+**Layout** (spec §4.7). A phone (window narrower than `WIDE_MIN_WIDTH`, the same 720 dp breakpoint
+the CDU and Navigation use) shows one of four pages behind a row of page keys — ENGINE, LIGHTS,
+FLIGHT, ICE — the last one remembered per device (`avionix.systems`, best-effort load and save,
+FLIGHT on first use); a window at or past that breakpoint shows two columns instead (ENGINE and
+LIGHTS; FLIGHT and ICE), side by side inside the panel frame's single `ScrollView`, so they scroll
+together; there are no page keys, so nothing is ever hidden on a tablet. `SystemsPanel` owns one `useReadBack` for the whole panel and passes it to whichever
+sections are mounted, so a read-back failure survives a page change, and a held control's lease is
+released (its unit unmounts) the moment the page changes under it. Registered fifth in the switcher
+(`src/features/panels/registry.ts`): Instruments, Radios, Autopilot, Navigation, **Systems**, CDU,
+Flight data — every aircraft has these controls, only airliners have the CDU.
 
 ## Error model
 

@@ -169,6 +169,25 @@ Record results at the bottom.
 | 140 | Open the CDU panel, then switch to another panel | The flight data strip is hidden on the CDU panel and reappears on the other panel | |
 | 141 | With the CDU live on the default 737, load the Cessna 172 (or an add-on such as Zibo's 737) without leaving the CDU panel | The CDU switches to the No FMS sentence naming the new aircraft; the 737's last screen is never shown as live for the new aircraft (watch the first second after the switch) | |
 | 142 | With the CDU live and the screen changing (e.g. the PROG page in flight), scroll the keys and type steadily on an older phone | Scrolling and key presses stay smooth; the keyboard does not stutter as the screen updates (about 10 updates a second) | |
+| 143 | Connect to X-Plane with a flight loaded and time it against row 124 | Connecting takes at most about a second longer than before F-24 (118 more names are checked) | |
+| 144 | Default Cessna 172: each exterior light key, then flip the same switch in the cockpit | The light changes in X-Plane; a switch flipped in the cockpit updates the key's bar within a moment | |
+| 145 | A retractable default aircraft (Baron 58 or King Air), in flight: GEAR UP (two taps), then GEAR DOWN | Lamps go red in transit and out when up; three green when down; the spoken label matches | |
+| 146 | Same aircraft on the ground: GEAR UP | The handle stays down and the sentence explains X-Plane keeps the gear down on the ground | |
+| 147 | Cessna 172: flaps ▼ to full, then ▲ to up | The readout steps UP, 1 of 3, 2 of 3, FULL matching the cockpit flap indicator; MOVING shows while they travel | |
+| 148 | Hold NOSE UP for 3 s, then release | Trim moves smoothly (no stutter) in the nose-up direction and stops within about 0.3 s of release; the readout follows | |
+| 149 | Tap NOSE DN; with VoiceOver or TalkBack, double-tap NOSE DN | Each moves the trim by one small step | |
+| 150 | Start a trim hold, then turn on airplane mode (or pull Wi-Fi) on the phone | Trim stops in X-Plane within about half a second; the panel says trim was released; turning Wi-Fi back on does not resume it | |
+| 151 | Hold NOSE UP for more than 10 s | Trim stops at 10 s with "Pitch trim stopped after 10 seconds…" | |
+| 152 | T/O, then roll and rudder CTR | Pitch trim goes to the takeoff mark; roll and rudder trim centre | |
+| 153 | Cessna 172 cold and dark: BATT, fuel selector BOTH, magnetos BOTH (two taps), START armed then held | The engine cranks while held and starts; release stops cranking; the RUN lamp lights | |
+| 154 | A turbine default aircraft (King Air C90 or 737): hold START | Record what `engage_starter` does on each; magnetos are not shown | |
+| 155 | Fuel selector OFF, LEFT, RIGHT on the 172; an aircraft without BOTH | OFF needs two taps; positions match the cockpit; BOTH is hidden where the aircraft has none | |
+| 156 | A twin: GEN 1 and GEN 2, FUEL PUMP 1 and 2; BATT off | Each matches its cockpit switch; BATT off needs two taps | |
+| 157 | PITOT HEAT and each anti-ice switch, on the 172 and on an aircraft with the system | The switch follows; note any switch that turns on without the aircraft having the system | |
+| 158 | PARK BRAKE set and release, on ground | Matches the cockpit; the brake holds the aircraft | |
+| 159 | At night: PANEL and INSTR ▼/▲ | Cockpit lighting changes; the percentage follows | |
+| 160 | Background the app during a trim hold | Trim stops; the panel says Avionix left the foreground | |
+| 161 | Phone: the four pages; tablet: two columns; web build: a trim hold through the connector | Pages remembered after relaunch; every key reachable; the web hold behaves like row 148 | |
 
 Rows 44 and 45 verify the keep-awake hold, and row 53 the safe areas: behaviour no automated test
 can observe.

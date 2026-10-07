@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { featureOf } from '@/application/compatibility';
@@ -87,6 +87,17 @@ interface Props {
   compact?: boolean;
   /** Applies to the outer wrap `View`, so a key can take `flex: 1` in a row. */
   style?: StyleProp<ViewStyle>;
+  /**
+   * A held key (trim, START): press-in starts the hold and press-out ends it; a screen reader's
+   * activation (a press with no press-in) is a nudge, start then end. With `confirm`, the first
+   * press arms the key and only an armed key can be held. `onPress` is not called.
+   */
+  hold?: {
+    onStart: () => void;
+    onEnd: () => void;
+    /** Legend while armed (with `confirm`), e.g. 'HOLD TO START'. Default: "Tap again: <label>". */
+    armedLegend?: string;
+  };
 }
 
 /** The only way a panel renders a pressable control: it applies every framework rule at once. */
@@ -105,20 +116,86 @@ export function ControlButton(props: Props) {
     // control that goes inert must not come back armed.
     setArmed(false);
   }
+  // Hold keys (`props.hold`). Pressability's real event order: a press held 130 ms or more gives
+  // pressIn → pressOut → press, but a shorter one gives pressIn → press → pressOut, the press-out
+  // delayed to the 130 ms minimum (and dropped if a new touch starts first); a touch the system
+  // cancels (a scroll takes it) gives pressIn → pressOut and no press. So:
+  // - `holdOwed`: a hold was started and its `onEnd` has not been called. Whichever of press-out,
+  //   press or the next press-in comes first ends it, exactly once.
+  // - `pressedIn`: this touch's press-in started a hold, so its trailing `onPress` must not nudge.
+  // Both are touched only in handlers and timer callbacks.
+  const holdOwed = useRef(false);
+  const pressedIn = useRef(false);
+
   useEffect(() => {
     if (!armed) {
       return;
     }
-    const timer = setTimeout(() => setArmed(false), CONFIRM_WINDOW_MS);
+    const timer = setTimeout(() => {
+      // A START held past the window stays armed until the hold ends (`endHold` disarms it).
+      if (!holdOwed.current) {
+        setArmed(false);
+      }
+    }, CONFIRM_WINDOW_MS);
     return () => clearTimeout(timer);
   }, [armed]);
 
   const selectedAnnunciation: LightBarState | undefined =
     props.selected === undefined ? undefined : props.selected ? 'engaged' : 'off';
   const annunciation = props.annunciation ?? selectedAnnunciation;
-  const shown = armed ? `Tap again: ${props.label}` : props.label;
+  const shown = armed ? (props.hold?.armedLegend ?? `Tap again: ${props.label}`) : props.label;
   const accessibleName = armed ? shown : (props.accessibilityLabel ?? props.label);
+
+  const endHold = () => {
+    if (!holdOwed.current) {
+      return;
+    }
+    holdOwed.current = false;
+    setArmed(false);
+    props.hold?.onEnd();
+  };
+
+  const onPressIn = () => {
+    // A re-touch inside 130 ms drops the earlier touch's delayed press-out: end its hold first.
+    // On a confirm key that end disarmed it, so the re-touch does not start another.
+    const endedOwed = holdOwed.current;
+    endHold();
+    pressedIn.current = false;
+    if (props.hold === undefined || !enabled) {
+      return;
+    }
+    if (props.confirm === true && (!armed || endedOwed)) {
+      return;
+    }
+    pressedIn.current = true;
+    holdOwed.current = true;
+    haptics.press();
+    props.hold.onStart();
+  };
+  const onPressOut = () => {
+    endHold();
+  };
   const onPress = () => {
+    if (props.hold !== undefined) {
+      if (pressedIn.current) {
+        // This touch's press-in started the hold: end it if press-out has not yet (a quick tap),
+        // and never nudge on top of it.
+        pressedIn.current = false;
+        endHold();
+        setArmed(false);
+        return;
+      }
+      haptics.press();
+      if (props.confirm === true && !armed) {
+        setArmed(true);
+        return;
+      }
+      // A screen reader's activation fires only onPress: a nudge (HoldLease's minimum hold).
+      setArmed(false);
+      props.hold.onStart();
+      props.hold.onEnd();
+      return;
+    }
     haptics.press();
     if (props.confirm === true && !armed) {
       setArmed(true);
@@ -141,6 +218,8 @@ export function ControlButton(props: Props) {
         }}
         disabled={!enabled}
         onPress={onPress}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
         style={({ pressed }) => [
           styles.key,
           props.compact === true ? styles.compact : null,

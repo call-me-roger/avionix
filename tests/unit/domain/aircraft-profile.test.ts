@@ -45,6 +45,28 @@ import {
   cduKeysFeatureId,
   cduScreenFeatureId,
 } from '@/domain/aircraft/profiles/generic';
+import {
+  ANTI_ICE,
+  AVIONICS_MASTER,
+  BATTERY,
+  ENGINES,
+  ENGINE_NUMBERS,
+  EXTERIOR_LIGHTS,
+  FEATURE_ANTI_ICE,
+  FEATURE_ELECTRICAL,
+  FEATURE_ENGINE_START,
+  FEATURE_FLAPS,
+  FEATURE_FUEL,
+  FEATURE_GEAR,
+  FEATURE_LIGHTS_EXTERIOR,
+  FEATURE_LIGHTS_INTERIOR,
+  FEATURE_PARKING_BRAKE,
+  FEATURE_TRIM,
+  PARKING_BRAKE,
+  SYSTEMS_FEATURES,
+  magnetoPositions,
+  starterCommand,
+} from '@/domain/systems/controls';
 
 const shared: AircraftProfile = {
   id: 'test.shared',
@@ -66,6 +88,17 @@ const shared: AircraftProfile = {
     },
   ],
 };
+
+/** Every name the ten F-24 features declare, in declaration order, each once. */
+function systemsNames(): string[] {
+  return [
+    ...new Set(
+      SYSTEMS_FEATURES.flatMap(
+        (id) => findFeature(GENERIC_PROFILE, id)?.bindings.map((binding) => binding.name) ?? [],
+      ),
+    ),
+  ].filter((name) => name !== GENERIC_DATAREFS.engineType);
+}
 
 describe('profileBindings', () => {
   it('probes a name shared by two features once', () => {
@@ -209,6 +242,7 @@ describe('profileBindings', () => {
       ...cduKeysNames(1),
       ...cduScreenNames(2),
       ...cduKeysNames(2),
+      ...systemsNames(),
     ]);
   });
 });
@@ -237,7 +271,7 @@ describe('the generic profile', () => {
     expect(GENERIC_PROFILE.version).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('declares the Stage 1 features, then the F-30 navigation features', () => {
+  it('declares the Stage 1 features, then the F-30, F-32 and F-24 features', () => {
     expect(GENERIC_PROFILE.features.map((feature) => feature.id)).toEqual([
       FEATURE_CONNECTION_HEALTH,
       FEATURE_FLIGHT_TELEMETRY,
@@ -274,6 +308,7 @@ describe('the generic profile', () => {
       cduKeysFeatureId(1),
       cduScreenFeatureId(2),
       cduKeysFeatureId(2),
+      ...SYSTEMS_FEATURES,
     ]);
   });
 
@@ -310,20 +345,20 @@ describe('the generic profile', () => {
     }
   });
 
-  it('names every DataRef once across the whole profile, except airspeed, which flight instruments deliberately reuses', () => {
+  it('names every DataRef once across the whole profile, except airspeed and engine type, which another feature deliberately reuses', () => {
     const names = GENERIC_PROFILE.features.flatMap((feature) =>
       feature.bindings.map((binding) => binding.name),
     );
     const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
-    expect(duplicates).toEqual([GENERIC_DATAREFS.airspeed]);
+    expect(duplicates).toEqual([GENERIC_DATAREFS.airspeed, GENERIC_DATAREFS.engineType]);
   });
 
   it('bumps the profile version for the new bindings', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.6.0');
+    expect(GENERIC_PROFILE.version).toBe('1.7.0');
   });
 
   it('declares the flight instruments, every one optional, and the altimeter setting', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.6.0');
+    expect(GENERIC_PROFILE.version).toBe('1.7.0');
     const instruments = findFeature(GENERIC_PROFILE, FEATURE_FLIGHT_INSTRUMENTS);
     expect(instruments?.label).toBe('Flight instruments');
     expect(instruments?.bindings.map((binding) => binding.name)).toEqual([
@@ -568,7 +603,7 @@ describe('the generic profile’s navigation features (F-30)', () => {
 
 describe('CDU features (F-32)', () => {
   it('bumps the profile version for the CDU bindings', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.6.0');
+    expect(GENERIC_PROFILE.version).toBe('1.7.0');
   });
 
   it.each([1, 2] as const)(
@@ -606,5 +641,70 @@ describe('CDU features (F-32)', () => {
   it('names cduScreenFeatureId and cduKeysFeatureId by unit', () => {
     expect(cduScreenFeatureId(2)).toBe('cdu2-screen');
     expect(cduKeysFeatureId(1)).toBe('cdu1-keys');
+  });
+});
+
+describe('the F-24 systems features (profile 1.7.0)', () => {
+  function bindings(id: string) {
+    return findFeature(GENERIC_PROFILE, id)?.bindings ?? [];
+  }
+
+  it('declares 119 bindings over the ten features, 118 of them new names', () => {
+    expect(SYSTEMS_FEATURES.reduce((sum, id) => sum + bindings(id).length, 0)).toBe(119);
+    expect(systemsNames()).toHaveLength(118);
+  });
+
+  it('makes every binding optional except the parking brake, which is a required write', () => {
+    for (const id of SYSTEMS_FEATURES) {
+      for (const binding of bindings(id)) {
+        expect({ id, name: binding.name, required: binding.required }).toEqual({
+          id,
+          name: binding.name,
+          required: id === FEATURE_PARKING_BRAKE,
+        });
+      }
+    }
+    expect(bindings(FEATURE_PARKING_BRAKE)).toEqual([
+      {
+        kind: 'dataref',
+        name: PARKING_BRAKE.ratio,
+        required: true,
+        write: true,
+        purpose: 'Parking brake, written when you set or release it',
+      },
+    ]);
+  });
+
+  it('declares a shared per-engine DataRef once per feature', () => {
+    for (const id of SYSTEMS_FEATURES) {
+      const names = bindings(id).map((binding) => binding.name);
+      expect(new Set(names).size).toBe(names.length);
+    }
+  });
+
+  it('binds each switch state, then its on and off commands', () => {
+    expect(
+      bindings(FEATURE_LIGHTS_EXTERIOR).map((binding) => [binding.kind, binding.name]),
+    ).toEqual(
+      EXTERIOR_LIGHTS.flatMap((light) => [
+        ['dataref', light.state],
+        ['command', light.on],
+        ['command', light.off],
+      ]),
+    );
+  });
+
+  it('gives the engine start feature the count, type, key, starter and running state, then four engines of commands', () => {
+    expect(bindings(FEATURE_ENGINE_START).map((binding) => binding.name)).toEqual([
+      ENGINES.count,
+      ENGINES.type,
+      ENGINES.key,
+      ENGINES.starter,
+      ENGINES.running,
+      ...ENGINE_NUMBERS.flatMap((engine) => [
+        ...magnetoPositions(engine).map((position) => position.command),
+        starterCommand(engine),
+      ]),
+    ]);
   });
 });

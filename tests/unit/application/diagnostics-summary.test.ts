@@ -131,7 +131,7 @@ describe('formatDiagnosticsSummary', () => {
     };
     const text = formatDiagnosticsSummary(withAircraft, 10_000);
     expect(text).toContain('Aircraft: Cessna 172 SP (C172) · N172SP');
-    expect(text).toContain('Profile: Generic X-Plane aircraft 1.6.0 (generic fallback)');
+    expect(text).toContain('Profile: Generic X-Plane aircraft 1.7.0 (generic fallback)');
     expect(text).toContain('Connection health: available');
     expect(text).toContain('Live telemetry: not available on this aircraft');
     expect(text).toContain(

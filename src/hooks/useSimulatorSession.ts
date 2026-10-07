@@ -2,6 +2,7 @@ import { useCallback, useSyncExternalStore } from 'react';
 
 import { useServices } from '@/app/services-context';
 import type { SessionSnapshot } from '@/application/session-snapshot';
+import type { HoldPhase } from '@/domain/panels/hold-lease';
 import type { DataRefValue } from '@/domain/simulator/types';
 
 export function useSimulatorSession() {
@@ -30,6 +31,11 @@ export function useSimulatorSession() {
         : session.activate(featureId, name, durationSec),
     [session],
   );
+  const hold = useCallback(
+    (featureId: string, name: string, phase: HoldPhase) =>
+      session.holdCommand(featureId, name, phase),
+    [session],
+  );
   const recheckCompatibility = useCallback(() => session.recheckCompatibility(), [session]);
   const setDemand = useCallback(
     (featureIds: readonly string[]) => session.setDemand(featureIds),
@@ -42,6 +48,7 @@ export function useSimulatorSession() {
     pair,
     write,
     activate,
+    hold,
     recheckCompatibility,
     setDemand,
   };

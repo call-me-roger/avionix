@@ -13,6 +13,26 @@ import {
   cduTextLine,
 } from '@/domain/cdu/keys';
 import type { DataRefValue, DataRefValueType } from '@/domain/simulator/types';
+import {
+  ANTI_ICE,
+  AVIONICS_MASTER,
+  BATTERY,
+  DIMMERS,
+  ENGINES,
+  ENGINE_NUMBERS,
+  EXTERIOR_LIGHTS,
+  FLAPS,
+  FUEL_SELECTOR,
+  GEAR,
+  PARKING_BRAKE,
+  type SwitchSpec,
+  TAKEOFF_TRIM,
+  TRIMS,
+  fuelPumpSwitch,
+  generatorSwitch,
+  magnetoPositions,
+  starterCommand,
+} from '@/domain/systems/controls';
 
 export interface MockDataRef {
   id: number;
@@ -112,6 +132,133 @@ function cduCommands(startId: number): MockCommand[] {
         description: `CDU ${unit} ${entry.name} key.`,
       });
     }
+  }
+  return commands;
+}
+
+/** Laminar's array, padded to its real length (DataRefs.txt) with zeros past the chosen values. */
+function padded(values: readonly number[], length: number): number[] {
+  return [...values, ...new Array(length - values.length).fill(0)];
+}
+
+/** `DIMMERS` by key, so the panel and instrument dimmers can take their own array lengths. */
+function dimmerByKey(key: string): (typeof DIMMERS)[number] {
+  const dimmer = DIMMERS.find((candidate) => candidate.key === key);
+  if (dimmer === undefined) {
+    throw new Error(`no dimmer named ${key} in the systems catalogue`);
+  }
+  return dimmer;
+}
+
+/** F-24: every on/off switch the toy aircraft models, for `applyCommand`'s single switch branch. */
+const ALL_SWITCHES: readonly SwitchSpec[] = [
+  ...EXTERIOR_LIGHTS,
+  ...ANTI_ICE,
+  BATTERY,
+  AVIONICS_MASTER,
+  ...ENGINE_NUMBERS.map(generatorSwitch),
+  ...ENGINE_NUMBERS.map(fuelPumpSwitch),
+];
+
+/**
+ * F-24's systems DataRefs: every switch's and selector's state, gear, flaps, trim and the engines.
+ * `ENGINES.type` is `sim/aircraft/prop/acf_en_type`, already present among the instrument DataRefs
+ * above, so it is not declared again here. Array lengths are Laminar's own (DataRefs.txt): 8
+ * batteries and generators, 32 instrument dimmer zones but only 4 panel ones, and 16 engines for
+ * the per-engine fuel pump, ignition key, starter and running state. Everything else named here is
+ * scalar in DataRefs.txt. Every name here is writable but `starter_hit`, X-Plane's own read-only
+ * indicator of the starter motor.
+ */
+function systemsDataRefs(startId: number): MockDataRef[] {
+  const refs: MockDataRef[] = [];
+  let nextId = startId;
+  const push = (name: string, valueType: DataRefValueType, value: DataRefValue, writable = true) =>
+    refs.push({ id: nextId++, name, valueType, value, ...(writable ? { writable: true } : {}) });
+  const panelLights = dimmerByKey('panelLights');
+  const instrumentLights = dimmerByKey('instrumentLights');
+
+  for (const light of EXTERIOR_LIGHTS) {
+    push(light.state, 'int', 0);
+  }
+  for (const spec of ANTI_ICE) {
+    push(spec.state, 'int', 0);
+  }
+  push(BATTERY.state, 'int_array', padded([1], 8));
+  push(AVIONICS_MASTER.state, 'int', 1);
+  push(generatorSwitch(1).state, 'int_array', padded([1, 1, 1, 1], 8));
+  push(panelLights.state, 'float_array', padded([0.8], 4));
+  push(instrumentLights.state, 'float_array', padded([0.8], 32));
+  push(GEAR.handle, 'int', 1);
+  push(GEAR.deployment, 'float_array', [1, 1, 1, 0, 0, 0, 0, 0, 0, 0]);
+  push(GEAR.retractable, 'int', 1);
+  push(FLAPS.handle, 'float', 0);
+  push(FLAPS.position, 'float', 0);
+  push(FLAPS.detents, 'int', 4);
+  for (const trim of TRIMS) {
+    push(trim.position, 'float', 0);
+  }
+  push(TAKEOFF_TRIM, 'float', 0);
+  push(PARKING_BRAKE.ratio, 'float', 0);
+  push(FUEL_SELECTOR.state, 'int', 4);
+  push(FUEL_SELECTOR.hasSelector, 'int', 1);
+  push(FUEL_SELECTOR.hasBoth, 'int', 1);
+  push(fuelPumpSwitch(1).state, 'int_array', padded([1, 1, 1, 1], 16));
+  push(ENGINES.count, 'int', 1);
+  push(ENGINES.key, 'int_array', padded([3, 0, 0, 0], 16));
+  push(ENGINES.starter, 'int_array', padded([0, 0, 0, 0], 16), false);
+  // Not yet running, so an integration test can watch the starter bring it to life.
+  push(ENGINES.running, 'int_array', padded([0, 0, 0, 0], 16));
+  return refs;
+}
+
+/** F-24's 83 systems commands: every switch's on/off pair, gear, flaps, trim and the engines. */
+function systemsCommands(startId: number): MockCommand[] {
+  const commands: MockCommand[] = [];
+  let nextId = startId;
+  const push = (name: string, description: string) =>
+    commands.push({ id: nextId++, name, description });
+
+  for (const light of EXTERIOR_LIGHTS) {
+    push(light.on, `${light.legend} on.`);
+    push(light.off, `${light.legend} off.`);
+  }
+  for (const spec of ANTI_ICE) {
+    push(spec.on, `${spec.legend} on.`);
+    push(spec.off, `${spec.legend} off.`);
+  }
+  push(BATTERY.on, 'Battery on.');
+  push(BATTERY.off, 'Battery off.');
+  push(AVIONICS_MASTER.on, 'Avionics master on.');
+  push(AVIONICS_MASTER.off, 'Avionics master off.');
+  for (const engine of ENGINE_NUMBERS) {
+    const generator = generatorSwitch(engine);
+    push(generator.on, `Generator ${engine} on.`);
+    push(generator.off, `Generator ${engine} off.`);
+    const fuelPump = fuelPumpSwitch(engine);
+    push(fuelPump.on, `Fuel pump ${engine} on.`);
+    push(fuelPump.off, `Fuel pump ${engine} off.`);
+  }
+  for (const dimmer of DIMMERS) {
+    push(dimmer.down, `${dimmer.legend} dimmer.`);
+    push(dimmer.up, `${dimmer.legend} brighter.`);
+  }
+  push(GEAR.up, 'Gear up.');
+  push(GEAR.down, 'Gear down.');
+  push(FLAPS.up, 'Flaps up.');
+  push(FLAPS.down, 'Flaps down.');
+  for (const trim of TRIMS) {
+    push(trim.decrease.command, `${trim.label} ${trim.decrease.name}.`);
+    push(trim.increase.command, `${trim.label} ${trim.increase.name}.`);
+    push(trim.set.command, `${trim.label} ${trim.set.name}.`);
+  }
+  for (const position of FUEL_SELECTOR.positions) {
+    push(position.command, `Fuel selector ${position.name}.`);
+  }
+  for (const engine of ENGINE_NUMBERS) {
+    for (const position of magnetoPositions(engine)) {
+      push(position.command, `Magnetos ${engine} ${position.name}.`);
+    }
+    push(starterCommand(engine), `Starter ${engine}.`);
   }
   return commands;
 }
@@ -551,6 +698,8 @@ export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
   { id: 1094, name: 'sim/cockpit2/radios/indicators/inner_marker_lit', valueType: 'int', value: 0 },
   // F-32: the default FMS CDU's screen and EXEC lights, ids after 1094.
   ...cduDataRefs(1095),
+  // F-24: the systems catalogue's switches, selectors and engines, ids after the CDU's.
+  ...systemsDataRefs(1161),
 ];
 
 export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [
@@ -579,6 +728,8 @@ export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [
   { id: 2023, name: 'sim/radios/obs_HSI_direct', description: 'HSI course direct-to.' },
   // F-32: the default FMS CDU's 70 keys per unit, ids after 2023.
   ...cduCommands(2024),
+  // F-24: the systems catalogue's 83 commands, ids after the CDU's.
+  ...systemsCommands(2164),
 ];
 
 interface JsonError {
@@ -620,6 +771,8 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 export class MockXPlaneServer {
   readonly writes: Array<{ id: number; value: DataRefValue; index?: number }> = [];
   readonly activations: Array<{ id: number; duration: number }> = [];
+  /** Every hold message (`command_set_is_active` other than a zero-duration press), in order. */
+  readonly holdMessages: Array<{ id: number; isActive: boolean; duration: number | null }> = [];
   readonly receivedMessages: unknown[] = [];
   incomingTrafficDisabled = false;
   /** When true, WebSocket requests are recorded but never answered (for cancellation tests). */
@@ -628,8 +781,17 @@ export class MockXPlaneServer {
   rejectWritesWith: string | null = null;
   /** Tokens handed out by `/avionix/pair`, in issue order. */
   readonly issuedTokens: string[] = [];
+  /** F-24: true while the toy aircraft is on the ground, so `landing_gear_up` is refused. */
+  onGround = false;
 
   private readonly ignoredWrites = new Set<string>();
+  private readonly ignoredCommands = new Set<string>();
+  /**
+   * F-24: command id → when its starter began cranking (real time) and the ignition key position
+   * it found then, while its hold is live.
+   */
+  private readonly starterCranking = new Map<number, { since: number; key: number }>();
+  private lastTickAt = Date.now();
 
   private readonly apiVersions: string[];
   private readonly xplaneVersion: string;
@@ -641,6 +803,8 @@ export class MockXPlaneServer {
   private readonly commands: Map<number, MockCommand>;
   private readonly sockets = new Set<WsSocket>();
   private readonly subscriptions = new Map<WsSocket, Map<number, string>>();
+  /** Active holds per socket: command id → when its lease lapses (null: held until released). */
+  private readonly holds = new Map<WsSocket, Map<number, number | null>>();
   private readonly timer: NodeJS.Timeout;
 
   /** F-32: the toy FMS's screen state, per CDU unit. */
@@ -667,7 +831,10 @@ export class MockXPlaneServer {
     this.connector = options.connector;
     this.reportWritability = options.reportWritability ?? true;
     this.rejectAllTokens = options.connector?.rejectAllTokens ?? false;
-    this.timer = setInterval(() => this.pushUpdates(), options.updateIntervalMs ?? 20);
+    this.timer = setInterval(() => {
+      this.tick();
+      this.pushUpdates();
+    }, options.updateIntervalMs ?? 20);
     this.timer.unref();
     this.renderCdu(1);
     this.renderCdu(2);
@@ -719,6 +886,36 @@ export class MockXPlaneServer {
     return [...names].sort();
   }
 
+  private setHeld(ws: WsSocket, id: number, durationSec: number | null, active: boolean): void {
+    let held = this.holds.get(ws);
+    if (held === undefined) {
+      held = new Map();
+      this.holds.set(ws, held);
+    }
+    if (!active) {
+      held.delete(id);
+      return;
+    }
+    held.set(id, durationSec === null ? null : Date.now() + durationSec * 1000);
+  }
+
+  /** Names of the commands held right now, leases checked against the clock. */
+  heldCommandNames(): string[] {
+    const now = Date.now();
+    const names = new Set<string>();
+    for (const held of this.holds.values()) {
+      for (const [id, until] of held) {
+        if (until === null || until > now) {
+          const name = this.commands.get(id)?.name;
+          if (name !== undefined) {
+            names.add(name);
+          }
+        }
+      }
+    }
+    return [...names].sort();
+  }
+
   setDataRefValue(name: string, value: DataRefValue): void {
     const dataRef = this.getDataRefByName(name);
     if (dataRef === undefined) {
@@ -746,6 +943,15 @@ export class MockXPlaneServer {
   /** Simulates an add-on that accepts a write to `name` and then ignores it (F-21 R4). */
   ignoreWritesTo(name: string): void {
     this.ignoredWrites.add(name);
+  }
+
+  /**
+   * Simulates an aircraft that accepts a command but does nothing with it (F-24 §4.5): the
+   * activation (or hold) is still recorded, but `applyCommand` and `tick`'s held-command effects
+   * are no-ops for it.
+   */
+  ignoreCommand(name: string): void {
+    this.ignoredCommands.add(name);
   }
 
   /** Simulates a command this aircraft does not have. */
@@ -1075,6 +1281,12 @@ export class MockXPlaneServer {
 
   private applyCommand(id: number): void {
     const command = this.commands.get(id);
+    if (command !== undefined && this.ignoredCommands.has(command.name)) {
+      return;
+    }
+    if (command !== undefined && this.applySystemsCommand(command.name)) {
+      return;
+    }
     const cdu = /^sim\/(FMS|FMS2)\/(.+)$/.exec(command?.name ?? '');
     if (cdu !== null) {
       const [, prefix, keyId] = cdu;
@@ -1196,6 +1408,228 @@ export class MockXPlaneServer {
     }
   }
 
+  private setScalar(name: string, value: number): void {
+    const ref = this.getDataRefByName(name);
+    if (ref !== undefined) {
+      ref.value = value;
+    }
+  }
+
+  /** Sets element `index` of an array-valued DataRef, or the whole value when it is a scalar. */
+  private setSwitchElement(name: string, index: number, value: number): void {
+    const ref = this.getDataRefByName(name);
+    if (ref === undefined) {
+      return;
+    }
+    ref.value = Array.isArray(ref.value)
+      ? ref.value.map((v, i) => (i === index ? value : v))
+      : value;
+  }
+
+  private stepDimmer(name: string, delta: number): void {
+    const ref = this.getDataRefByName(name);
+    if (ref === undefined || !Array.isArray(ref.value)) {
+      return;
+    }
+    const clamped = Math.min(1, Math.max(0, ref.value[0]! + delta));
+    ref.value = ref.value.map((v, i) => (i === 0 ? clamped : v));
+  }
+
+  private stepFlapsHandle(direction: 1 | -1): void {
+    const handle = this.getDataRefByName(FLAPS.handle);
+    if (handle === undefined || typeof handle.value !== 'number') {
+      return;
+    }
+    const detentsValue = this.getDataRefByName(FLAPS.detents)?.value;
+    const detents = typeof detentsValue === 'number' && detentsValue > 0 ? detentsValue : 1;
+    handle.value = Math.min(1, Math.max(0, handle.value + direction / detents));
+  }
+
+  /**
+   * F-24's switches, selectors and set commands: every command named in the systems catalogue
+   * that isn't held (those move in `tick`). Returns whether `name` was one of them, so
+   * `applyCommand` can fall through to its other branches otherwise.
+   */
+  private applySystemsCommand(name: string): boolean {
+    for (const spec of ALL_SWITCHES) {
+      if (name === spec.on) {
+        this.setSwitchElement(spec.state, spec.index, 1);
+        return true;
+      }
+      if (name === spec.off) {
+        this.setSwitchElement(spec.state, spec.index, 0);
+        return true;
+      }
+    }
+    for (const dimmer of DIMMERS) {
+      if (name === dimmer.down) {
+        this.stepDimmer(dimmer.state, -0.1);
+        return true;
+      }
+      if (name === dimmer.up) {
+        this.stepDimmer(dimmer.state, 0.1);
+        return true;
+      }
+    }
+    if (name === GEAR.down) {
+      this.setScalar(GEAR.handle, 1);
+      return true;
+    }
+    if (name === GEAR.up) {
+      if (!this.onGround) {
+        this.setScalar(GEAR.handle, 0);
+      }
+      return true;
+    }
+    if (name === FLAPS.down) {
+      this.stepFlapsHandle(1);
+      return true;
+    }
+    if (name === FLAPS.up) {
+      this.stepFlapsHandle(-1);
+      return true;
+    }
+    for (const position of FUEL_SELECTOR.positions) {
+      if (name === position.command) {
+        this.setScalar(FUEL_SELECTOR.state, position.value);
+        return true;
+      }
+    }
+    for (const engine of ENGINE_NUMBERS) {
+      for (const position of magnetoPositions(engine)) {
+        if (name === position.command) {
+          this.setSwitchElement(ENGINES.key, engine - 1, position.value);
+          return true;
+        }
+      }
+    }
+    const pitch = TRIMS[0]!;
+    if (name === pitch.set.command) {
+      const takeoff = this.getDataRefByName(TAKEOFF_TRIM)?.value;
+      this.setScalar(pitch.position, typeof takeoff === 'number' ? takeoff : 0);
+      return true;
+    }
+    for (const trim of TRIMS) {
+      if (trim.axis !== 'pitch' && name === trim.set.command) {
+        this.setScalar(trim.position, 0);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * F-24: advances the toy aircraft by the real time elapsed since the last tick. Gear deployment
+   * and flap position chase their handles at 0.5/s; every held, unlapsed, unignored trim command
+   * moves its axis at 0.1/s (clamped −1..1); a held, unignored starter sets the ignition key to 4
+   * and `starter_hit` to 1, and after 2 s of cranking with the magnetos on (the key it found at the
+   * hold's start, 1 or more) and the fuel selector not OFF sets `ENGN_running` to 1. Releasing (or
+   * lapsing) a starter hold restores `starter_hit` to 0 and the ignition key to where it was.
+   * Expired leases are removed here.
+   */
+  private tick(): void {
+    const now = Date.now();
+    const dt = Math.max(0, (now - this.lastTickAt) / 1000);
+    this.lastTickAt = now;
+
+    for (const held of this.holds.values()) {
+      for (const [id, until] of held) {
+        if (until !== null && until <= now) {
+          held.delete(id);
+        }
+      }
+    }
+    const heldIds = new Set<number>();
+    for (const held of this.holds.values()) {
+      for (const id of held.keys()) {
+        heldIds.add(id);
+      }
+    }
+    const isHeld = (name: string): boolean => {
+      if (this.ignoredCommands.has(name)) {
+        return false;
+      }
+      const id = [...this.commands.values()].find((c) => c.name === name)?.id;
+      return id !== undefined && heldIds.has(id);
+    };
+    const moveToward = (value: number, target: number, step: number): number => {
+      if (value < target) {
+        return Math.min(target, value + step);
+      }
+      if (value > target) {
+        return Math.max(target, value - step);
+      }
+      return value;
+    };
+
+    const handle = this.getDataRefByName(GEAR.handle);
+    const deployment = this.getDataRefByName(GEAR.deployment);
+    if (
+      handle !== undefined &&
+      typeof handle.value === 'number' &&
+      deployment !== undefined &&
+      Array.isArray(deployment.value)
+    ) {
+      const target = handle.value;
+      const step = 0.5 * dt;
+      deployment.value = deployment.value.map((v, i) => (i < 3 ? moveToward(v, target, step) : v));
+    }
+
+    const flapHandle = this.getDataRefByName(FLAPS.handle);
+    const flapPosition = this.getDataRefByName(FLAPS.position);
+    if (
+      flapHandle !== undefined &&
+      typeof flapHandle.value === 'number' &&
+      flapPosition !== undefined &&
+      typeof flapPosition.value === 'number'
+    ) {
+      flapPosition.value = moveToward(flapPosition.value, flapHandle.value, 0.5 * dt);
+    }
+
+    for (const trim of TRIMS) {
+      const position = this.getDataRefByName(trim.position);
+      if (position === undefined || typeof position.value !== 'number') {
+        continue;
+      }
+      const step = 0.1 * dt;
+      if (isHeld(trim.decrease.command)) {
+        position.value = Math.max(-1, position.value - step);
+      }
+      if (isHeld(trim.increase.command)) {
+        position.value = Math.min(1, position.value + step);
+      }
+    }
+
+    const selector = this.getDataRefByName(FUEL_SELECTOR.state)?.value;
+    const selectorOff = selector === 0;
+    const keyAt = (index: number): number => {
+      const key = this.getDataRefByName(ENGINES.key)?.value;
+      return Array.isArray(key) ? (key[index] ?? 0) : 0;
+    };
+    for (const engine of ENGINE_NUMBERS) {
+      const name = starterCommand(engine);
+      const id = [...this.commands.values()].find((c) => c.name === name)?.id;
+      if (id === undefined) {
+        continue;
+      }
+      const index = engine - 1;
+      const cranking = this.starterCranking.get(id);
+      if (isHeld(name)) {
+        const crank = cranking ?? { since: now, key: keyAt(index) };
+        this.starterCranking.set(id, crank);
+        this.setSwitchElement(ENGINES.key, index, 4);
+        this.setSwitchElement(ENGINES.starter, index, 1);
+        if (now - crank.since >= 2000 && crank.key >= 1 && !selectorOff) {
+          this.setSwitchElement(ENGINES.running, index, 1);
+        }
+      } else if (cranking !== undefined) {
+        this.starterCranking.delete(id);
+        this.setSwitchElement(ENGINES.starter, index, 0);
+        this.setSwitchElement(ENGINES.key, index, cranking.key);
+      }
+    }
+  }
+
   /**
    * F-32: the toy FMS. Letters, digits and punctuation append to the scratchpad (line 13, 24
    * characters max); `key_clear` empties it, `key_back` removes its last character, `key_delete`
@@ -1304,6 +1738,7 @@ export class MockXPlaneServer {
     ws.on('close', () => {
       this.sockets.delete(ws);
       this.subscriptions.delete(ws);
+      this.holds.delete(ws);
     });
   }
 
@@ -1418,23 +1853,27 @@ export class MockXPlaneServer {
       case 'command_set_is_active': {
         const list = Array.isArray(params.commands) ? params.commands : [];
         for (const item of list) {
-          if (isRecord(item) && typeof item.id === 'number') {
-            if (!this.commands.has(item.id)) {
-              reply({
-                success: false,
-                error_code: 'invalid_command_id',
-                error_message: `Command ${item.id} doesn't exist`,
-              });
-              return;
-            }
-            if (item.is_active === true) {
-              this.activations.push({
-                id: item.id,
-                duration: typeof item.duration === 'number' ? item.duration : -1,
-              });
-              this.applyCommand(item.id);
-            }
+          if (!isRecord(item) || typeof item.id !== 'number') {
+            continue;
           }
+          if (!this.commands.has(item.id)) {
+            reply({
+              success: false,
+              error_code: 'invalid_command_id',
+              error_message: `Command ${item.id} doesn't exist`,
+            });
+            return;
+          }
+          const duration = typeof item.duration === 'number' ? item.duration : null;
+          const isActive = item.is_active === true;
+          if (isActive && duration === 0) {
+            // Press and release: a momentary activation, as before F-24.
+            this.activations.push({ id: item.id, duration: 0 });
+            this.applyCommand(item.id);
+            continue;
+          }
+          this.holdMessages.push({ id: item.id, isActive, duration });
+          this.setHeld(ws, item.id, isActive ? duration : null, isActive);
         }
         reply({ success: true });
         return;

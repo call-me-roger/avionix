@@ -27,6 +27,12 @@ export interface SimulatorClient {
   getDataRefValue(id: number, index?: number): Promise<DataRefValue>;
   setDataRefValue(id: number, value: DataRefValue, index?: number): Promise<void>;
   activateCommand(id: number, durationSeconds?: number): Promise<void>;
+  /**
+   * Holds (`active`) or releases a command over the WebSocket (`command_set_is_active`). With
+   * `durationSeconds`, X-Plane releases it by itself after that long: the lease a held control
+   * renews (spec F-24 §4.3). X-Plane also releases every hold of a socket that closes.
+   */
+  setCommandActive(id: number, active: boolean, durationSeconds?: number): Promise<void>;
   connectWebSocket(): Promise<void>;
   subscribeDataRefs(subscriptions: DataRefSubscription[]): Promise<void>;
   unsubscribeDataRefs(subscriptions: DataRefSubscription[] | 'all'): Promise<void>;

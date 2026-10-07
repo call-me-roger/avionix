@@ -20,7 +20,7 @@ import {
   INSTRUMENTS_PANEL,
   InstrumentsPanel,
 } from '@/features/panels/instruments/InstrumentsPanel';
-import type { PanelActions } from '@/features/panels/primitives/PanelContext';
+import type { PanelScopeActions } from '@/features/panels/primitives/PanelContext';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
 import { ThemeProvider } from '@/theme/theme-context';
@@ -89,7 +89,7 @@ function withIdentity(snapshot: SessionSnapshot, icaoType: string | null): Sessi
   };
 }
 
-const actions: PanelActions = {
+const actions: PanelScopeActions = {
   write: jest.fn(async () => undefined),
   activate: jest.fn(async () => 'ok' as const),
 };

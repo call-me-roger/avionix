@@ -17,6 +17,7 @@ import { holdScreenAwake, releaseScreenAwake } from '@/platform/keep-awake';
 import { ThemeProvider } from '@/theme/theme-context';
 
 import { toyScreenTelemetry } from '../helpers/cdu';
+import { SYSTEMS_VALUES, systemsCompatibility, systemsTelemetry } from '../helpers/systems';
 import { createFakeServiceBrowser } from '../support/fake-service-browser';
 
 let mockLayout: DeviceLayout = { deviceClass: 'phone', orientation: 'portrait' };
@@ -59,6 +60,7 @@ function makeServices(snapshot: Partial<SessionSnapshot> = {}, storage?: Setting
     pair: jest.fn(async () => undefined),
     write: jest.fn(async () => undefined),
     activate: jest.fn(async () => 'ok' as const),
+    holdCommand: jest.fn(async () => 'ok' as const),
     setDemand: jest.fn(),
     recheckCompatibility: jest.fn(async () => undefined),
   };
@@ -330,6 +332,84 @@ describe.each(LAYOUTS)(
             label,
             minWidth: true,
           });
+        }
+      } finally {
+        await act(async () => {
+          Dimensions.set({ window: original });
+        });
+      }
+    });
+  },
+);
+
+/**
+ * The sweep above renders Systems with no systems telemetry, so no binding ever resolves and no
+ * control is drawn. This case gives it a full set of systems values (`SYSTEMS_VALUES`) and
+ * compatibility through the real deriver, at a window size typical of each layout: a phone in
+ * portrait gets the narrow, paged layout, so every page is visited in turn; every other layout
+ * gets the wide two-column layout, asserted, not assumed.
+ */
+const SYSTEMS_WINDOWS: Record<string, { width: number; height: number; wide: boolean }> = {
+  'phone portrait': { width: 390, height: 844, wide: false },
+  'phone landscape': { width: 844, height: 390, wide: true },
+  'tablet portrait': { width: 820, height: 1180, wide: true },
+  'tablet landscape': { width: 1180, height: 820, wide: true },
+};
+
+function expectTargetsAtLeast48dp() {
+  const targets = panelTargets();
+  expect(targets.length).toBeGreaterThan(0);
+  for (const target of targets) {
+    const style = StyleSheet.flatten(target.props.style) ?? {};
+    const label = String(target.props.accessibilityLabel ?? target.props.testID ?? 'unlabelled');
+    expect({ label, minHeight: Number(style.minHeight ?? style.height ?? 0) >= 48 }).toEqual({
+      label,
+      minHeight: true,
+    });
+    expect({ label, minWidth: Number(style.minWidth ?? style.width ?? 0) >= 48 }).toEqual({
+      label,
+      minWidth: true,
+    });
+  }
+  return targets;
+}
+
+describe.each(LAYOUTS)(
+  'touch targets on the live Systems panel on a $deviceClass in $orientation',
+  (layout) => {
+    it('every control, the page keys and the switcher included, is at least 48 dp', async () => {
+      mockLayout = layout;
+      const original = Dimensions.get('window');
+      const size = SYSTEMS_WINDOWS[`${layout.deviceClass} ${layout.orientation}`];
+      if (size === undefined) {
+        throw new Error(`no Systems window for ${layout.deviceClass} ${layout.orientation}`);
+      }
+      Dimensions.set({
+        window: { width: size.width, height: size.height, scale: 1, fontScale: 1 },
+      });
+      try {
+        const live = liveSnapshot();
+        const { services } = makeServices(
+          {
+            ...live,
+            telemetry: systemsTelemetry(SYSTEMS_VALUES, NOW),
+            compatibility: systemsCompatibility(live.compatibility),
+          },
+          await seeded('systems'),
+        );
+        await render(tree(services));
+        await screen.findByTestId('panel-systems');
+        if (size.wide) {
+          expect(screen.getByTestId('systems-wide-left')).toBeTruthy();
+          expect(screen.getByTestId('systems-wide-right')).toBeTruthy();
+          const targets = expectTargetsAtLeast48dp();
+          expect(targets.length).toBeGreaterThanOrEqual(30);
+        } else {
+          expect(screen.queryByTestId('systems-wide-left')).toBeNull();
+          for (const page of ['engine', 'lights', 'flight', 'ice']) {
+            await fireEvent.press(screen.getByTestId(`systems-page-${page}`));
+            expectTargetsAtLeast48dp();
+          }
         }
       } finally {
         await act(async () => {

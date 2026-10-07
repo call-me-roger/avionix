@@ -4,9 +4,10 @@ import { ScrollView, Text, View } from 'react-native';
 import type { SessionSnapshot } from '@/application/session-snapshot';
 import { panelLinkStatus } from '@/domain/panels/panel-link';
 import {
-  type PanelActions,
   PanelContext,
   type PanelContextValue,
+  type PanelScopeActions,
+  REFUSE_HOLD,
   usePanel,
 } from '@/features/panels/primitives/PanelContext';
 import { BodyText } from '@/theme/primitives';
@@ -54,7 +55,7 @@ export function PanelScope({
 }: {
   snapshot: SessionSnapshot;
   now: number;
-  actions: PanelActions;
+  actions: PanelScopeActions;
   children: React.ReactNode;
 }) {
   const { valuesCurrent, controlsEnabled, notice } = panelLinkStatus({
@@ -70,8 +71,18 @@ export function PanelScope({
       link: { valuesCurrent, controlsEnabled, notice },
       write: actions.write,
       activate: actions.activate,
+      hold: actions.hold ?? REFUSE_HOLD,
     }),
-    [snapshot, now, valuesCurrent, controlsEnabled, notice, actions.write, actions.activate],
+    [
+      snapshot,
+      now,
+      valuesCurrent,
+      controlsEnabled,
+      notice,
+      actions.write,
+      actions.activate,
+      actions.hold,
+    ],
   );
   return <PanelContext.Provider value={value}>{children}</PanelContext.Provider>;
 }
@@ -94,7 +105,7 @@ export function PanelFrame({
   title: string;
   snapshot: SessionSnapshot;
   now: number;
-  actions: PanelActions;
+  actions: PanelScopeActions;
   fillsFrame?: boolean;
   children: React.ReactNode;
 }) {

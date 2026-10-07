@@ -27,6 +27,26 @@ import {
 import type { XPlaneConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
+import {
+  ANTI_ICE,
+  AVIONICS_MASTER,
+  BATTERY,
+  DIMMERS,
+  ENGINES,
+  ENGINE_NUMBERS,
+  EXTERIOR_LIGHTS,
+  FEATURE_TRIM,
+  FLAPS,
+  FUEL_SELECTOR,
+  GEAR,
+  PARKING_BRAKE,
+  TAKEOFF_TRIM,
+  TRIMS,
+  fuelPumpSwitch,
+  generatorSwitch,
+  magnetoPositions,
+  starterCommand,
+} from '@/domain/systems/controls';
 import type {
   DataRefDescriptor,
   DataRefUpdate,
@@ -209,10 +229,85 @@ const CDU_FAKE_DATAREFS: Record<string, FakeDataRef> = (() => {
   return refs;
 })();
 
+/**
+ * The systems features' (F-24) DataRefs, absent from `DEFAULT_FAKE_DATAREFS` for the same reason
+ * as the other feature datarefs above. `ENGINES.type` is `GENERIC_DATAREFS.engineType`, already
+ * present in `INSTRUMENT_FAKE_DATAREFS`, so it is not repeated here.
+ */
+const SYSTEMS_FAKE_DATAREFS: Record<string, FakeDataRef> = (() => {
+  const refs: Record<string, FakeDataRef> = {};
+  let nextId = 186;
+  const next = () => nextId++;
+  for (const light of EXTERIOR_LIGHTS) {
+    refs[light.state] = { id: next(), valueType: 'int' };
+  }
+  for (const spec of ANTI_ICE) {
+    refs[spec.state] = { id: next(), valueType: 'int' };
+  }
+  refs[BATTERY.state] = { id: next(), valueType: 'int_array' };
+  refs[AVIONICS_MASTER.state] = { id: next(), valueType: 'int' };
+  refs[generatorSwitch(1).state] = { id: next(), valueType: 'int_array' };
+  for (const dimmer of DIMMERS) {
+    refs[dimmer.state] = { id: next(), valueType: 'float_array' };
+  }
+  refs[GEAR.handle] = { id: next(), valueType: 'int', isWritable: true };
+  refs[GEAR.deployment] = { id: next(), valueType: 'float_array' };
+  refs[GEAR.retractable] = { id: next(), valueType: 'int' };
+  refs[FLAPS.handle] = { id: next(), valueType: 'float' };
+  refs[FLAPS.position] = { id: next(), valueType: 'float' };
+  refs[FLAPS.detents] = { id: next(), valueType: 'int' };
+  for (const trim of TRIMS) {
+    refs[trim.position] = { id: next(), valueType: 'float', isWritable: true };
+  }
+  refs[TAKEOFF_TRIM] = { id: next(), valueType: 'float' };
+  refs[PARKING_BRAKE.ratio] = { id: next(), valueType: 'float', isWritable: true };
+  refs[FUEL_SELECTOR.state] = { id: next(), valueType: 'int' };
+  refs[FUEL_SELECTOR.hasSelector] = { id: next(), valueType: 'int' };
+  refs[FUEL_SELECTOR.hasBoth] = { id: next(), valueType: 'int' };
+  refs[fuelPumpSwitch(1).state] = { id: next(), valueType: 'int_array' };
+  refs[ENGINES.count] = { id: next(), valueType: 'int' };
+  refs[ENGINES.key] = { id: next(), valueType: 'int_array' };
+  refs[ENGINES.starter] = { id: next(), valueType: 'int_array' };
+  refs[ENGINES.running] = { id: next(), valueType: 'int_array' };
+  return refs;
+})();
+
+/**
+ * The 83 systems commands (F-24) added in 1.7.0: every switch's on/off pair, every dimmer's
+ * down/up pair, gear and flaps, every trim's three commands, the fuel selector's positions, and
+ * every engine's magnetos and starter.
+ */
+const SYSTEMS_FAKE_COMMAND_NAMES: readonly string[] = [
+  ...EXTERIOR_LIGHTS.flatMap((light) => [light.on, light.off]),
+  ...ANTI_ICE.flatMap((spec) => [spec.on, spec.off]),
+  BATTERY.on,
+  BATTERY.off,
+  AVIONICS_MASTER.on,
+  AVIONICS_MASTER.off,
+  ...ENGINE_NUMBERS.flatMap((engine) => [
+    generatorSwitch(engine).on,
+    generatorSwitch(engine).off,
+    fuelPumpSwitch(engine).on,
+    fuelPumpSwitch(engine).off,
+  ]),
+  ...DIMMERS.flatMap((dimmer) => [dimmer.down, dimmer.up]),
+  GEAR.up,
+  GEAR.down,
+  FLAPS.up,
+  FLAPS.down,
+  ...TRIMS.flatMap((trim) => [trim.decrease.command, trim.increase.command, trim.set.command]),
+  ...FUEL_SELECTOR.positions.map((position) => position.command),
+  ...ENGINE_NUMBERS.flatMap((engine) => [
+    ...magnetoPositions(engine).map((position) => position.command),
+    starterCommand(engine),
+  ]),
+];
+
 /** Every command name `FakeClient.findCommand` recognises by default: a fully-equipped aircraft. */
 const ALL_FAKE_COMMAND_NAMES = new Set<string>([
   ...(Object.values(GENERIC_COMMANDS) as string[]),
   ...([1, 2] as const).flatMap((unit: CduUnit) => CDU_KEYS.map((key) => cduCommand(unit, key.id))),
+  ...SYSTEMS_FAKE_COMMAND_NAMES,
 ]);
 
 class FakeClient implements SimulatorClient {
@@ -267,6 +362,10 @@ class FakeClient implements SimulatorClient {
   activateCommand = jest.fn(async (id: number) => {
     this.activations.push(id);
   });
+
+  setCommandActive = jest.fn(
+    async (_id: number, _active: boolean, _duration?: number) => undefined,
+  );
 
   connectWebSocket = jest.fn(async () => {
     if (this.connectError !== null) {
@@ -834,6 +933,144 @@ describe('SimulatorSession operations', () => {
     await writing;
     expect(snapshot().operations[HEADING]).toBeUndefined();
     expect(snapshot().state).toBe('connected');
+  });
+});
+
+describe('holding a command (F-24 §4.3)', () => {
+  const PITCH_UP = TRIMS[0]!.increase.command;
+  const COMMAND_ID = 9;
+
+  it('presses with a lease, renews and releases on the same connection', async () => {
+    const { session, clients } = setup();
+    await session.connect('192.168.1.100', 8086);
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press')).toBe('ok');
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew')).toBe('ok');
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'release')).toBe('ok');
+    expect(clients[0]?.setCommandActive.mock.calls).toEqual([
+      [COMMAND_ID, true, 0.5],
+      [COMMAND_ID, true, 0.5],
+      [COMMAND_ID, false, undefined],
+    ]);
+  });
+
+  it('records the press once and never a renewal, so a held key does not churn the store', async () => {
+    const { session } = setup();
+    await session.connect('192.168.1.100', 8086);
+    const listener = jest.fn();
+    session.store.subscribe(listener);
+    await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press');
+    const afterPress = listener.mock.calls.length;
+    await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew');
+    await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew');
+    await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'release');
+    expect(listener.mock.calls.length).toBe(afterPress);
+    expect(session.store.getSnapshot().operations[PITCH_UP]?.status).toBe('ok');
+  });
+
+  it('refuses a renewal or release without a press on this connection', async () => {
+    const { session, clients } = setup();
+    await session.connect('192.168.1.100', 8086);
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew')).toBe('refused');
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'release')).toBe('refused');
+    expect(clients[0]?.setCommandActive).not.toHaveBeenCalled();
+  });
+
+  it('refuses a renewal after the socket dropped and the session reconnected (R5)', async () => {
+    const first = new FakeClient();
+    const second = new FakeClient();
+    const { session, scheduler, snapshot } = setup({ clients: [first, second] });
+    await session.connect('192.168.1.100', 8086);
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press')).toBe('ok');
+    // Drop the socket: the scheduler's next timer reconnects on the second client.
+    first.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });
+    expect(snapshot().state).toBe('reconnecting');
+    await scheduler.runNext();
+    expect(snapshot().state).toBe('connected');
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew')).toBe('refused');
+    expect(second.setCommandActive).not.toHaveBeenCalled();
+  });
+
+  it('refuses a press like activate: not connected, unresolved or unusable', async () => {
+    const { session: notConnectedSession, clients: notConnectedClients, snapshot } = setup();
+    expect(await notConnectedSession.holdCommand(FEATURE_TRIM, PITCH_UP, 'press')).toBe('refused');
+    expect(snapshot().operations[PITCH_UP]).toMatchObject({
+      status: 'failed',
+      failure: null,
+      refusal: 'notConnected',
+    });
+    expect(notConnectedClients[0]?.setCommandActive).not.toHaveBeenCalled();
+
+    const client = new FakeClient();
+    client.missingCommand = PITCH_UP;
+    const { session, snapshot: unresolvedSnapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press')).toBe('refused');
+    expect(unresolvedSnapshot().operations[PITCH_UP]?.refusal).toBe('unavailable');
+    expect(client.setCommandActive).not.toHaveBeenCalled();
+  });
+
+  it('records a failed press or renewal and forgets the hold', async () => {
+    const { session, clients, snapshot } = setup();
+    await session.connect('192.168.1.100', 8086);
+    clients[0]?.setCommandActive.mockRejectedValueOnce(new Error('socket gone'));
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press')).toBe('failed');
+    expect(snapshot().operations[PITCH_UP]?.failure?.code).toBe('COMMAND_FAILED');
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew')).toBe('refused');
+  });
+
+  it('records a failed renewal and forgets the hold; a failed release records nothing', async () => {
+    const { session, clients, snapshot } = setup();
+    await session.connect('192.168.1.100', 8086);
+    await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press');
+    clients[0]?.setCommandActive.mockRejectedValueOnce(new Error('socket gone'));
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew')).toBe('failed');
+    expect(snapshot().operations[PITCH_UP]?.failure?.code).toBe('COMMAND_FAILED');
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew')).toBe('refused');
+
+    // A fresh press, then a release that fails: it is never recorded (the hold renews or
+    // lapses in X-Plane within 0.5 s regardless, and a release must not churn the store).
+    await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press');
+    const listener = jest.fn();
+    session.store.subscribe(listener);
+    clients[0]?.setCommandActive.mockRejectedValueOnce(new Error('socket gone'));
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'release')).toBe('failed');
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('refuses a press whose command resolved but whose feature is unavailable', async () => {
+    const { session, clients, snapshot } = setup();
+    await session.connect('192.168.1.100', 8086);
+    // Pinned directly on the store, the same way the write/activate 'partial' tests do: no
+    // bundled profile can currently put a resolved command behind an unavailable feature on
+    // its own.
+    session.store.setState((prev) => ({
+      ...prev,
+      compatibility: {
+        ...prev.compatibility,
+        features: prev.compatibility.features.map((feature) =>
+          feature.id === FEATURE_TRIM ? { ...feature, status: 'unavailable' as const } : feature,
+        ),
+      },
+    }));
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press')).toBe('refused');
+    expect(snapshot().operations[PITCH_UP]?.refusal).toBe('unavailable');
+    expect(clients[0]?.setCommandActive).not.toHaveBeenCalled();
+  });
+
+  it('renews with the id resolved at press time, even after a re-check replaces the command map', async () => {
+    const { session, clients } = setup();
+    await session.connect('192.168.1.100', 8086);
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press')).toBe('ok');
+
+    const client = clients[0]!;
+    const defaultFindCommand = client.findCommand;
+    client.findCommand = jest.fn(async (name: string) =>
+      name === PITCH_UP ? { id: 999, name, description: 'up' } : defaultFindCommand(name),
+    );
+    await session.recheckCompatibility();
+
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew')).toBe('ok');
+    expect(client.setCommandActive).toHaveBeenLastCalledWith(COMMAND_ID, true, 0.5);
   });
 });
 
@@ -1821,6 +2058,7 @@ describe('aircraft compatibility', () => {
       ...AUTOPILOT_FAKE_DATAREFS,
       ...NAV_FAKE_DATAREFS,
       ...CDU_FAKE_DATAREFS,
+      ...SYSTEMS_FAKE_DATAREFS,
     };
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
@@ -2132,9 +2370,9 @@ describe('aircraft changes', () => {
     await scheduler.runNext();
     // One re-check pass probes every command binding in the profile: headingUp, the five radio
     // and transponder commands added in 1.3.0, the fifteen autopilot commands added in 1.4.0, the
-    // HSI direct-to command added in 1.5.0, and the 140 CDU key commands (70 per unit) added in
-    // 1.6.0.
-    expect(client.findCommand.mock.calls.length).toBe(before + 162);
+    // HSI direct-to command added in 1.5.0, the 140 CDU key commands (70 per unit) added in
+    // 1.6.0, and the 83 systems commands added in 1.7.0.
+    expect(client.findCommand.mock.calls.length).toBe(before + 245);
   });
 
   it('ignores an update that repeats the identification already on record', async () => {

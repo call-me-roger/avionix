@@ -12,7 +12,7 @@ import {
   GENERIC_PROFILE,
 } from '@/domain/aircraft/profiles/generic';
 import { AutopilotPanel } from '@/features/panels/autopilot/AutopilotPanel';
-import type { PanelActions } from '@/features/panels/primitives/PanelContext';
+import type { PanelScopeActions } from '@/features/panels/primitives/PanelContext';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { PANELS, PANEL_IDS, findPanel } from '@/features/panels/registry';
 import { ThemeProvider } from '@/theme/theme-context';
@@ -36,14 +36,14 @@ function live(overrides: Partial<SessionSnapshot> = {}): SessionSnapshot {
   };
 }
 
-function makeActions(): PanelActions & { write: jest.Mock; activate: jest.Mock } {
+function makeActions(): PanelScopeActions & { write: jest.Mock; activate: jest.Mock } {
   return { write: jest.fn(async () => undefined), activate: jest.fn(async () => 'ok' as const) };
 }
 
 async function renderPanel(
   Component: React.ComponentType,
   snapshot: SessionSnapshot,
-  actions: PanelActions = makeActions(),
+  actions: PanelScopeActions = makeActions(),
 ) {
   return render(
     <ThemeProvider storage={createMemorySettingsStorage()} systemSchemeOverride="light">
@@ -61,6 +61,7 @@ describe('panel registry', () => {
       'radios',
       'autopilot',
       'navigation',
+      'systems',
       'cdu',
       'flight-data',
     ]);

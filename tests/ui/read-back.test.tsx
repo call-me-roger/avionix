@@ -11,7 +11,7 @@ import {
 } from '@/domain/aircraft/profiles/generic';
 import { READ_BACK_MS } from '@/domain/panels/read-back';
 import { HapticsProvider, useHapticsPreference } from '@/features/haptics/HapticsProvider';
-import type { PanelActions } from '@/features/panels/primitives/PanelContext';
+import type { PanelScopeActions } from '@/features/panels/primitives/PanelContext';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { useReadBack } from '@/features/panels/primitives/useReadBack';
 import { haptics } from '@/platform/haptics';
@@ -25,7 +25,7 @@ afterEach(() => {
 
 const NOW = 1_000_000;
 const base = initialSnapshot(GENERIC_PROFILE, 5);
-const actions: PanelActions = {
+const actions: PanelScopeActions = {
   write: jest.fn(async () => undefined),
   activate: jest.fn(async () => 'ok' as const),
 };

@@ -24,6 +24,7 @@ import { UnitsProvider } from '@/features/units/UnitsProvider';
 import { ThemeProvider } from '@/theme/theme-context';
 
 import { toyScreenTelemetry } from '../helpers/cdu';
+import { SYSTEMS_VALUES, systemsCompatibility, systemsTelemetry } from '../helpers/systems';
 
 const mockShareText = jest.fn(async (_text: string, _title: string) => undefined);
 // jest.mock is hoisted above every const, so the factory may only close over a `mock`-prefixed name.
@@ -130,26 +131,38 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
               now={10_000}
               onOpen={jest.fn()}
             />
-            {PANELS.map(({ descriptor, Component }) => (
-              <PanelFrame
-                key={descriptor.id}
-                title={descriptor.title}
-                fillsFrame={descriptor.fillsFrame === true}
-                snapshot={{
-                  ...snapshotFor(code),
-                  operations: failedOperationsFor(code),
-                  // The CDU's live glass and keys, not its waiting state: a screen on both units.
-                  telemetry: { ...toyScreenTelemetry(1, 9_000), ...toyScreenTelemetry(2, 9_000) },
-                }}
-                now={10_000}
-                actions={{
-                  write: jest.fn(async () => undefined),
-                  activate: jest.fn(async () => 'ok' as const),
-                }}
-              >
-                <Component />
-              </PanelFrame>
-            ))}
+            {PANELS.map(({ descriptor, Component }) => {
+              // Systems needs its own bindings resolved (S3) or every control stays undrawn (the
+              // "not available" text instead), and the assertions below would check nothing: a
+              // binding set the real deriver marks 'ok', not the default snapshot's empty one, and
+              // its own telemetry so FLAPS, the parking brake and the rest have values to show.
+              const systems = descriptor.id === 'systems';
+              return (
+                <PanelFrame
+                  key={descriptor.id}
+                  title={descriptor.title}
+                  fillsFrame={descriptor.fillsFrame === true}
+                  snapshot={{
+                    ...snapshotFor(code),
+                    operations: failedOperationsFor(code),
+                    telemetry: systems
+                      ? systemsTelemetry(SYSTEMS_VALUES, 9_000)
+                      : // The CDU's live glass and keys, not its waiting state: a screen on both units.
+                        { ...toyScreenTelemetry(1, 9_000), ...toyScreenTelemetry(2, 9_000) },
+                    ...(systems
+                      ? { compatibility: systemsCompatibility(snapshotFor(code).compatibility) }
+                      : null),
+                  }}
+                  now={10_000}
+                  actions={{
+                    write: jest.fn(async () => undefined),
+                    activate: jest.fn(async () => 'ok' as const),
+                  }}
+                >
+                  <Component />
+                </PanelFrame>
+              );
+            })}
           </InstrumentPreferencesProvider>
         </UnitsProvider>
       </ThemeProvider>,
@@ -157,6 +170,12 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
     // The CDU is covered live: its glass is drawn and its keys are there, not the waiting state.
     expect(screen.getByLabelText('TOY FMS')).toBeTruthy();
     expect(screen.queryByText('Waiting for the CDU screen…')).toBeNull();
+    // Systems is covered live too: the FLIGHT page (the phone default) actually draws its own
+    // controls — a written binding (the parking brake) and a command one (flaps down) — instead
+    // of going vacuous on S3's "not available" text, so the failed outcomes below are the panel's
+    // own FailureNotice/OperationNotice, not an untouched default snapshot's.
+    expect(screen.getByText('PARK BRAKE')).toBeTruthy();
+    expect(screen.getByLabelText('Flaps down one notch')).toBeTruthy();
     expect(screen.queryByText(new RegExp('http://'))).toBeNull();
     expect(screen.queryByText(/HTTP 403/)).toBeNull();
     expect(screen.queryByText(/avx_secret/)).toBeNull();

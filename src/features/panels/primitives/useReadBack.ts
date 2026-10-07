@@ -24,6 +24,8 @@ export interface ReadBackRequest {
 
 export interface ReadBack {
   watch: (request: ReadBackRequest) => void;
+  /** Forgets a key's watch and sentence: a press that needed no watch outdates the last one. */
+  clear: (key: string) => void;
   messageFor: (key: string) => string | null;
   /** The value a still-waiting watch expects: what the panel last sent and X-Plane has not shown. */
   pendingExpected: (key: string) => number | null;
@@ -105,6 +107,14 @@ export function useReadBack(): ReadBack {
           [request.key]: { kind: 'watching', request, startedAt: now },
         },
       })),
+    clear: (key) =>
+      setState((previous) => {
+        if (!(key in previous.watches)) {
+          return previous;
+        }
+        const { [key]: _cleared, ...rest } = previous.watches;
+        return { ...previous, watches: rest };
+      }),
     messageFor: (key) => {
       const watch = watches[key];
       return watch?.kind === 'settled' ? watch.message : null;

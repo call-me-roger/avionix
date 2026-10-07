@@ -136,8 +136,9 @@ describe.each(['v2', 'v3'] as const)('XPlaneClient over %s', (apiVersion) => {
   });
 
   it('reports the dataref count', async () => {
-    // 94 pre-F-32 DataRefs plus the CDU's 66 (32 screen cells per unit, two EXEC lights).
-    await expect(client.getDataRefCount()).resolves.toBe(160);
+    // 94 pre-F-32 DataRefs, the CDU's 66 (32 screen cells per unit, two EXEC lights), and the 35
+    // systems DataRefs added in 1.7.0.
+    await expect(client.getDataRefCount()).resolves.toBe(195);
   });
 
   it('reads scalar, array, indexed and data values', async () => {
@@ -174,6 +175,17 @@ describe.each(['v2', 'v3'] as const)('XPlaneClient over %s', (apiVersion) => {
       expect(isAvionixError(error) && error.code).toBe('COMMAND_FAILED');
       expect(isAvionixError(error) && error.simulatorErrorCode).toBe('invalid_command_id');
     }
+  });
+
+  it('holds a command with a lease and releases it over the WebSocket', async () => {
+    await client.connectWebSocket();
+    const command = await client.findCommand('sim/autopilot/heading_up');
+    await client.setCommandActive(command!.id, true, 0.5);
+    await client.setCommandActive(command!.id, false);
+    expect(server.holdMessages).toEqual([
+      { id: command!.id, isActive: true, duration: 0.5 },
+      { id: command!.id, isActive: false, duration: null },
+    ]);
   });
 
   it('subscribes over WebSocket and emits updates, then unsubscribes and disconnects', async () => {

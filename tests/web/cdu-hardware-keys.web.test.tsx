@@ -14,7 +14,7 @@ import {
 import { cduTextLine } from '@/domain/cdu/keys';
 import type { ActivationResult } from '@/domain/panels/activation';
 import { CduPanel } from '@/features/panels/cdu/CduPanel';
-import type { PanelActions } from '@/features/panels/primitives/PanelContext';
+import type { PanelScopeActions } from '@/features/panels/primitives/PanelContext';
 import { PanelScope } from '@/features/panels/primitives/PanelFrame';
 import { ThemeProvider } from '@/theme/theme-context';
 
@@ -98,7 +98,7 @@ function unavailableSnapshot(): SessionSnapshot {
 }
 
 const activate = jest.fn(async (): Promise<ActivationResult> => 'ok');
-const actions: PanelActions = {
+const actions: PanelScopeActions = {
   write: jest.fn(async () => undefined),
   activate,
 };

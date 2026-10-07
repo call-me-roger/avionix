@@ -9,15 +9,15 @@ import { makeRowStyles } from '@/features/panels/flight-data/rowStyles';
 import { SimBadge } from '@/features/panels/flight-data/SimBadge';
 import type { FlightValueState } from '@/features/panels/flight-data/useFlightValue';
 import { one, useFlightValue } from '@/features/panels/flight-data/useFlightValue';
-import { type PanelActions, usePanel } from '@/features/panels/primitives/PanelContext';
+import { type PanelScopeActions, usePanel } from '@/features/panels/primitives/PanelContext';
 import { PanelScope } from '@/features/panels/primitives/PanelFrame';
 import { useUnits } from '@/features/units/UnitsProvider';
 import { BodyText } from '@/theme/primitives';
 import { useTheme, useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 
-/** R11: the strip only reads. No feature here ever writes or activates. */
-const STRIP_ACTIONS: PanelActions = {
+/** R11: the strip only reads. No feature here ever writes, activates or holds. */
+const STRIP_ACTIONS: PanelScopeActions = {
   write: async () => undefined,
   activate: async () => 'refused',
 };
