@@ -208,6 +208,7 @@ Record results at the bottom.
 | 179 | Fly an ILS with MKR on; then off | Lamps O/M/I light on the AUDIO unit over each marker; the tone stops with MKR off | |
 | 180 | With X-Plane ATC active, turn the transmitting COM's monitor off | The "aren't listening" line shows and ATC is no longer heard; turn it back on | |
 | 181 | Pull Wi-Fi, then reconnect | Keys go inert and bars dim; after reconnect the panel shows X-Plane's state, nothing replayed | |
+| 182 | Open Engines, then switch to Radios and immediately tap a MIC key | The MIC keys accept no press until X-Plane's selection is shown; the other COM's listening is unchanged | |
 
 Rows 44 and 45 verify the keep-awake hold, and row 53 the safe areas: behaviour no automated test
 can observe.

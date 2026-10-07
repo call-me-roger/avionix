@@ -92,7 +92,9 @@ would make X-Plane re-select its listener and mute the other COM.
 When `audio_selection_com_auto` is 1 and a COM is the transmit selection, that COM is heard whatever
 its own listen flag says. Its monitor key is drawn lit and **inert**, spoken "COM1, heard while
 transmitting", as on a GMA 340 where the MIC radio cannot be deselected. Otherwise the key shows
-its own flag. A missing auto flag counts as 0.
+its own flag. A missing auto flag counts as 0. Until the auto flag is known (not checked yet, or
+resolved with no value yet), the transmitting COM's key is unknown and inert and no "not heard"
+line is shown.
 
 ### 4.4 Lines under the unit
 
@@ -117,7 +119,12 @@ checked yet (no binding result). Only the second produces a sentence.
 - When every audio state name is definitively missing: the unit holds one sentence, "The audio
   panel isn't available on the Cessna 172." (R6), and no keys.
 - The MIC row is drawn when the transmit selection resolved; each MIC key is enabled when its
-  command resolved.
+  command resolved **and** the selection's value has arrived. Telemetry is dropped for a cycle on
+  every panel switch; until the value is back both keys are inert and spoken "Transmit on COM1,
+  unknown", since the COM really transmitting would look unselected. A known value that is neither
+  6 nor 7 leaves both keys pressable, none selected.
+- Listen flags, auto-listen and the marker lamps read as on above one half (F-12's switch rule).
+  The lamps are drawn only once all three resolved and all three values arrived.
 
 ### 4.6 COM rows show the transmitting radio
 
@@ -157,7 +164,7 @@ definitive misses; a unit with nothing drawn and nothing definitively missing re
 
 ## 7. Mock X-Plane
 
-DataRefs from id 1400 (transmit 6, auto-listen 1, COM1 listen 1, the rest 0), commands from id 2300.
+DataRefs from id 1500 (transmit 6, auto-listen 1, COM1 listen 1, the rest 0), commands from id 2300.
 Behaviour as X-Plane: a MIC command sets the selection and, as X-Plane does, sets that COM's flag to
 1 and the other COM's to 0; `_on`/`_off` set their flag.
 
