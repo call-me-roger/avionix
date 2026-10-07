@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { useWindowDimensions, View } from 'react-native';
 
 import { ElectricalSection } from '@/features/panels/engines/ElectricalSection';
 import { ENGINES_PAGES, type EnginesPage, WIDE_MIN_WIDTH } from '@/features/panels/engines/engines';
@@ -7,11 +7,10 @@ import { EnginesSection } from '@/features/panels/engines/EnginesSection';
 import { useEnginesPage } from '@/features/panels/engines/EnginesPreferenceProvider';
 import { FuelSection } from '@/features/panels/engines/FuelSection';
 import { EnginesModelProvider } from '@/features/panels/engines/useEnginesModel';
-import { LightBar } from '@/features/panels/primitives/LightBar';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
+import { PanelKey } from '@/features/panels/primitives/PanelKey';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
-import { avionicsText } from '@/theme/typography';
 
 export { ENGINES_PANEL } from '@/features/panels/engines/engines';
 
@@ -24,54 +23,10 @@ const SECTIONS: Record<EnginesPage, React.ComponentType> = {
 const makeStyles = (theme: Theme) => ({
   root: { gap: theme.touch.spacing },
   pageRow: { flexDirection: 'row' as const, gap: theme.touch.spacing },
-  pageKey: {
-    flex: 1,
-    backgroundColor: theme.avionics.keyFace,
-    borderWidth: 1,
-    borderColor: theme.avionics.bezelEdge,
-    borderRadius: 6,
-    minHeight: theme.touch.minTarget,
-    minWidth: theme.touch.minTarget,
-    paddingHorizontal: theme.spacing.md,
-    paddingTop: 6,
-    paddingBottom: 8,
-    gap: 6,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  legend: {
-    ...avionicsText(theme, true),
-    fontSize: theme.typography.legendSize,
-    color: theme.avionics.legend,
-  },
+  pageKey: { flex: 1 },
   wideRow: { flexDirection: 'row' as const, gap: theme.touch.spacing },
   wideColumn: { flex: 1, gap: theme.touch.spacing },
 });
-
-function EnginesPageKey({
-  page,
-  selected,
-  onPress,
-}: {
-  page: (typeof ENGINES_PAGES)[number];
-  selected: boolean;
-  onPress: () => void;
-}) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <Pressable
-      testID={`engines-page-${page.id}`}
-      accessibilityRole="tab"
-      accessibilityLabel={page.legend}
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      style={styles.pageKey}
-    >
-      <LightBar state={selected ? 'engaged' : 'off'} />
-      <Text style={styles.legend}>{page.legend}</Text>
-    </Pressable>
-  );
-}
 
 /**
  * F-12's Engines panel (spec §4.10–§4.11): read-only. A phone shows one page at a time behind
@@ -113,11 +68,15 @@ export function EnginesPanel() {
     <View style={styles.root}>
       <View style={styles.pageRow}>
         {ENGINES_PAGES.map((candidate) => (
-          <EnginesPageKey
+          <PanelKey
             key={candidate.id}
-            page={candidate}
+            testID={`engines-page-${candidate.id}`}
+            legend={candidate.legend}
+            role="tab"
             selected={candidate.id === page}
+            lit={candidate.id === page}
             onPress={() => setPage(candidate.id)}
+            style={styles.pageKey}
           />
         ))}
       </View>

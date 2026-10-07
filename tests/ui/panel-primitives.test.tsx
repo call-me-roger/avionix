@@ -24,6 +24,7 @@ import { DisplayWindow } from '@/features/panels/primitives/DisplayWindow';
 import { Keypad } from '@/features/panels/primitives/Keypad';
 import { type PanelScopeActions, usePanel } from '@/features/panels/primitives/PanelContext';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
+import { PanelKey } from '@/features/panels/primitives/PanelKey';
 import { Readout } from '@/features/panels/primitives/Readout';
 import { ValueEntry } from '@/features/panels/primitives/ValueEntry';
 import { haptics } from '@/platform/haptics';
@@ -1159,5 +1160,52 @@ describe('ValueEntry', () => {
       </ThemeProvider>,
     );
     expect(screen.getByDisplayValue('95')).toBeTruthy();
+  });
+});
+
+describe('PanelKey', () => {
+  function key(element: React.ReactElement) {
+    return (
+      <ThemeProvider storage={createMemorySettingsStorage()} systemSchemeOverride="light">
+        {element}
+      </ThemeProvider>
+    );
+  }
+
+  it('is a tab with its legend as its label, lit when selected, at least 48 dp', async () => {
+    const onPress = jest.fn();
+    await render(
+      key(<PanelKey testID="k" legend="FUEL" role="tab" selected lit onPress={onPress} />),
+    );
+    const tab = screen.getByRole('tab', { name: 'FUEL' });
+    expect(tab.props.accessibilityState).toEqual({ selected: true });
+    expect(screen.getByText('FUEL')).toBeTruthy();
+    const style = StyleSheet.flatten(screen.getByTestId('k').props.style);
+    expect(style.minHeight).toBeGreaterThanOrEqual(48);
+    expect(style.minWidth).toBeGreaterThanOrEqual(48);
+    expect(screen.getByTestId('light-bar-engaged', HIDDEN)).toBeTruthy();
+    await fireEvent.press(tab);
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('is a switch with its own spoken label and checked state, off when not lit', async () => {
+    await render(
+      key(
+        <PanelKey
+          testID="lean"
+          legend="LEAN"
+          accessibilityLabel="Lean assist"
+          role="switch"
+          checked={false}
+          lit={false}
+          onPress={() => undefined}
+          style={{ marginLeft: 'auto' }}
+        />,
+      ),
+    );
+    const toggle = screen.getByRole('switch', { name: 'Lean assist' });
+    expect(toggle.props.accessibilityState).toEqual({ checked: false });
+    expect(StyleSheet.flatten(toggle.props.style).marginLeft).toBe('auto');
+    expect(screen.getByTestId('light-bar-off', HIDDEN)).toBeTruthy();
   });
 });

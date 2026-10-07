@@ -1,7 +1,7 @@
 import React from 'react';
-import { Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { useWindowDimensions, View } from 'react-native';
 
-import { LightBar } from '@/features/panels/primitives/LightBar';
+import { PanelKey } from '@/features/panels/primitives/PanelKey';
 import { useReadBack } from '@/features/panels/primitives/useReadBack';
 import {
   EngineSection,
@@ -13,7 +13,6 @@ import { SYSTEMS_PAGES, WIDE_MIN_WIDTH, type SystemsPage } from '@/features/pane
 import { useSystemsPage } from '@/features/panels/systems/SystemsPreferenceProvider';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
-import { avionicsText } from '@/theme/typography';
 
 export { SYSTEMS_PANEL } from '@/features/panels/systems/systems';
 
@@ -27,55 +26,10 @@ const SECTIONS: Record<SystemsPage, typeof EngineSection> = {
 const makeStyles = (theme: Theme) => ({
   root: { gap: theme.touch.spacing },
   pageRow: { flexDirection: 'row' as const, gap: theme.touch.spacing },
-  pageKey: {
-    flex: 1,
-    backgroundColor: theme.avionics.keyFace,
-    borderWidth: 1,
-    borderColor: theme.avionics.bezelEdge,
-    borderRadius: 6,
-    minHeight: theme.touch.minTarget,
-    minWidth: theme.touch.minTarget,
-    paddingHorizontal: theme.spacing.md,
-    paddingTop: 6,
-    paddingBottom: 8,
-    gap: 6,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  legend: {
-    ...avionicsText(theme, true),
-    fontSize: theme.typography.legendSize,
-    color: theme.avionics.legend,
-  },
+  pageKey: { flex: 1 },
   wideRow: { flexDirection: 'row' as const, gap: theme.touch.spacing },
   wideColumn: { flex: 1, gap: theme.touch.spacing },
 });
-
-/** One phone page key (spec §4.7): the R-01 key face, a light bar for the selected page. */
-function SystemsPageKey({
-  page,
-  selected,
-  onPress,
-}: {
-  page: (typeof SYSTEMS_PAGES)[number];
-  selected: boolean;
-  onPress: () => void;
-}) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <Pressable
-      testID={`systems-page-${page.id}`}
-      accessibilityRole="tab"
-      accessibilityLabel={page.legend}
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      style={styles.pageKey}
-    >
-      <LightBar state={selected ? 'engaged' : 'off'} />
-      <Text style={styles.legend}>{page.legend}</Text>
-    </Pressable>
-  );
-}
 
 /**
  * F-24's Systems panel (spec §4.7–§4.8): a phone shows one page at a time behind a row of page
@@ -112,11 +66,15 @@ export function SystemsPanel() {
     <View style={styles.root}>
       <View style={styles.pageRow}>
         {SYSTEMS_PAGES.map((candidate) => (
-          <SystemsPageKey
+          <PanelKey
             key={candidate.id}
-            page={candidate}
+            testID={`systems-page-${candidate.id}`}
+            legend={candidate.legend}
+            role="tab"
             selected={candidate.id === page}
+            lit={candidate.id === page}
             onPress={() => setPage(candidate.id)}
+            style={styles.pageKey}
           />
         ))}
       </View>

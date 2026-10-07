@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
 
 import { GAUGES } from '@/domain/engines/catalogue';
 import { egtSamples, leanAvailable } from '@/domain/engines/lean';
@@ -16,54 +16,14 @@ import { EngineTable } from '@/features/panels/engines/EngineTable';
 import { useLean } from '@/features/panels/engines/EnginesPreferenceProvider';
 import { useEnginesModel } from '@/features/panels/engines/useEnginesModel';
 import { AVIONICS_UNIT_PADDING, AvionicsUnit } from '@/features/panels/primitives/AvionicsUnit';
-import { LightBar } from '@/features/panels/primitives/LightBar';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
+import { PanelKey } from '@/features/panels/primitives/PanelKey';
 import { aircraftName } from '@/features/panels/systems/availability';
 import { BodyText } from '@/theme/primitives';
-import { useTheme, useThemedStyles } from '@/theme/theme-context';
-import type { Theme } from '@/theme/tokens';
-import { avionicsText } from '@/theme/typography';
+import { useTheme } from '@/theme/theme-context';
 
-const makeStyles = (theme: Theme) => ({
-  key: {
-    backgroundColor: theme.avionics.keyFace,
-    borderWidth: 1,
-    borderColor: theme.avionics.bezelEdge,
-    borderRadius: 6,
-    minHeight: theme.touch.minTarget,
-    minWidth: theme.touch.minTarget,
-    paddingHorizontal: theme.spacing.md,
-    paddingTop: 6,
-    paddingBottom: 8,
-    gap: 6,
-    marginLeft: 'auto' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  legend: {
-    ...avionicsText(theme, true),
-    fontSize: theme.typography.legendSize,
-    color: theme.avionics.legend,
-  },
-});
-
-/** LEAN (spec §4.6): a local display mode, so a plain key, not a ControlButton; it writes nothing. */
-function LeanKey({ on, onPress }: { on: boolean; onPress: () => void }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <Pressable
-      testID="engines-lean"
-      accessibilityRole="switch"
-      accessibilityLabel="Lean assist"
-      accessibilityState={{ checked: on }}
-      onPress={onPress}
-      style={styles.key}
-    >
-      <LightBar state={on ? 'engaged' : 'off'} />
-      <Text style={styles.legend}>LEAN</Text>
-    </Pressable>
-  );
-}
+/** LEAN (spec §4.6) sits at the end of the unit's label row. */
+const LEAN_KEY_STYLE = { marginLeft: 'auto' as const };
 
 /**
  * The ENGINES page (spec §4.2–§4.6): the dials and the gauge table, or the one sentence that says
@@ -101,7 +61,17 @@ export function EnginesSection() {
       label="ENGINES"
       labelAccessory={
         available || lean.on ? (
-          <LeanKey on={lean.on} onPress={() => store.toggle(aircraft)} />
+          // LEAN is a local display mode, so a plain key, not a ControlButton; it writes nothing.
+          <PanelKey
+            testID="engines-lean"
+            legend="LEAN"
+            accessibilityLabel="Lean assist"
+            role="switch"
+            checked={lean.on}
+            lit={lean.on}
+            onPress={() => store.toggle(aircraft)}
+            style={LEAN_KEY_STYLE}
+          />
         ) : undefined
       }
     >
