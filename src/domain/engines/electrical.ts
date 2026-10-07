@@ -16,7 +16,7 @@ export interface ElectricalModel {
   buses: readonly PowerRow[];
   batteries: readonly PowerRow[];
   generators: readonly PowerRow[];
-  /** Groups not drawn because neither of their DataRefs resolved: BUS, BATT, GEN. */
+  /** Groups not drawn because the probe found their DataRefs missing: BUS, BATT, GEN. */
   missing: readonly string[];
 }
 
@@ -42,7 +42,11 @@ function powerRows(
   const hasVolts = volts !== null && reader.has(volts);
   const hasAmps = reader.has(amps);
   if (!hasVolts && !hasAmps) {
-    missing.push(group.legend);
+    // Named as unavailable only once the probe found every one of its DataRefs missing; while one
+    // is not checked yet, the group is simply not drawn.
+    if ((volts === null || reader.missing(volts)) && reader.missing(amps)) {
+      missing.push(group.legend);
+    }
     return [];
   }
   return Array.from({ length: count }, (_, index) => {

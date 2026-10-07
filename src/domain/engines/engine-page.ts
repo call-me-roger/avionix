@@ -25,9 +25,18 @@ import {
 import { MAX_ENGINES } from '@/domain/systems/controls';
 import type { UnitPreferences } from '@/domain/units/units';
 
-/** What the page needs from the session: which names resolved, and their finite numbers. */
+/**
+ * What the page needs from the session: which names resolved, which did not, and their finite
+ * numbers. A name the aircraft probe has not reached yet is neither `has` nor `missing`: it is
+ * not drawn, and never named as unavailable.
+ */
 export interface EngineReader {
+  /** The name resolved on this aircraft. */
   has(name: string): boolean;
+  /** The probe checked the name and it did not resolve. False while it is not checked yet. */
+  missing(name: string): boolean;
+  /** A value has arrived: a scalar or string, or an array of at least one element. */
+  arrived(name: string): boolean;
   /** Element `index` of an array value (the scalar itself at 0), when it is a finite number. */
   number(name: string, index?: number): number | null;
 }
@@ -62,7 +71,8 @@ export interface GaugeRow {
 
 /**
  * `unidentified`: the count or type DataRef did not resolve, or the count is not a whole number.
- * `waiting`: the count resolved but has not arrived. `none`: a count of 0 (a glider).
+ * `waiting`: the count or type has not been checked yet, or resolved but has not arrived.
+ * `none`: a count of 0 (a glider).
  */
 export type EnginesStatus = 'unidentified' | 'waiting' | 'none' | 'ready';
 
@@ -72,7 +82,7 @@ export interface EnginesModel {
   rows: readonly GaugeRow[];
   /** Engines beyond the fourth. */
   hidden: number;
-  /** Legends of gauges not drawn because their DataRef did not resolve (R6). */
+  /** Legends of gauges not drawn because their DataRef did not resolve (R6); never one unchecked. */
   missing: readonly string[];
   /** Drawn temperature gauges whose unit the aircraft does not publish (spec §4.4). */
   unknownUnits: readonly GaugeId[];
@@ -107,11 +117,7 @@ function reading(
   units: UnitPreferences,
 ): GaugeReading {
   const spec = GAUGES[id];
-  const source = temperatureSource(
-    spec,
-    (name) => reader.has(name),
-    (name) => reader.number(name),
-  );
+  const source = temperatureSource(spec, reader);
   const raw = reader.number(spec.name, engine - 1);
   const value = raw === null ? null : instrumentValue(id, raw);
   const bands = bandsFor(spec.marking, (name) => reader.number(name));
@@ -140,8 +146,11 @@ function reading(
 
 /** The ENGINES page (spec §4.2–§4.5): one column per drawn engine, one row per gauge. */
 export function enginesPage(reader: EngineReader, units: UnitPreferences): EnginesModel {
-  if (!reader.has(ENGINE_CONFIG.count) || !reader.has(ENGINE_CONFIG.type)) {
+  if (reader.missing(ENGINE_CONFIG.count) || reader.missing(ENGINE_CONFIG.type)) {
     return { status: 'unidentified', ...EMPTY };
+  }
+  if (!reader.has(ENGINE_CONFIG.count) || !reader.has(ENGINE_CONFIG.type)) {
+    return { status: 'waiting', ...EMPTY };
   }
   const count = reader.number(ENGINE_CONFIG.count);
   if (count === null) {
@@ -152,6 +161,11 @@ export function enginesPage(reader: EngineReader, units: UnitPreferences): Engin
   }
   if (count === 0) {
     return { status: 'none', ...EMPTY };
+  }
+  // Until the type array arrives, every engine would read as unsupported: wait for it instead. An
+  // array that has arrived but is too short, or holds a non-number, still marks those unsupported.
+  if (!reader.arrived(ENGINE_CONFIG.type)) {
+    return { status: 'waiting', ...EMPTY };
   }
 
   const drawn = Math.min(count, MAX_ENGINES);
@@ -172,11 +186,14 @@ export function enginesPage(reader: EngineReader, units: UnitPreferences): Engin
       unsupported.push(engine);
     }
     const set = GAUGE_SETS[kind];
+    // Drawn when resolved; named as unavailable only when the probe found it missing.
     const present = (id: GaugeId): boolean => {
       if (reader.has(GAUGES[id].name)) {
         return true;
       }
-      note(missing, gaugeLegend(id, kind));
+      if (reader.missing(GAUGES[id].name)) {
+        note(missing, gaugeLegend(id, kind));
+      }
       return false;
     };
     const dial =

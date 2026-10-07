@@ -121,6 +121,33 @@ describe('Engines on a wide window (spec §4.10)', () => {
   });
 });
 
+describe('Engines before the probe has checked anything', () => {
+  it('says nothing is missing or unidentified on any section', async () => {
+    setWindow(1024, 768);
+    await render(
+      tree(
+        snapshot({
+          telemetry: {},
+          compatibility: {
+            ...base.compatibility,
+            bindings: {},
+            identity: { ...base.compatibility.identity, description: 'Baron', icaoType: 'BE58' },
+            identified: true,
+          },
+        }),
+      ),
+    );
+    expect(screen.getByTestId('engines-section')).toBeTruthy();
+    expect(screen.getByTestId('fuel-section')).toBeTruthy();
+    expect(screen.getByTestId('electrical-section')).toBeTruthy();
+    expect(screen.queryByText(/couldn't be identified/)).toBeNull();
+    expect(screen.queryByText(/Fuel tanks aren't available/)).toBeNull();
+    expect(screen.queryByText(/Not available on/)).toBeNull();
+    expect(screen.queryByText(/doesn't say which unit/)).toBeNull();
+    expect(screen.queryByText(/type isn't supported/)).toBeNull();
+  });
+});
+
 describe('Engines with no flight loaded (R5)', () => {
   it('draws no values', async () => {
     await render(

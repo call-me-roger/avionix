@@ -4,10 +4,18 @@ import { DEFAULT_UNITS } from '@/domain/units/units';
 
 type Values = Record<string, number | number[]>;
 
-/** A reader over plain values: a name resolves when it has a value, unless listed as missing. */
+/**
+ * A reader over plain values: a name listed in `missing` did not resolve; otherwise it resolves when
+ * it has a value, and has not been checked yet when it has none.
+ */
 function reader(values: Values, missing: readonly string[] = []): EngineReader {
   return {
     has: (name) => !missing.includes(name) && name in values,
+    missing: (name) => missing.includes(name),
+    arrived: (name) => {
+      const value = values[name];
+      return value !== undefined && !(Array.isArray(value) && value.length === 0);
+    },
     number: (name, index = 0) => {
       const value = values[name];
       const candidate = Array.isArray(value) ? value[index] : index === 0 ? value : undefined;
@@ -175,6 +183,35 @@ describe('enginesPage (spec §4.2–§4.5)', () => {
     expect(
       enginesPage(reader({ ...PISTON, [ENGINE_CONFIG.count]: 1.5 }), DEFAULT_UNITS).status,
     ).toBe('unidentified');
+  });
+
+  it('waits, naming nothing as missing, while nothing has been checked yet', () => {
+    const model = enginesPage(reader({}), DEFAULT_UNITS);
+    expect(model.status).toBe('waiting');
+    expect(model.missing).toEqual([]);
+    expect(model.unsupported).toEqual([]);
+    const typeUnchecked: Values = { ...PISTON };
+    delete typeUnchecked[ENGINE_CONFIG.type];
+    expect(enginesPage(reader(typeUnchecked), DEFAULT_UNITS).status).toBe('waiting');
+  });
+
+  it('neither draws nor lists a gauge, or a temperature unit, not checked yet', () => {
+    const values: Values = { ...PISTON };
+    delete values[GAUGES.cht.name];
+    delete values[ENGINE_CONFIG.egtIsCelsius];
+    const model = enginesPage(reader(values), DEFAULT_UNITS);
+    expect(model.status).toBe('ready');
+    expect(model.rows.map((row) => row.id)).not.toContain('cht');
+    expect(model.missing).toEqual([]);
+    expect(model.unknownUnits).toEqual([]);
+    expect(model.columns[0]?.cells.egt?.source).toBe('pending');
+    expect(model.columns[0]?.cells.egt?.text).toBe('—');
+  });
+
+  it('waits rather than calling every engine unsupported before the type arrives', () => {
+    const model = enginesPage(reader({ ...PISTON, [ENGINE_CONFIG.type]: [] }), DEFAULT_UNITS);
+    expect(model.status).toBe('waiting');
+    expect(model.unsupported).toEqual([]);
   });
 
   it('says a glider has no engines (Review Focus 1)', () => {

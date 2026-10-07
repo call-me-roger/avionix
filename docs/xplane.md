@@ -501,7 +501,10 @@ the aircraft's limits happen to use; which unit that is is pending the device ro
 | Fuel used | `sim/cockpit2/fuel/fuel_totalizer_sum_kg` | float, kg |
 
 `m_fuel` sums to F-11's `m_fuel_total`; `acf_m_fuel_tot` is lb, the whole aircraft, not per tank —
-Avionix multiplies it by a tank's ratio to get that tank's own capacity.
+Avionix multiplies it by a tank's ratio to get that tank's own capacity. Its unit rests on Laminar's
+"appears to be"; other `acf_m_*` weights read as kg in practice. A tank holding more than 5 % over
+its computed capacity therefore draws no bar rather than a full one: were the capacity kg, full and
+half tanks would show no bar, never tanks stuck at 100 %.
 
 **Electrical**
 
@@ -518,4 +521,4 @@ Avionix multiplies it by a tank's ratio to get that tank's own capacity.
 Total: 91 new names, probed at connect like every other binding (row 171 of the smoke test).
 
 Unsettled until the device rows: the marking units for temperatures (165), the unit flags (166),
-the tank side threshold (167).
+the tank side threshold and the tank capacity unit, lb or kg (167).

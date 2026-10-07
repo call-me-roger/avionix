@@ -7,6 +7,11 @@ type Values = Record<string, number | number[]>;
 function reader(values: Values, missing: readonly string[] = []): EngineReader {
   return {
     has: (name) => !missing.includes(name) && name in values,
+    missing: (name) => missing.includes(name),
+    arrived: (name) => {
+      const value = values[name];
+      return value !== undefined && !(Array.isArray(value) && value.length === 0);
+    },
     number: (name, index = 0) => {
       const value = values[name];
       const candidate = Array.isArray(value) ? value[index] : index === 0 ? value : undefined;
@@ -89,6 +94,17 @@ describe('electrical rows (spec §4.8)', () => {
     expect(noBattery.batteries).toEqual([]);
     expect(noBattery.generators).toEqual([]);
     expect(noBattery.missing).toEqual(['BATT', 'GEN']);
+  });
+
+  it('lists nothing as missing while nothing has been checked yet, nor a half-checked group', () => {
+    const model = electricalPage(reader({}), null);
+    expect(model.missing).toEqual([]);
+    expect([...model.buses, ...model.batteries, ...model.generators]).toEqual([]);
+    const values: Values = { ...VALUES };
+    delete values[ELECTRICAL.batteryAmps];
+    const half = electricalPage(reader(values, [ELECTRICAL.batteryVolts]), 1);
+    expect(half.batteries).toEqual([]);
+    expect(half.missing).toEqual([]);
   });
 
   it('shows a reading that has not arrived as a dash', () => {

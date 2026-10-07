@@ -18,40 +18,45 @@ export interface TankReading {
 }
 
 export interface FuelModel {
-  /** Null when the aircraft publishes no per-tank fuel, or neither tank ratios nor a tank count. */
+  /** Null when the aircraft publishes no per-tank fuel, or neither tank ratios nor a tank count.
+   * Empty while that is not known yet (`tanksPending`). */
   tanks: readonly TankReading[] | null;
+  /** The tank DataRefs have not been checked yet, or the slot count has not arrived: no tank rows
+   * and no sentence. */
+  tanksPending: boolean;
   unit: 'KG' | 'LB';
   flowUnit: 'KG/H' | 'LB/H';
-  /** Null when the total DataRef did not resolve. */
+  /** Null when the total DataRef did not resolve, or has not been checked yet. */
   total: Readout | null;
   flow: Readout;
-  /** Null when the totalizer DataRef did not resolve. */
+  /** Null when the totalizer DataRef did not resolve, or has not been checked yet. */
   used: Readout | null;
   endurance: Readout;
-  /** Legends of totalizer rows not drawn. */
+  /** Legends of totalizer rows not drawn because their DataRef did not resolve. */
   missing: readonly string[];
 }
 
 /** Below this flow, endurance is not shown: an idle or stopped engine would give days. */
 export const ENDURANCE_MIN_FLOW_KG_H = 1;
+/** A tank holding more than this share of its computed capacity means the capacity is wrong. */
+export const CAPACITY_TOLERANCE = 1.05;
 const SIDE_THRESHOLD = 0.5;
 const NO_VALUE = '—';
 
-function slotLimit(reader: EngineReader): number | null {
-  if (!reader.has(FUEL.count)) {
-    return null;
-  }
-  const count = reader.number(FUEL.count);
+function validCount(count: number | null): number | null {
   return count !== null && Number.isInteger(count) && count >= 0
     ? Math.min(count, TANK_SLOTS)
     : null;
 }
 
-/** Spec §4.7: slots with a ratio above 0 (below the slot count when it resolves); without ratios,
- * every slot below the count; without both, unknown. */
-export function usedSlots(reader: EngineReader): number[] | null {
-  const limit = slotLimit(reader);
+/**
+ * Spec §4.7: slots with a ratio above 0 (below the slot count when it resolves); without ratios,
+ * every slot below the count; without both, unknown (null). `pending` while the ratios have not
+ * been checked yet, or, without ratios, while the count has not been checked or has not arrived.
+ */
+export function usedSlots(reader: EngineReader): number[] | null | 'pending' {
   if (reader.has(FUEL.ratio)) {
+    const limit = reader.has(FUEL.count) ? validCount(reader.number(FUEL.count)) : null;
     const slots: number[] = [];
     for (let slot = 0; slot < (limit ?? TANK_SLOTS); slot += 1) {
       const ratio = reader.number(FUEL.ratio, slot);
@@ -61,6 +66,17 @@ export function usedSlots(reader: EngineReader): number[] | null {
     }
     return slots;
   }
+  if (!reader.missing(FUEL.ratio)) {
+    return 'pending';
+  }
+  if (reader.missing(FUEL.count)) {
+    return null;
+  }
+  const count = reader.has(FUEL.count) ? reader.number(FUEL.count) : null;
+  if (count === null) {
+    return 'pending';
+  }
+  const limit = validCount(count);
   return limit === null ? null : Array.from({ length: limit }, (_, slot) => slot);
 }
 
@@ -118,8 +134,14 @@ export function fuelPage(
   const missing: string[] = [];
 
   let tanks: TankReading[] | null = null;
+  let tanksPending = false;
   const slots = usedSlots(reader);
-  if (slots !== null && reader.has(FUEL.perTank)) {
+  if (reader.missing(FUEL.perTank) || slots === null) {
+    tanks = null;
+  } else if (!reader.has(FUEL.perTank) || slots === 'pending') {
+    tanks = [];
+    tanksPending = true;
+  } else {
     const names = tankNames(slots, reader);
     const capacityLb = reader.has(FUEL.capacity) ? reader.number(FUEL.capacity) : null;
     tanks = slots.map((slot, index) => {
@@ -130,10 +152,12 @@ export function fuelPage(
         capacityLb !== null && capacityLb > 0 && ratio !== null && ratio > 0
           ? capacityLb * KG_PER_LB * ratio
           : null;
+      // The capacity's unit is unsettled (lb per Laminar, but other `acf_m_*` weights read as
+      // kg): a tank well over its computed capacity means the capacity is wrong, so no bar
+      // rather than a full one.
+      const share = quantity !== null && capacityKg !== null ? quantity / capacityKg : null;
       const fraction =
-        quantity !== null && capacityKg !== null
-          ? Math.min(1, Math.max(0, quantity / capacityKg))
-          : null;
+        share === null || share > CAPACITY_TOLERANCE ? null : Math.min(1, Math.max(0, share));
       const text = quantity === null ? NO_VALUE : amount(quantity);
       return {
         slot,
@@ -153,7 +177,7 @@ export function fuelPage(
       totalKg === null
         ? { text: NO_VALUE, spoken: 'Total fuel, no value' }
         : { text: amount(totalKg), spoken: `Total fuel ${amount(totalKg)} ${unitWord}` };
-  } else {
+  } else if (reader.missing(FUEL.total)) {
     missing.push('TOTAL');
   }
 
@@ -181,7 +205,7 @@ export function fuelPage(
       usedKg === null
         ? { text: NO_VALUE, spoken: 'Fuel used, no value' }
         : { text: amount(usedKg), spoken: `Fuel used ${amount(usedKg)} ${unitWord}` };
-  } else {
+  } else if (reader.missing(FUEL.used)) {
     missing.push('USED');
   }
 
@@ -198,6 +222,7 @@ export function fuelPage(
 
   return {
     tanks,
+    tanksPending,
     unit: kg ? 'KG' : 'LB',
     flowUnit: kg ? 'KG/H' : 'LB/H',
     total,

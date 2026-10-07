@@ -1,4 +1,5 @@
 import type { GaugeId, GaugeSpec } from '@/domain/engines/catalogue';
+import type { EngineReader } from '@/domain/engines/engine-page';
 import { type TemperatureUnit, type UnitPreferences, convertFuel } from '@/domain/units/units';
 
 /** Exact: 1 N·m = 0.737562 ft-lb (to six figures). */
@@ -30,15 +31,15 @@ export function redlineRpm(radPerSecond: number | null): number | null {
 
 /**
  * The unit a temperature arrives in (spec §4.4). `unknown`: the aircraft does not publish the
- * flag, so the value is shown as reported. `pending`: the flag resolved but its value has not
- * arrived yet. Null for a gauge that is not a temperature.
+ * flag (the probe found it missing), so the value is shown as reported. `pending`: the flag has
+ * not been checked yet, or resolved but its value has not arrived. Null for a gauge that is not a
+ * temperature.
  */
 export type TemperatureSource = 'C' | 'F' | 'unknown' | 'pending';
 
 export function temperatureSource(
   spec: GaugeSpec,
-  has: (name: string) => boolean,
-  read: (name: string) => number | null,
+  reader: Pick<EngineReader, 'has' | 'missing' | 'number'>,
 ): TemperatureSource | null {
   if (spec.temperature === null) {
     return null;
@@ -46,10 +47,13 @@ export function temperatureSource(
   if (spec.temperature.kind === 'celsius') {
     return 'C';
   }
-  if (!has(spec.temperature.name)) {
+  if (reader.missing(spec.temperature.name)) {
     return 'unknown';
   }
-  const flag = read(spec.temperature.name);
+  if (!reader.has(spec.temperature.name)) {
+    return 'pending';
+  }
+  const flag = reader.number(spec.temperature.name);
   if (flag === null) {
     return 'pending';
   }
@@ -138,7 +142,8 @@ export function formatGauge(
     }
     case 'ff': {
       const perHour = convertFuel(value, units.fuel);
-      return perHour < 100 ? fixed(perHour, 1) : groupedWhole(perHour);
+      // Decided on the value as one decimal would show it, so 99.96 reads "100", never "100.0".
+      return Math.round(perHour * 10) / 10 < 100 ? fixed(perHour, 1) : groupedWhole(perHour);
     }
     case 'oilP':
       return signedWhole(value);

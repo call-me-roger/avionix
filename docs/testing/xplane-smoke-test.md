@@ -193,7 +193,7 @@ Record results at the bottom.
 | 164 | A default airliner: start an engine | N1, EGT, N2 and FF match its engine display; EPR shows a plausible ratio | |
 | 165 | Cessna 172: compare the EGT, CHT and oil bands on Engines with the G1000's | The bands sit where the G1000 draws them (confirms the marking units) | |
 | 166 | Cessna 172: Settings → temperature °F, then °C | EGT matches the cockpit in both; no "doesn't say which unit" line on default aircraft | |
-| 167 | Cessna 172: FUEL page | Two tanks named LEFT and RIGHT; full tanks read about 100 %; TOTAL equals the flight-data strip | |
+| 167 | Cessna 172: FUEL page with full tanks, then about half fuel loaded in Weight & Balance | Two tanks named LEFT and RIGHT; full tanks read about 100 %, and each bar near 50 % at half fuel (settles whether the tank capacity is lb or kg: were it kg, full and half tanks would show no bar); TOTAL equals the flight-data strip | |
 | 168 | Cessna 172 in cruise: FUEL page | ENDURANCE roughly matches the G1000's fuel calculation; FLOW matches the cockpit's fuel flow | |
 | 169 | Cessna 172 in cruise: LEAN on, lean the mixture through peak EGT | The peak tick stays at the highest EGT; ΔPEAK reads 0 at peak and negative past it; LEAN off clears it | |
 | 170 | Cessna 172: ELEC page with the battery switch on, then off | Bus volts and battery amps match the G1000's electrical page; battery amps go negative with the alternator off | |

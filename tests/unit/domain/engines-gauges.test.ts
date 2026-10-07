@@ -126,24 +126,27 @@ describe('units and formats (spec §4.3, §4.4)', () => {
   });
 
   it('reads the temperature source from the flag, CHT as Celsius, unknown without the flag', () => {
-    const has = (name: string) => name !== 'sim/aircraft/engine/acf_ITT_is_C';
     const flags: Record<string, number> = {
       'sim/aircraft/engine/acf_EGT_is_C': 0,
       'sim/aircraft/engine/acf_oilT_is_C': 1,
     };
-    const read = (name: string) => flags[name] ?? null;
-    expect(temperatureSource(GAUGES.egt, has, read)).toBe('F');
-    expect(temperatureSource(GAUGES.oilT, has, read)).toBe('C');
-    expect(temperatureSource(GAUGES.cht, has, read)).toBe('C');
-    expect(temperatureSource(GAUGES.itt, has, read)).toBe('unknown');
-    expect(temperatureSource(GAUGES.rpm, has, read)).toBeNull();
-    // Resolved but no value yet: pending, not unknown, so no sentence flashes at connect.
+    const flag = {
+      has: (name: string) => name in flags,
+      missing: (name: string) => name === 'sim/aircraft/engine/acf_ITT_is_C',
+      number: (name: string) => flags[name] ?? null,
+    };
+    expect(temperatureSource(GAUGES.egt, flag)).toBe('F');
+    expect(temperatureSource(GAUGES.oilT, flag)).toBe('C');
+    expect(temperatureSource(GAUGES.cht, flag)).toBe('C');
+    expect(temperatureSource(GAUGES.itt, flag)).toBe('unknown');
+    expect(temperatureSource(GAUGES.rpm, flag)).toBeNull();
+    // Resolved but no value yet, or not checked yet: pending, not unknown, so no sentence flashes
+    // at connect.
     expect(
-      temperatureSource(
-        GAUGES.egt,
-        () => true,
-        () => null,
-      ),
+      temperatureSource(GAUGES.egt, { has: () => true, missing: () => false, number: () => null }),
+    ).toBe('pending');
+    expect(
+      temperatureSource(GAUGES.egt, { has: () => false, missing: () => false, number: () => null }),
     ).toBe('pending');
   });
 
@@ -168,6 +171,9 @@ describe('units and formats (spec §4.3, §4.4)', () => {
     expect(formatGauge('egt', 700, LB, 'pending')).toBe('—');
     expect(formatGauge('ff', 36, DEFAULT_UNITS, null)).toBe('36.0');
     expect(formatGauge('ff', 36, LB, null)).toBe('79.4');
+    // One decimal below 100, decided on the value rounded to one decimal.
+    expect(formatGauge('ff', 99.96, DEFAULT_UNITS, null)).toBe('100');
+    expect(formatGauge('ff', 99.94, DEFAULT_UNITS, null)).toBe('99.9');
     expect(formatGauge('ff', 1200, DEFAULT_UNITS, null)).toBe('1,200');
     expect(formatGauge('oilP', 61.6, DEFAULT_UNITS, null)).toBe('62');
   });

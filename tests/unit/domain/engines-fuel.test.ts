@@ -9,6 +9,11 @@ type Values = Record<string, number | number[]>;
 function reader(values: Values, missing: readonly string[] = []): EngineReader {
   return {
     has: (name) => !missing.includes(name) && name in values,
+    missing: (name) => missing.includes(name),
+    arrived: (name) => {
+      const value = values[name];
+      return value !== undefined && !(Array.isArray(value) && value.length === 0);
+    },
     number: (name, index = 0) => {
       const value = values[name];
       const candidate = Array.isArray(value) ? value[index] : index === 0 ? value : undefined;
@@ -68,6 +73,16 @@ describe('fuel tanks (spec §4.7)', () => {
     ).toBeNull();
   });
 
+  it('shows no bar when a tank holds more than its capacity allows (capacity unit unsettled)', () => {
+    // Slot 0's capacity: 370 lb × 0.5 = 83.9 kg; 5 % over it is 88.1 kg.
+    const over = fuelPage(reader({ ...C172, [FUEL.perTank]: nine(90, 42) }), DEFAULT_UNITS, 1);
+    expect(over.tanks?.[0]?.fraction).toBeNull();
+    expect(over.tanks?.[0]?.text).toBe('90');
+    expect(over.tanks?.[1]?.fraction).toBeCloseTo(0.5, 2);
+    const near = fuelPage(reader({ ...C172, [FUEL.perTank]: nine(87, 42) }), DEFAULT_UNITS, 1);
+    expect(near.tanks?.[0]?.fraction).toBe(1);
+  });
+
   it('has no tank list without per-tank fuel or slots', () => {
     expect(fuelPage(reader(C172, [FUEL.perTank]), DEFAULT_UNITS, 1).tanks).toBeNull();
     expect(fuelPage(reader(C172, [FUEL.ratio, FUEL.count]), DEFAULT_UNITS, 1).tanks).toBeNull();
@@ -112,6 +127,20 @@ describe('fuel totalizer (spec §4.7)', () => {
     expect(model.used).toBeNull();
     expect(model.missing).toEqual(['TOTAL', 'USED']);
     expect(model.endurance.text).toBe('—');
+  });
+
+  it('lists nothing as missing, and says nothing about tanks, while nothing has been checked yet', () => {
+    const model = fuelPage(reader({}), DEFAULT_UNITS, null);
+    expect(model.missing).toEqual([]);
+    expect(model.total).toBeNull();
+    expect(model.used).toBeNull();
+    expect(model.tanks).toEqual([]);
+    expect(model.tanksPending).toBe(true);
+    const checked = fuelPage(reader(C172), DEFAULT_UNITS, 1);
+    expect(checked.tanksPending).toBe(false);
+    const noTanks = fuelPage(reader(C172, [FUEL.perTank]), DEFAULT_UNITS, 1);
+    expect(noTanks.tanks).toBeNull();
+    expect(noTanks.tanksPending).toBe(false);
   });
 
   it('shows a non-finite tank as a dash with no bar (Review Focus 3)', () => {
