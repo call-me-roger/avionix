@@ -43,7 +43,7 @@
 | `src/features/panels/radios/AudioUnit.tsx` | The AUDIO unit | 3 |
 | `src/features/panels/radios/RadiosPanel.tsx`, `RadioRow.tsx`, `radios.ts` | Placement, MIC lamp, descriptor features | 3 |
 | `tests/helpers/audio.ts` | Values, compatibility, telemetry | 3 |
-| `tests/mock-xplane/mock-xplane-server.ts` | Audio DataRefs (1400+), commands (2300+), behaviour | 4 |
+| `tests/mock-xplane/mock-xplane-server.ts` | Audio DataRefs (1500+) and commands (2300+) from Task 1; behaviour | 1, 4 |
 | Docs: `docs/xplane.md`, `docs/architecture.md`, `README.md`, roadmap F-23 + ROADMAP row, smoke rows 173–181 | | 4 |
 
 ---
@@ -1472,7 +1472,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 4: Mock audio panel, integration tests and docs
 
 **Files:**
-- Modify: `tests/mock-xplane/mock-xplane-server.ts` (audio DataRefs from id 1400, commands from 2300, behaviour)
+- Modify: `tests/mock-xplane/mock-xplane-server.ts` (command behaviour; the names are already there from Task 1)
 - Create: `tests/integration/audio.test.ts`
 - Modify: `docs/xplane.md`, `docs/architecture.md`, `README.md`, `docs/roadmap/features/F-23-audio-panel.md`, `docs/roadmap/ROADMAP.md`, `docs/testing/xplane-smoke-test.md`
 
@@ -1559,42 +1559,9 @@ describe('the audio panel against the mock X-Plane', () => {
 Run: `npx jest tests/integration/audio.test.ts`
 Expected: FAIL — the model never becomes `ready` (the mock has no audio names).
 
-- [ ] **Step 3: Add the mock's audio panel**
+- [ ] **Step 3: Add the mock's audio behaviour**
 
-In `tests/mock-xplane/mock-xplane-server.ts`, import from `@/domain/audio/catalogue` and add:
-
-```ts
-/** F-23's audio panel: COM1 MIC, auto-listen on, listening to COM1 only. */
-function audioDataRefs(startId: number): MockDataRef[] {
-  let nextId = startId;
-  const flag = (name: string, value: number): MockDataRef => ({
-    id: nextId++,
-    name,
-    valueType: 'int',
-    value,
-    writable: true,
-  });
-  return [
-    flag(TRANSMIT.selection, 6),
-    flag(TRANSMIT.autoListen, 1),
-    ...MONITORS.map((spec) => flag(spec.state, spec.key === 'com1' ? 1 : 0)),
-  ];
-}
-
-/** The two transmit commands and every receiver's on/off pair. */
-function audioCommands(startId: number): MockCommand[] {
-  let nextId = startId;
-  return [
-    ...MICS.map((mic) => ({ id: nextId++, name: mic.command, description: `${mic.legend}.` })),
-    ...MONITORS.flatMap((spec) => [
-      { id: nextId++, name: spec.on, description: `Monitor ${spec.legend} on.` },
-      { id: nextId++, name: spec.off, description: `Monitor ${spec.legend} off.` },
-    ]),
-  ];
-}
-```
-
-Append `...audioDataRefs(1400)` to `DEFAULT_MOCK_DATAREFS` and `...audioCommands(2300)` to `DEFAULT_MOCK_COMMANDS`, each with a one-line comment in the style of the F-24/F-12 lines. In the command handler, beside `applySystemsCommand`, add:
+Task 1 already added the audio DataRefs (`audioDataRefs(1500)`: COM1 MIC, auto-listen on, COM1 heard) and commands (`audioCommands(2300)`) to `tests/mock-xplane/mock-xplane-server.ts`; do not add them again. Add only the behaviour, beside `applySystemsCommand`:
 
 ```ts
   /** As X-Plane: a MIC command selects that COM, hears it and mutes the other COM. */
