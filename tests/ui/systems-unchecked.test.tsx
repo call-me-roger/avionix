@@ -101,13 +101,21 @@ function unchecked(names?: readonly string[]): SessionSnapshot {
 }
 
 describe.each([
-  ['ENGINE', EngineSection],
-  ['LIGHTS', LightsSection],
-  ['FLIGHT', FlightSection],
-  ['ICE', IceSection],
-])('the %s page while names are being checked', (_page, section) => {
+  ['ENGINE', EngineSection, ['ELECTRICAL', 'FUEL']],
+  ['LIGHTS', LightsSection, ['EXTERIOR LIGHTS', 'INTERIOR LIGHTS']],
+  ['FLIGHT', FlightSection, ['FLAPS', 'TRIM', 'GEAR', 'BRAKES']],
+  ['ICE', IceSection, ['ANTI-ICE']],
+] as const)('the %s page while names are being checked', (_page, section, labels) => {
   it('prints no "not available" sentence', async () => {
     await render(tree(section, unchecked()));
+    expect(screen.queryByText(NOT_AVAILABLE)).toBeNull();
+  });
+
+  it('keeps every unit’s label, so nothing shifts when the names resolve', async () => {
+    await render(tree(section, unchecked()));
+    for (const label of labels) {
+      expect(screen.getByText(label)).toBeTruthy();
+    }
     expect(screen.queryByText(NOT_AVAILABLE)).toBeNull();
   });
 

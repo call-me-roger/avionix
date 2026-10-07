@@ -79,7 +79,10 @@ export function SwitchGroup({
       <AvionicsUnit label={label}>
         <BodyText muted>{unitUnavailable(sentenceCase(label), aircraftName(snapshot))}</BodyText>
       </AvionicsUnit>
-    ) : null;
+    ) : (
+      // Names still being checked: the bare label, so the page does not shift when they resolve.
+      <AvionicsUnit label={label}>{null}</AvionicsUnit>
+    );
   }
   const missing = states.filter((state) => state.missing).map((state) => state.spec.legend);
   return (

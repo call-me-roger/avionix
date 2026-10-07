@@ -63,7 +63,9 @@ function FuelUnit({ readBack }: SectionProps) {
       <AvionicsUnit label="FUEL">
         <BodyText muted>{unitUnavailable('Fuel selector', aircraftName(snapshot))}</BodyText>
       </AvionicsUnit>
-    ) : null;
+    ) : (
+      <AvionicsUnit label="FUEL">{null}</AvionicsUnit>
+    );
   }
   return (
     <AvionicsUnit label="FUEL">
@@ -127,7 +129,9 @@ export function LightsSection({ readBack }: SectionProps) {
           <AvionicsUnit label="INTERIOR LIGHTS">
             <BodyText muted>{unitUnavailable('Interior lights', aircraftName(snapshot))}</BodyText>
           </AvionicsUnit>
-        ) : null
+        ) : (
+          <AvionicsUnit label="INTERIOR LIGHTS">{null}</AvionicsUnit>
+        )
       ) : (
         <AvionicsUnit label="INTERIOR LIGHTS">
           {drawn.map((spec) => (
@@ -161,7 +165,9 @@ export function FlightSection({ readBack }: SectionProps) {
           <AvionicsUnit label="TRIM">
             <BodyText muted>{unitUnavailable('Trim', aircraft)}</BodyText>
           </AvionicsUnit>
-        ) : null
+        ) : (
+          <AvionicsUnit label="TRIM">{null}</AvionicsUnit>
+        )
       ) : (
         <AvionicsUnit label="TRIM">
           {trims.map((spec) => (
@@ -179,7 +185,9 @@ export function FlightSection({ readBack }: SectionProps) {
         <AvionicsUnit label="BRAKES">
           <BodyText muted>{unitUnavailable('Parking brake', aircraft)}</BodyText>
         </AvionicsUnit>
-      ) : null}
+      ) : (
+        <AvionicsUnit label="BRAKES">{null}</AvionicsUnit>
+      )}
     </View>
   );
 }

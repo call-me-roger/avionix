@@ -76,7 +76,9 @@ export function GearUnit({ readBack }: { readBack: ReadBack }) {
       <AvionicsUnit label="GEAR">
         <BodyText muted>{unitUnavailable('Landing gear', aircraft)}</BodyText>
       </AvionicsUnit>
-    ) : null;
+    ) : (
+      <AvionicsUnit label="GEAR">{null}</AvionicsUnit>
+    );
   }
   const retractable = bindingOk(snapshot, GEAR.retractable)
     ? numberAt(valueOf(snapshot, GEAR.retractable), 0)

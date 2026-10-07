@@ -62,7 +62,9 @@ export function FlapsUnit({ readBack }: { readBack: ReadBack }) {
       <AvionicsUnit label="FLAPS">
         <BodyText muted>{unitUnavailable('Flaps', aircraft)}</BodyText>
       </AvionicsUnit>
-    ) : null;
+    ) : (
+      <AvionicsUnit label="FLAPS">{null}</AvionicsUnit>
+    );
   }
   const optional = (name: string) =>
     bindingOk(snapshot, name) ? numberAt(valueOf(snapshot, name), 0) : null;
