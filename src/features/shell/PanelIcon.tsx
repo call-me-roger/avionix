@@ -120,6 +120,29 @@ function renderGlyph(id: string, color: string): React.ReactNode {
           ))}
         </>
       );
+    case 'engines':
+      return (
+        <>
+          {/* A dial: a 240° arc around a hub, its needle pointing up and right. */}
+          <Path
+            d="M5.07 16 A8 8 0 1 1 18.93 16"
+            stroke={color}
+            strokeWidth={2}
+            strokeLinecap="round"
+            fill="none"
+          />
+          <Line
+            x1={12}
+            y1={12}
+            x2={16.5}
+            y2={7.5}
+            stroke={color}
+            strokeWidth={2}
+            strokeLinecap="round"
+          />
+          <Circle cx={12} cy={12} r={1.6} fill={color} />
+        </>
+      );
     case 'cdu':
       return (
         <>

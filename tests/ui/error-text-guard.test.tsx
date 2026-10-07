@@ -24,6 +24,7 @@ import { UnitsProvider } from '@/features/units/UnitsProvider';
 import { ThemeProvider } from '@/theme/theme-context';
 
 import { toyScreenTelemetry } from '../helpers/cdu';
+import { C172_VALUES, enginesCompatibility, enginesTelemetry } from '../helpers/engines';
 import { SYSTEMS_VALUES, systemsCompatibility, systemsTelemetry } from '../helpers/systems';
 
 const mockShareText = jest.fn(async (_text: string, _title: string) => undefined);
@@ -137,6 +138,7 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
               // binding set the real deriver marks 'ok', not the default snapshot's empty one, and
               // its own telemetry so FLAPS, the parking brake and the rest have values to show.
               const systems = descriptor.id === 'systems';
+              const engines = descriptor.id === 'engines';
               return (
                 <PanelFrame
                   key={descriptor.id}
@@ -147,11 +149,15 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
                     operations: failedOperationsFor(code),
                     telemetry: systems
                       ? systemsTelemetry(SYSTEMS_VALUES, 9_000)
-                      : // The CDU's live glass and keys, not its waiting state: a screen on both units.
-                        { ...toyScreenTelemetry(1, 9_000), ...toyScreenTelemetry(2, 9_000) },
+                      : engines
+                        ? enginesTelemetry(C172_VALUES, 9_000)
+                        : // The CDU's live glass and keys, not its waiting state: a screen on both units.
+                          { ...toyScreenTelemetry(1, 9_000), ...toyScreenTelemetry(2, 9_000) },
                     ...(systems
                       ? { compatibility: systemsCompatibility(snapshotFor(code).compatibility) }
-                      : null),
+                      : engines
+                        ? { compatibility: enginesCompatibility(snapshotFor(code).compatibility) }
+                        : null),
                   }}
                   now={10_000}
                   actions={{
@@ -176,6 +182,9 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
     // own FailureNotice/OperationNotice, not an untouched default snapshot's.
     expect(screen.getByText('PARK BRAKE')).toBeTruthy();
     expect(screen.getByLabelText('Flaps down one notch')).toBeTruthy();
+    // Engines is covered live too: its dial is drawn from its own telemetry, so the sentences
+    // checked below include the ones it would print.
+    expect(screen.getByLabelText('Engine 1 RPM 2,350')).toBeTruthy();
     expect(screen.queryByText(new RegExp('http://'))).toBeNull();
     expect(screen.queryByText(/HTTP 403/)).toBeNull();
     expect(screen.queryByText(/avx_secret/)).toBeNull();
