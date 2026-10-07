@@ -767,6 +767,123 @@ describe('ControlButton', () => {
       expect(screen.getByRole('button', { name: 'Disconnect' })).toBeTruthy();
     });
   });
+
+  describe('hold', () => {
+    function holdKey(
+      hold: { onStart: () => void; onEnd: () => void; armedLegend?: string },
+      confirm?: boolean,
+    ) {
+      return (
+        <ControlButton
+          label="START"
+          featureId={FEATURE_HEADING_CONTROL}
+          target="t"
+          onPress={jest.fn()}
+          hold={hold}
+          confirm={confirm}
+        />
+      );
+    }
+
+    it('starts on press-in, ends on press-out, and the press that follows does nothing more', async () => {
+      const onStart = jest.fn();
+      const onEnd = jest.fn();
+      await renderInFrame(live(), holdKey({ onStart, onEnd }));
+      const key = screen.getByRole('button', { name: 'START' });
+      await fireEvent(key, 'pressIn');
+      expect(onStart).toHaveBeenCalledTimes(1);
+      expect(onEnd).not.toHaveBeenCalled();
+      await fireEvent(key, 'pressOut');
+      expect(onEnd).toHaveBeenCalledTimes(1);
+      await fireEvent.press(key);
+      expect(onStart).toHaveBeenCalledTimes(1);
+      expect(onEnd).toHaveBeenCalledTimes(1);
+      expect(haptics.press).toHaveBeenCalledTimes(1);
+    });
+
+    it('nudges on a screen reader’s activation (press alone): start then end, once each', async () => {
+      const calls: string[] = [];
+      await renderInFrame(
+        live(),
+        holdKey({ onStart: () => calls.push('start'), onEnd: () => calls.push('end') }),
+      );
+      await fireEvent.press(screen.getByRole('button', { name: 'START' }));
+      expect(calls).toEqual(['start', 'end']);
+    });
+
+    describe('with confirm', () => {
+      beforeEach(() => jest.useFakeTimers());
+      afterEach(() => jest.useRealTimers());
+
+      it('holds only once armed, and disarms after the hold', async () => {
+        const onStart = jest.fn();
+        const onEnd = jest.fn();
+        await renderInFrame(
+          live(),
+          holdKey({ onStart, onEnd, armedLegend: 'HOLD TO START' }, true),
+        );
+        const unarmed = screen.getByRole('button', { name: 'START' });
+        await fireEvent(unarmed, 'pressIn');
+        await fireEvent(unarmed, 'pressOut');
+        expect(onStart).not.toHaveBeenCalled();
+        expect(onEnd).not.toHaveBeenCalled();
+
+        await fireEvent.press(unarmed);
+        expect(onStart).not.toHaveBeenCalled();
+        expect(screen.getByText('HOLD TO START')).toBeTruthy();
+
+        const armed = screen.getByRole('button', { name: 'HOLD TO START' });
+        await fireEvent(armed, 'pressIn');
+        expect(onStart).toHaveBeenCalledTimes(1);
+        await fireEvent(armed, 'pressOut');
+        expect(onEnd).toHaveBeenCalledTimes(1);
+        await fireEvent.press(armed);
+        expect(screen.getByText('START')).toBeTruthy();
+        expect(screen.queryByText('HOLD TO START')).toBeNull();
+        expect(onStart).toHaveBeenCalledTimes(1);
+        expect(onEnd).toHaveBeenCalledTimes(1);
+      });
+
+      it('arms on the next tap after a hold the system cancelled (no press after press-out)', async () => {
+        const onStart = jest.fn();
+        await renderInFrame(
+          live(),
+          holdKey({ onStart, onEnd: jest.fn(), armedLegend: 'HOLD TO START' }, true),
+        );
+        await fireEvent.press(screen.getByRole('button', { name: 'START' }));
+        const armed = screen.getByRole('button', { name: 'HOLD TO START' });
+        await fireEvent(armed, 'pressIn');
+        await fireEvent(armed, 'pressOut');
+        await act(async () => {
+          jest.advanceTimersByTime(3000);
+        });
+        const key = screen.getByRole('button', { name: 'START' });
+        await fireEvent(key, 'pressIn');
+        await fireEvent(key, 'pressOut');
+        await fireEvent.press(key);
+        expect(screen.getByText('HOLD TO START')).toBeTruthy();
+        expect(onStart).toHaveBeenCalledTimes(1);
+      });
+
+      it('reads "Tap again: <label>" while armed when no armed legend is given', async () => {
+        await renderInFrame(live(), holdKey({ onStart: jest.fn(), onEnd: jest.fn() }, true));
+        await fireEvent.press(screen.getByRole('button', { name: 'START' }));
+        expect(screen.getByText('Tap again: START')).toBeTruthy();
+      });
+    });
+
+    it('does nothing on press-in while controls are off', async () => {
+      const onStart = jest.fn();
+      const onEnd = jest.fn();
+      await renderInFrame({ ...base, state: 'reconnecting' }, holdKey({ onStart, onEnd }));
+      const key = screen.getByRole('button', { name: 'START' });
+      await fireEvent(key, 'pressIn');
+      await fireEvent(key, 'pressOut');
+      expect(onStart).not.toHaveBeenCalled();
+      expect(onEnd).not.toHaveBeenCalled();
+      expect(haptics.press).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('Keypad', () => {
