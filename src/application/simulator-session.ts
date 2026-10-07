@@ -43,6 +43,7 @@ import type { ConnectorInfo } from '@/domain/connector/connector-info';
 import { AvionixError, toAvionixError } from '@/domain/errors/avionix-error';
 import type { ConnectStep } from '@/domain/health/failure-explanation';
 import type { ActivationResult } from '@/domain/panels/activation';
+import { HOLD_LEASE_SEC, type HoldPhase } from '@/domain/panels/hold-lease';
 import { type ApiVersion, negotiateApiVersion } from '@/domain/simulator/api-version';
 import { decodeDataRefString } from '@/domain/simulator/dataref-string';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
@@ -222,6 +223,8 @@ export class SimulatorSession {
    * new session's control.
    */
   private operationsEpoch = 0;
+  /** Command name → the connection generation its hold was pressed on (F-24 §4.3). */
+  private readonly holds = new Map<string, number>();
 
   constructor(private readonly deps: SimulatorSessionDeps) {
     this.policy = deps.reconnectPolicy ?? DEFAULT_RECONNECT_POLICY;
@@ -498,6 +501,85 @@ export class SimulatorSession {
       this.recordOutcome(epoch, name, { status: 'ok', failure: null, refusal: null });
       return 'ok';
     } catch (error) {
+      this.recordFailure(
+        epoch,
+        name,
+        toAvionixError(error, { code: 'COMMAND_FAILED', message: 'Command failed' }),
+      );
+      return 'failed';
+    }
+  }
+
+  /**
+   * Presses, renews or releases a held command binding of `featureId` (F-24 §4.3). `press` and
+   * `renew` keep it active for `leaseSec`; X-Plane lets it lapse by itself after that, which is
+   * what stops trim if this phone goes silent. Never rejects. A press is refused and recorded as
+   * `activate`'s is, and its success is recorded once; a renewal or release records only a
+   * failure, because a held key renews five times a second and the store must not churn the
+   * panel at that rate. A renewal or release belongs to the connection its press was made on:
+   * after a reconnect it is refused (R5: a hold never resumes).
+   */
+  async holdCommand(
+    featureId: string,
+    name: string,
+    phase: HoldPhase,
+    leaseSec = HOLD_LEASE_SEC,
+  ): Promise<ActivationResult> {
+    const epoch = this.operationsEpoch;
+    if (phase !== 'press') {
+      const active = this.active;
+      const pressedOn = this.holds.get(name);
+      if (phase === 'release') {
+        this.holds.delete(name);
+      }
+      const command = active?.commandsByName.get(name);
+      if (
+        active === null ||
+        command === undefined ||
+        pressedOn !== active.generation ||
+        this.store.getSnapshot().state !== 'connected'
+      ) {
+        return 'refused';
+      }
+      try {
+        await (phase === 'renew'
+          ? active.client.setCommandActive(command.id, true, leaseSec)
+          : active.client.setCommandActive(command.id, false));
+        return 'ok';
+      } catch (error) {
+        this.holds.delete(name);
+        if (phase === 'renew') {
+          this.recordFailure(
+            epoch,
+            name,
+            toAvionixError(error, { code: 'COMMAND_FAILED', message: 'Command failed' }),
+          );
+        }
+        return 'failed';
+      }
+    }
+    const active = this.connectedOrRefuse(epoch, name);
+    if (active === null) {
+      return 'refused';
+    }
+    const binding = findFeature(active.profile, featureId)?.bindings.find(
+      (candidate) => candidate.kind === 'command' && candidate.name === name,
+    );
+    const command = binding === undefined ? undefined : active.commandsByName.get(name);
+    const resolvedOk = this.store.getSnapshot().compatibility.bindings[name]?.status === 'ok';
+    if (command === undefined || !resolvedOk || !this.featureUsable(featureId)) {
+      this.refuse(epoch, name, 'unavailable');
+      return 'refused';
+    }
+    this.holds.set(name, active.generation);
+    try {
+      await this.timed(active.generation, () =>
+        active.client.setCommandActive(command.id, true, leaseSec),
+      );
+      this.recordOutcome(epoch, name, { status: 'ok', failure: null, refusal: null });
+      return 'ok';
+    } catch (error) {
+      this.holds.delete(name);
       this.recordFailure(
         epoch,
         name,

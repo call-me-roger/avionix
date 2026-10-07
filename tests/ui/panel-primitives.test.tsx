@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import React from 'react';
 import { StyleSheet, Text } from 'react-native';
 
@@ -22,7 +22,7 @@ import {
 } from '@/features/panels/primitives/ControlButton';
 import { DisplayWindow } from '@/features/panels/primitives/DisplayWindow';
 import { Keypad } from '@/features/panels/primitives/Keypad';
-import type { PanelActions } from '@/features/panels/primitives/PanelContext';
+import { type PanelScopeActions, usePanel } from '@/features/panels/primitives/PanelContext';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { Readout } from '@/features/panels/primitives/Readout';
 import { ValueEntry } from '@/features/panels/primitives/ValueEntry';
@@ -60,7 +60,7 @@ function live(overrides: Partial<SessionSnapshot> = {}): SessionSnapshot {
   };
 }
 
-const actions: PanelActions = {
+const actions: PanelScopeActions = {
   write: jest.fn(async () => undefined),
   activate: jest.fn(async () => 'ok' as const),
 };
@@ -104,6 +104,44 @@ describe('PanelFrame', () => {
     );
     expect(screen.getAllByTestId('panel-notice')).toHaveLength(1);
     expect(screen.getByText('Not connected. Showing the last known values.')).toBeTruthy();
+  });
+
+  describe('default hold', () => {
+    function HoldProbe({ onResult }: { onResult: (result: string) => void }) {
+      const { hold } = usePanel();
+      return (
+        <Text
+          accessibilityRole="button"
+          onPress={() => {
+            void hold('feature', 'name', 'press').then(onResult);
+          }}
+        >
+          Hold
+        </Text>
+      );
+    }
+
+    it('refuses every hold when the panel is given no hold action', async () => {
+      const onResult = jest.fn();
+      await renderInFrame(live(), <HoldProbe onResult={onResult} />);
+      await fireEvent.press(screen.getByText('Hold'));
+      await waitFor(() => expect(onResult).toHaveBeenCalledWith('refused'));
+    });
+
+    it('calls the given hold action with its arguments', async () => {
+      const hold = jest.fn(async () => 'ok' as const);
+      const onResult = jest.fn();
+      await render(
+        <ThemeProvider storage={createMemorySettingsStorage()} systemSchemeOverride="light">
+          <PanelFrame title="Test panel" snapshot={live()} now={NOW} actions={{ ...actions, hold }}>
+            <HoldProbe onResult={onResult} />
+          </PanelFrame>
+        </ThemeProvider>,
+      );
+      await fireEvent.press(screen.getByText('Hold'));
+      await waitFor(() => expect(onResult).toHaveBeenCalledWith('ok'));
+      expect(hold).toHaveBeenCalledWith('feature', 'name', 'press');
+    });
   });
 });
 

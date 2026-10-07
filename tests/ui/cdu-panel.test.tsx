@@ -20,7 +20,7 @@ import { EVERYWHERE } from '@/domain/panels/panel';
 import { CDU_STORAGE_KEY } from '@/features/panels/cdu/cdu-preference';
 import { CDU_PANEL, CduPanel } from '@/features/panels/cdu/CduPanel';
 import { CduPreferenceProvider } from '@/features/panels/cdu/CduPreferenceProvider';
-import type { PanelActions } from '@/features/panels/primitives/PanelContext';
+import type { PanelScopeActions } from '@/features/panels/primitives/PanelContext';
 import { PanelScope } from '@/features/panels/primitives/PanelFrame';
 import { ThemeProvider } from '@/theme/theme-context';
 
@@ -105,7 +105,7 @@ const activate = jest.fn((_featureId: string, _command: string) => {
   return d.promise;
 });
 
-const actions: PanelActions = {
+const actions: PanelScopeActions = {
   write: jest.fn(async () => undefined),
   activate,
 };

@@ -162,6 +162,18 @@ export class XPlaneClient implements SimulatorClient {
     }
   }
 
+  async setCommandActive(id: number, active: boolean, durationSeconds?: number): Promise<void> {
+    const command: Record<string, unknown> = { id, is_active: active };
+    if (active && durationSeconds !== undefined) {
+      command.duration = durationSeconds;
+    }
+    try {
+      await this.requireSocket().send('command_set_is_active', { commands: [command] });
+    } catch (error) {
+      throw wrap(error, 'COMMAND_FAILED', `Holding command ${id} failed`);
+    }
+  }
+
   connectWebSocket(): Promise<void> {
     if (this.socket !== null && this.connecting === null) {
       return Promise.resolve();

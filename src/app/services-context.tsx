@@ -13,6 +13,7 @@ export type SessionApi = Pick<
   | 'pair'
   | 'write'
   | 'activate'
+  | 'holdCommand'
   | 'recheckCompatibility'
   | 'setDemand'
 >;

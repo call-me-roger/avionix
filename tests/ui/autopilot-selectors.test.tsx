@@ -10,7 +10,7 @@ import {
   GENERIC_PROFILE,
 } from '@/domain/aircraft/profiles/generic';
 import { AutopilotPanel } from '@/features/panels/autopilot/AutopilotPanel';
-import type { PanelActions } from '@/features/panels/primitives/PanelContext';
+import type { PanelScopeActions } from '@/features/panels/primitives/PanelContext';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
 import { ThemeProvider } from '@/theme/theme-context';
@@ -67,7 +67,7 @@ function live(overrides: Partial<SessionSnapshot> = {}): SessionSnapshot {
   };
 }
 
-const actions: PanelActions = {
+const actions: PanelScopeActions = {
   write: jest.fn(async () => undefined),
   activate: jest.fn(async () => 'ok' as const),
 };

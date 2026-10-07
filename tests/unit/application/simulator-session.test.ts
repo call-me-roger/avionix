@@ -35,6 +35,7 @@ import {
   ENGINES,
   ENGINE_NUMBERS,
   EXTERIOR_LIGHTS,
+  FEATURE_TRIM,
   FLAPS,
   FUEL_SELECTOR,
   GEAR,
@@ -361,6 +362,10 @@ class FakeClient implements SimulatorClient {
   activateCommand = jest.fn(async (id: number) => {
     this.activations.push(id);
   });
+
+  setCommandActive = jest.fn(
+    async (_id: number, _active: boolean, _duration?: number) => undefined,
+  );
 
   connectWebSocket = jest.fn(async () => {
     if (this.connectError !== null) {
@@ -928,6 +933,89 @@ describe('SimulatorSession operations', () => {
     await writing;
     expect(snapshot().operations[HEADING]).toBeUndefined();
     expect(snapshot().state).toBe('connected');
+  });
+});
+
+describe('holding a command (F-24 §4.3)', () => {
+  const PITCH_UP = TRIMS[0]!.increase.command;
+  const COMMAND_ID = 9;
+
+  it('presses with a lease, renews and releases on the same connection', async () => {
+    const { session, clients } = setup();
+    await session.connect('192.168.1.100', 8086);
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press')).toBe('ok');
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew')).toBe('ok');
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'release')).toBe('ok');
+    expect(clients[0]?.setCommandActive.mock.calls).toEqual([
+      [COMMAND_ID, true, 0.5],
+      [COMMAND_ID, true, 0.5],
+      [COMMAND_ID, false, undefined],
+    ]);
+  });
+
+  it('records the press once and never a renewal, so a held key does not churn the store', async () => {
+    const { session } = setup();
+    await session.connect('192.168.1.100', 8086);
+    const listener = jest.fn();
+    session.store.subscribe(listener);
+    await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press');
+    const afterPress = listener.mock.calls.length;
+    await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew');
+    await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew');
+    await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'release');
+    expect(listener.mock.calls.length).toBe(afterPress);
+    expect(session.store.getSnapshot().operations[PITCH_UP]?.status).toBe('ok');
+  });
+
+  it('refuses a renewal or release without a press on this connection', async () => {
+    const { session, clients } = setup();
+    await session.connect('192.168.1.100', 8086);
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew')).toBe('refused');
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'release')).toBe('refused');
+    expect(clients[0]?.setCommandActive).not.toHaveBeenCalled();
+  });
+
+  it('refuses a renewal after the socket dropped and the session reconnected (R5)', async () => {
+    const first = new FakeClient();
+    const second = new FakeClient();
+    const { session, scheduler, snapshot } = setup({ clients: [first, second] });
+    await session.connect('192.168.1.100', 8086);
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press')).toBe('ok');
+    // Drop the socket: the scheduler's next timer reconnects on the second client.
+    first.emitClose({ code: 1006, reason: '', wasClean: false, initiatedByClient: false });
+    expect(snapshot().state).toBe('reconnecting');
+    await scheduler.runNext();
+    expect(snapshot().state).toBe('connected');
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew')).toBe('refused');
+    expect(second.setCommandActive).not.toHaveBeenCalled();
+  });
+
+  it('refuses a press like activate: not connected, unresolved or unusable', async () => {
+    const { session: notConnectedSession, clients: notConnectedClients, snapshot } = setup();
+    expect(await notConnectedSession.holdCommand(FEATURE_TRIM, PITCH_UP, 'press')).toBe('refused');
+    expect(snapshot().operations[PITCH_UP]).toMatchObject({
+      status: 'failed',
+      failure: null,
+      refusal: 'notConnected',
+    });
+    expect(notConnectedClients[0]?.setCommandActive).not.toHaveBeenCalled();
+
+    const client = new FakeClient();
+    client.missingCommand = PITCH_UP;
+    const { session, snapshot: unresolvedSnapshot } = setup({ clients: [client] });
+    await session.connect('192.168.1.100', 8086);
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press')).toBe('refused');
+    expect(unresolvedSnapshot().operations[PITCH_UP]?.refusal).toBe('unavailable');
+    expect(client.setCommandActive).not.toHaveBeenCalled();
+  });
+
+  it('records a failed press or renewal and forgets the hold', async () => {
+    const { session, clients, snapshot } = setup();
+    await session.connect('192.168.1.100', 8086);
+    clients[0]?.setCommandActive.mockRejectedValueOnce(new Error('socket gone'));
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'press')).toBe('failed');
+    expect(snapshot().operations[PITCH_UP]?.failure?.code).toBe('COMMAND_FAILED');
+    expect(await session.holdCommand(FEATURE_TRIM, PITCH_UP, 'renew')).toBe('refused');
   });
 });
 

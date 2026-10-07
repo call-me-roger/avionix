@@ -16,7 +16,7 @@ import {
   queueTagMatches,
   useCduKeys,
 } from '@/features/panels/cdu/useCduKeys';
-import type { PanelActions } from '@/features/panels/primitives/PanelContext';
+import type { PanelScopeActions } from '@/features/panels/primitives/PanelContext';
 import { PanelScope } from '@/features/panels/primitives/PanelFrame';
 
 const NOW = 1_000_000;
@@ -78,7 +78,7 @@ const activate = jest.fn(() => {
   return d.promise;
 });
 
-const actions: PanelActions = {
+const actions: PanelScopeActions = {
   write: jest.fn(async () => undefined),
   activate,
 };

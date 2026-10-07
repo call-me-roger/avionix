@@ -306,6 +306,89 @@ async function writeValue(server: MockXPlaneServer, name: string, value: number)
   });
 }
 
+describe('command holds in the mock', () => {
+  it('tracks a leased hold until it lapses, an open hold until released or the socket closes, and still activates a zero-duration press', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      const { socket, next } = await openSocket(`ws://${server.host}:${server.port}/api/v3`);
+      const leased = server.commandIdByName('sim/autopilot/heading_up');
+      const open = server.commandIdByName('sim/radios/com1_standy_flip');
+
+      // A zero-duration press still activates, exactly as before F-24.
+      const press = next((m) => isRecord(m) && m.req_id === 1);
+      socket.send(
+        JSON.stringify({
+          req_id: 1,
+          type: 'command_set_is_active',
+          params: { commands: [{ id: leased, is_active: true, duration: 0 }] },
+        }),
+      );
+      await press;
+      expect(server.activations).toEqual([{ id: leased, duration: 0 }]);
+      expect(server.heldCommandNames()).toEqual([]);
+
+      // A leased hold shows at once and lapses on its own after the lease.
+      const leasedResult = next((m) => isRecord(m) && m.req_id === 2);
+      socket.send(
+        JSON.stringify({
+          req_id: 2,
+          type: 'command_set_is_active',
+          params: { commands: [{ id: leased, is_active: true, duration: 0.2 }] },
+        }),
+      );
+      await leasedResult;
+      expect(server.heldCommandNames()).toEqual(['sim/autopilot/heading_up']);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(server.heldCommandNames()).toEqual([]);
+
+      // An open hold (no duration) stays held until explicitly released.
+      const openResult = next((m) => isRecord(m) && m.req_id === 3);
+      socket.send(
+        JSON.stringify({
+          req_id: 3,
+          type: 'command_set_is_active',
+          params: { commands: [{ id: open, is_active: true }] },
+        }),
+      );
+      await openResult;
+      expect(server.heldCommandNames()).toEqual(['sim/radios/com1_standy_flip']);
+      const releaseResult = next((m) => isRecord(m) && m.req_id === 4);
+      socket.send(
+        JSON.stringify({
+          req_id: 4,
+          type: 'command_set_is_active',
+          params: { commands: [{ id: open, is_active: false }] },
+        }),
+      );
+      await releaseResult;
+      expect(server.heldCommandNames()).toEqual([]);
+
+      // An open hold is also cleared when the socket that pressed it closes.
+      const reopenResult = next((m) => isRecord(m) && m.req_id === 5);
+      socket.send(
+        JSON.stringify({
+          req_id: 5,
+          type: 'command_set_is_active',
+          params: { commands: [{ id: open, is_active: true }] },
+        }),
+      );
+      await reopenResult;
+      expect(server.heldCommandNames()).toEqual(['sim/radios/com1_standy_flip']);
+      socket.close();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(server.heldCommandNames()).toEqual([]);
+      expect(server.holdMessages).toEqual([
+        { id: leased, isActive: true, duration: 0.2 },
+        { id: open, isActive: true, duration: null },
+        { id: open, isActive: false, duration: null },
+        { id: open, isActive: true, duration: null },
+      ]);
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
 describe('radios and transponder in the mock', () => {
   it('swaps a radio’s active and standby on its flip command', async () => {
     const server = await MockXPlaneServer.start();

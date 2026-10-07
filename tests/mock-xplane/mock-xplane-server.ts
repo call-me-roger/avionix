@@ -758,6 +758,8 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 export class MockXPlaneServer {
   readonly writes: Array<{ id: number; value: DataRefValue; index?: number }> = [];
   readonly activations: Array<{ id: number; duration: number }> = [];
+  /** Every hold message (`command_set_is_active` other than a zero-duration press), in order. */
+  readonly holdMessages: Array<{ id: number; isActive: boolean; duration: number | null }> = [];
   readonly receivedMessages: unknown[] = [];
   incomingTrafficDisabled = false;
   /** When true, WebSocket requests are recorded but never answered (for cancellation tests). */
@@ -779,6 +781,8 @@ export class MockXPlaneServer {
   private readonly commands: Map<number, MockCommand>;
   private readonly sockets = new Set<WsSocket>();
   private readonly subscriptions = new Map<WsSocket, Map<number, string>>();
+  /** Active holds per socket: command id → when its lease lapses (null: held until released). */
+  private readonly holds = new Map<WsSocket, Map<number, number | null>>();
   private readonly timer: NodeJS.Timeout;
 
   /** F-32: the toy FMS's screen state, per CDU unit. */
@@ -851,6 +855,36 @@ export class MockXPlaneServer {
         const dataRef = this.dataRefs.get(id);
         if (dataRef !== undefined) {
           names.add(dataRef.name);
+        }
+      }
+    }
+    return [...names].sort();
+  }
+
+  private setHeld(ws: WsSocket, id: number, durationSec: number | null, active: boolean): void {
+    let held = this.holds.get(ws);
+    if (held === undefined) {
+      held = new Map();
+      this.holds.set(ws, held);
+    }
+    if (!active) {
+      held.delete(id);
+      return;
+    }
+    held.set(id, durationSec === null ? null : Date.now() + durationSec * 1000);
+  }
+
+  /** Names of the commands held right now, leases checked against the clock. */
+  heldCommandNames(): string[] {
+    const now = Date.now();
+    const names = new Set<string>();
+    for (const held of this.holds.values()) {
+      for (const [id, until] of held) {
+        if (until === null || until > now) {
+          const name = this.commands.get(id)?.name;
+          if (name !== undefined) {
+            names.add(name);
+          }
         }
       }
     }
@@ -1442,6 +1476,7 @@ export class MockXPlaneServer {
     ws.on('close', () => {
       this.sockets.delete(ws);
       this.subscriptions.delete(ws);
+      this.holds.delete(ws);
     });
   }
 
@@ -1556,23 +1591,27 @@ export class MockXPlaneServer {
       case 'command_set_is_active': {
         const list = Array.isArray(params.commands) ? params.commands : [];
         for (const item of list) {
-          if (isRecord(item) && typeof item.id === 'number') {
-            if (!this.commands.has(item.id)) {
-              reply({
-                success: false,
-                error_code: 'invalid_command_id',
-                error_message: `Command ${item.id} doesn't exist`,
-              });
-              return;
-            }
-            if (item.is_active === true) {
-              this.activations.push({
-                id: item.id,
-                duration: typeof item.duration === 'number' ? item.duration : -1,
-              });
-              this.applyCommand(item.id);
-            }
+          if (!isRecord(item) || typeof item.id !== 'number') {
+            continue;
           }
+          if (!this.commands.has(item.id)) {
+            reply({
+              success: false,
+              error_code: 'invalid_command_id',
+              error_message: `Command ${item.id} doesn't exist`,
+            });
+            return;
+          }
+          const duration = typeof item.duration === 'number' ? item.duration : null;
+          const isActive = item.is_active === true;
+          if (isActive && duration === 0) {
+            // Press and release: a momentary activation, as before F-24.
+            this.activations.push({ id: item.id, duration: 0 });
+            this.applyCommand(item.id);
+            continue;
+          }
+          this.holdMessages.push({ id: item.id, isActive, duration });
+          this.setHeld(ws, item.id, isActive ? duration : null, isActive);
         }
         reply({ success: true });
         return;

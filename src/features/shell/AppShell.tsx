@@ -51,7 +51,7 @@ const makeStyles = (theme: Theme) => ({
  * a keyed child, so the panel, its state and a half-typed entry survive (R2).
  */
 export function AppShell({ panels = PANELS }: { panels?: readonly RegisteredPanel[] }) {
-  const { snapshot, write, activate, setDemand } = useSimulatorSession();
+  const { snapshot, write, activate, hold, setDemand } = useSimulatorSession();
   const { settingsStorage } = useServices();
   const deviceLayout = useDeviceLayout();
   const panelIds = useMemo(() => panels.map((panel) => panel.descriptor.id), [panels]);
@@ -117,7 +117,7 @@ export function AppShell({ panels = PANELS }: { panels?: readonly RegisteredPane
     setLast(SETUP_ROUTE);
   };
 
-  const actions = useMemo(() => ({ write, activate }), [write, activate]);
+  const actions = useMemo(() => ({ write, activate, hold }), [write, activate, hold]);
   const onOpenFlightData = flightDataShown ? () => setLast(FLIGHT_DATA_PANEL.id) : null;
   const landscape = deviceLayout.orientation === 'landscape';
   const switcher = (

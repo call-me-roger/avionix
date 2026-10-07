@@ -5,7 +5,7 @@ import { Dimensions, StyleSheet } from 'react-native';
 import { type SessionSnapshot, initialSnapshot } from '@/application/session-snapshot';
 import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
 import { GENERIC_DATAREFS as D, GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
-import type { PanelActions } from '@/features/panels/primitives/PanelContext';
+import type { PanelScopeActions } from '@/features/panels/primitives/PanelContext';
 import { PanelFrame } from '@/features/panels/primitives/PanelFrame';
 import { RadiosPanel } from '@/features/panels/radios/RadiosPanel';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
@@ -55,7 +55,7 @@ function live(overrides: Partial<SessionSnapshot> = {}): SessionSnapshot {
   };
 }
 
-const actions: PanelActions = {
+const actions: PanelScopeActions = {
   write: jest.fn(async () => undefined),
   activate: jest.fn(async () => 'ok' as const),
 };
