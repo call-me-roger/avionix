@@ -18,10 +18,9 @@ import {
   FUEL,
   GAUGES,
   GAUGE_IDS,
+  type GaugeId,
   MARKING_NAMES,
-  MAX_BATTERIES,
-  MAX_BUSES,
-  TANK_SLOTS,
+  markingName,
 } from '@/domain/engines/catalogue';
 import type { DataRefValue, DataRefValueType } from '@/domain/simulator/types';
 import {
@@ -35,6 +34,7 @@ import {
   FLAPS,
   FUEL_SELECTOR,
   GEAR,
+  MAX_ENGINES,
   PARKING_BRAKE,
   type SwitchSpec,
   TAKEOFF_TRIM,
@@ -274,12 +274,56 @@ function systemsCommands(startId: number): MockCommand[] {
   return commands;
 }
 
+/** F-12's toy engine: a C172 stopped (cold, ambient manifold pressure) and running at cruise. */
+const TOY_ENGINE_STOPPED: Record<GaugeId, number> = {
+  rpm: 0,
+  prop: 0,
+  n1: 0,
+  n2: 0,
+  map: 29.9,
+  trq: 0,
+  epr: 1,
+  egt: 60,
+  cht: 15,
+  itt: 15,
+  ff: 0,
+  oilP: 0,
+  oilT: 15,
+};
+
+const TOY_ENGINE_RUNNING: Record<GaugeId, number> = {
+  ...TOY_ENGINE_STOPPED,
+  rpm: 2300,
+  prop: 2300,
+  map: 22,
+  egt: 1350,
+  cht: 180,
+  ff: 0.0105,
+  oilP: 62,
+  oilT: 82,
+};
+
+/** The C172's own markings; every other marking reads 0 (unused), as Plane Maker leaves it. */
+const TOY_MARKINGS: Record<string, number> = {
+  [markingName('green', 'lo', 'EGT')]: 1200,
+  [markingName('green', 'hi', 'EGT')]: 1500,
+  [markingName('green', 'lo', 'CHT')]: 65,
+  [markingName('green', 'hi', 'CHT')]: 230,
+  [markingName('red', 'lo', 'CHT')]: 238,
+  [markingName('red', 'hi', 'CHT')]: 260,
+  [markingName('green', 'lo', 'oilP')]: 50,
+  [markingName('green', 'hi', 'oilP')]: 90,
+  [markingName('red', 'lo', 'oilP')]: 0,
+  [markingName('red', 'hi', 'oilP')]: 20,
+  [markingName('green', 'lo', 'oilT')]: 38,
+  [markingName('green', 'hi', 'oilT')]: 118,
+};
+
 /**
- * F-12's 91 new DataRefs: the thirteen engine gauges, the three temperature-unit flags and two
- * redlines, the 60 aircraft limit markings, fuel quantity and the electrical instruments.
- * `ENGINE_CONFIG.count`, `.type` and `FUEL.total` are already present among the F-24 and
- * instrument DataRefs above, so they are not declared again here. A one-engine piston aircraft:
- * each per-engine array carries one live value in index 0 and zeros past it.
+ * F-12's 91 engine, fuel and electrical DataRefs (spec §3). Laminar's array lengths: 16 engines,
+ * 9 tank slots, 6 buses, 8 batteries and generators. EGT reads in °F (its flag 0), ITT and oil
+ * temperature in °C. Two wing tanks of nine hold the mock's 1,234.5 kg fuel total. All read-only:
+ * the panel never writes, and the tick drives the indicators.
  */
 function enginesDataRefs(startId: number): MockDataRef[] {
   const refs: MockDataRef[] = [];
@@ -287,46 +331,30 @@ function enginesDataRefs(startId: number): MockDataRef[] {
   const push = (name: string, valueType: DataRefValueType, value: DataRefValue) =>
     refs.push({ id: nextId++, name, valueType, value });
 
-  const perEngine = (first: number) => padded([first], 16);
-  const gaugeValues: Record<(typeof GAUGE_IDS)[number], number> = {
-    rpm: 2400,
-    prop: 2400,
-    n1: 0,
-    n2: 0,
-    map: 24.5,
-    trq: 0,
-    epr: 0,
-    egt: 1350,
-    cht: 190,
-    itt: 0,
-    ff: 0.0025,
-    oilP: 65,
-    oilT: 85,
-  };
   for (const id of GAUGE_IDS) {
-    push(GAUGES[id].name, 'float_array', perEngine(gaugeValues[id]));
+    push(GAUGES[id].name, 'float_array', padded([TOY_ENGINE_STOPPED[id]], 16));
   }
-  push(ENGINE_CONFIG.egtIsCelsius, 'int', 1);
+  push(ENGINE_CONFIG.egtIsCelsius, 'int', 0);
   push(ENGINE_CONFIG.ittIsCelsius, 'int', 1);
   push(ENGINE_CONFIG.oilTempIsCelsius, 'int', 1);
-  push(ENGINE_CONFIG.engineRedline, 'float', 283.5);
-  push(ENGINE_CONFIG.propRedline, 'float', 283.5);
+  push(ENGINE_CONFIG.engineRedline, 'float', 282.743);
+  push(ENGINE_CONFIG.propRedline, 'float', 282.743);
   for (const name of MARKING_NAMES) {
-    push(name, 'float', 0);
+    push(name, 'float', TOY_MARKINGS[name] ?? 0);
   }
-  push(FUEL.perTank, 'float_array', padded([30], TANK_SLOTS));
-  push(FUEL.ratio, 'float_array', padded([1], TANK_SLOTS));
-  push(FUEL.count, 'int', 1);
-  push(FUEL.capacity, 'float', 318);
-  push(FUEL.side, 'float_array', padded([0], TANK_SLOTS));
+  push(FUEL.perTank, 'float_array', padded([617.25, 617.25], 9));
+  push(FUEL.ratio, 'float_array', padded([0.5, 0.5], 9));
+  push(FUEL.count, 'int', 9);
+  push(FUEL.capacity, 'float', 3000);
+  push(FUEL.side, 'float_array', padded([-11, 11], 9));
   push(FUEL.used, 'float', 0);
   push(ELECTRICAL.busCount, 'int', 1);
   push(ELECTRICAL.batteryCount, 'int', 1);
-  push(ELECTRICAL.busVolts, 'float_array', padded([24.5], MAX_BUSES));
-  push(ELECTRICAL.busAmps, 'float_array', padded([20], MAX_BUSES));
-  push(ELECTRICAL.batteryVolts, 'float_array', padded([24.5], MAX_BATTERIES));
-  push(ELECTRICAL.batteryAmps, 'float_array', padded([5], MAX_BATTERIES));
-  push(ELECTRICAL.generatorAmps, 'float_array', padded([20], MAX_BATTERIES));
+  push(ELECTRICAL.busVolts, 'float_array', padded([24], 6));
+  push(ELECTRICAL.busAmps, 'float_array', padded([2], 6));
+  push(ELECTRICAL.batteryVolts, 'float_array', padded([24], 8));
+  push(ELECTRICAL.batteryAmps, 'float_array', padded([-2], 8));
+  push(ELECTRICAL.generatorAmps, 'float_array', padded([0], 8));
   return refs;
 }
 
@@ -1595,7 +1623,8 @@ export class MockXPlaneServer {
    * and `starter_hit` to 1, and after 2 s of cranking with the magnetos on (the key it found at the
    * hold's start, 1 or more) and the fuel selector not OFF sets `ENGN_running` to 1. Releasing (or
    * lapsing) a starter hold restores `starter_hit` to 0 and the ignition key to where it was.
-   * Expired leases are removed here.
+   * Expired leases are removed here. The F-12 toy engine's thirteen indicators read running or
+   * stopped values per engine from `ENGN_running`.
    */
   private tick(): void {
     const now = Date.now();
@@ -1696,6 +1725,23 @@ export class MockXPlaneServer {
         this.starterCranking.delete(id);
         this.setSwitchElement(ENGINES.starter, index, 0);
         this.setSwitchElement(ENGINES.key, index, cranking.key);
+      }
+    }
+
+    const running = this.getDataRefByName(ENGINES.running)?.value;
+    if (Array.isArray(running)) {
+      for (const id of GAUGE_IDS) {
+        const ref = this.getDataRefByName(GAUGES[id].name);
+        if (ref === undefined || !Array.isArray(ref.value)) {
+          continue;
+        }
+        ref.value = ref.value.map((value, index) =>
+          index < MAX_ENGINES
+            ? running[index] === 1
+              ? TOY_ENGINE_RUNNING[id]
+              : TOY_ENGINE_STOPPED[id]
+            : value,
+        );
       }
     }
   }

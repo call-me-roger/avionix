@@ -684,6 +684,47 @@ released (its unit unmounts) the moment the page changes under it. Registered fi
 (`src/features/panels/registry.ts`): Instruments, Radios, Autopilot, Navigation, **Systems**, CDU,
 Flight data — every aircraft has these controls, only airliners have the CDU.
 
+## Engines panel (F-12)
+
+`src/domain/engines/catalogue.ts` is the single catalogue for the Engines panel — every gauge,
+marking, fuel and electrical DataRef, verified against Laminar's files (`docs/xplane.md`) — backing
+`GENERIC_PROFILE` 1.8.0's four read-only features (`engine-gauges`, `engine-markings`,
+`fuel-quantity`, `electrical-monitor`); every binding is optional, so a name an aircraft lacks costs
+only the gauges it feeds (R6, R9).
+
+**Domain models.** `enginesPage`, `fuelPage` and `electricalPage` (`src/domain/engines/engine-page.ts`,
+`fuel.ts`, `electrical.ts`) are pure functions of an `EngineReader` (`has`/`number`, the same shape
+Systems' `availability.ts` reads through) and the pilot's unit preferences; `engineReader`
+(`src/features/panels/engines/engine-reader.ts`) is the one adapter from a `SessionSnapshot` to that
+shape. The panel components only draw what these functions return — no DataRef name or conversion
+lives in a component.
+
+**Units.** `src/domain/engines/units.ts` turns a raw reading into the instrument's own value (torque
+N·m to ft-lb, fuel flow per second to per hour), resolves a temperature's source from its unit flag
+(`acf_EGT_is_C`, `acf_ITT_is_C`, `acf_oilT_is_C`; CHT is always Celsius) or reports it `unknown` when
+the aircraft does not publish the flag, and converts to the pilot's own unit (`src/domain/units/units.ts`)
+only at the last step, for display.
+
+**Markings.** `src/domain/engines/markings.ts` builds each gauge's coloured bands from the aircraft's
+own `sim/aircraft/limits/*` DataRefs (a band counts only when Plane Maker actually set one), derives
+the gauge's scale from those bands or a redline, and colours a value by which band it falls in. This
+is presentation only: no threshold triggers an alert or a caution, which is out of scope for F-12.
+
+**Lean assist** (spec §4.6) is `LeanStore` (`src/features/panels/engines/lean-store.ts`): a session-only
+external store (`useSyncExternalStore`), held by `EnginesPreferenceProvider` so switching pages or
+panels keeps the peaks. `EnginesSection` advances it from an effect as EGT samples arrive — the
+textbook way to feed a value from outside React without setting state during render — and keys the
+peaks to the aircraft (`aircraftKey`), so loading a different aircraft starts fresh rather than
+comparing its EGT against the last one's peak.
+
+**Layout** (spec §4.10). A phone shows one of three pages — ENGINES, FUEL, ELEC — behind page keys,
+remembered per device under `avionix.engines` (ENGINES on first use); a window at or past
+`WIDE_MIN_WIDTH` (720 dp, the same breakpoint Systems, the CDU and Navigation use) shows ENGINES
+across the top and FUEL and ELEC side by side below, with no page keys. Every value's freshness is
+the link's own, the same `panelLinkStatus` F-11 uses, not a per-value timestamp (R5). Registered
+sixth in the switcher (`src/features/panels/registry.ts`): Instruments, Radios, Autopilot,
+Navigation, Systems, **Engines**, CDU, Flight data.
+
 ## Error model
 
 Everything that crosses into the application layer is an `AvionixError` with a stable `code`
