@@ -12,6 +12,17 @@ import {
   cduStyleLine,
   cduTextLine,
 } from '@/domain/cdu/keys';
+import {
+  ELECTRICAL,
+  ENGINE_CONFIG,
+  FUEL,
+  GAUGES,
+  GAUGE_IDS,
+  MARKING_NAMES,
+  MAX_BATTERIES,
+  MAX_BUSES,
+  TANK_SLOTS,
+} from '@/domain/engines/catalogue';
 import type { DataRefValue, DataRefValueType } from '@/domain/simulator/types';
 import {
   ANTI_ICE,
@@ -261,6 +272,62 @@ function systemsCommands(startId: number): MockCommand[] {
     push(starterCommand(engine), `Starter ${engine}.`);
   }
   return commands;
+}
+
+/**
+ * F-12's 91 new DataRefs: the thirteen engine gauges, the three temperature-unit flags and two
+ * redlines, the 60 aircraft limit markings, fuel quantity and the electrical instruments.
+ * `ENGINE_CONFIG.count`, `.type` and `FUEL.total` are already present among the F-24 and
+ * instrument DataRefs above, so they are not declared again here. A one-engine piston aircraft:
+ * each per-engine array carries one live value in index 0 and zeros past it.
+ */
+function enginesDataRefs(startId: number): MockDataRef[] {
+  const refs: MockDataRef[] = [];
+  let nextId = startId;
+  const push = (name: string, valueType: DataRefValueType, value: DataRefValue) =>
+    refs.push({ id: nextId++, name, valueType, value });
+
+  const perEngine = (first: number) => padded([first], 16);
+  const gaugeValues: Record<(typeof GAUGE_IDS)[number], number> = {
+    rpm: 2400,
+    prop: 2400,
+    n1: 0,
+    n2: 0,
+    map: 24.5,
+    trq: 0,
+    epr: 0,
+    egt: 1350,
+    cht: 190,
+    itt: 0,
+    ff: 0.0025,
+    oilP: 65,
+    oilT: 85,
+  };
+  for (const id of GAUGE_IDS) {
+    push(GAUGES[id].name, 'float_array', perEngine(gaugeValues[id]));
+  }
+  push(ENGINE_CONFIG.egtIsCelsius, 'int', 1);
+  push(ENGINE_CONFIG.ittIsCelsius, 'int', 1);
+  push(ENGINE_CONFIG.oilTempIsCelsius, 'int', 1);
+  push(ENGINE_CONFIG.engineRedline, 'float', 283.5);
+  push(ENGINE_CONFIG.propRedline, 'float', 283.5);
+  for (const name of MARKING_NAMES) {
+    push(name, 'float', 0);
+  }
+  push(FUEL.perTank, 'float_array', padded([30], TANK_SLOTS));
+  push(FUEL.ratio, 'float_array', padded([1], TANK_SLOTS));
+  push(FUEL.count, 'int', 1);
+  push(FUEL.capacity, 'float', 318);
+  push(FUEL.side, 'float_array', padded([0], TANK_SLOTS));
+  push(FUEL.used, 'float', 0);
+  push(ELECTRICAL.busCount, 'int', 1);
+  push(ELECTRICAL.batteryCount, 'int', 1);
+  push(ELECTRICAL.busVolts, 'float_array', padded([24.5], MAX_BUSES));
+  push(ELECTRICAL.busAmps, 'float_array', padded([20], MAX_BUSES));
+  push(ELECTRICAL.batteryVolts, 'float_array', padded([24.5], MAX_BATTERIES));
+  push(ELECTRICAL.batteryAmps, 'float_array', padded([5], MAX_BATTERIES));
+  push(ELECTRICAL.generatorAmps, 'float_array', padded([20], MAX_BATTERIES));
+  return refs;
 }
 
 export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
@@ -700,6 +767,9 @@ export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
   ...cduDataRefs(1095),
   // F-24: the systems catalogue's switches, selectors and engines, ids after the CDU's.
   ...systemsDataRefs(1161),
+  // F-12: the engines catalogue's gauges, markings, fuel and electrical DataRefs, well clear of
+  // the systems catalogue's range above.
+  ...enginesDataRefs(1300),
 ];
 
 export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [

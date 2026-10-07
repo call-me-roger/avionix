@@ -557,7 +557,7 @@ function arrayValue(server: MockXPlaneServer, name: string): number[] {
 
 describe('F-24 systems in the toy aircraft', () => {
   it('registers the systems names at the ids after the CDU (35 DataRefs from 1161, 83 commands from 2164)', () => {
-    const refs = DEFAULT_MOCK_DATAREFS.filter((ref) => ref.id >= 1161);
+    const refs = DEFAULT_MOCK_DATAREFS.filter((ref) => ref.id >= 1161 && ref.id < 1300);
     expect(refs).toHaveLength(35);
     expect(Math.min(...refs.map((ref) => ref.id))).toBe(1161);
 
@@ -568,7 +568,7 @@ describe('F-24 systems in the toy aircraft', () => {
 
   it('marks every systems DataRef writable except starter_hit', () => {
     for (const ref of DEFAULT_MOCK_DATAREFS) {
-      if (ref.id < 1161) {
+      if (ref.id < 1161 || ref.id >= 1300) {
         continue;
       }
       if (ref.name === ENGINES.starter) {
@@ -875,5 +875,13 @@ describe('F-24 systems in the toy aircraft', () => {
     } finally {
       await server.stop();
     }
+  });
+});
+
+describe('F-12 engines in the toy aircraft', () => {
+  it('registers the engines names at the ids from 1300, well clear of the systems range', () => {
+    const refs = DEFAULT_MOCK_DATAREFS.filter((ref) => ref.id >= 1300);
+    expect(refs).toHaveLength(91);
+    expect(Math.min(...refs.map((ref) => ref.id))).toBe(1300);
   });
 });

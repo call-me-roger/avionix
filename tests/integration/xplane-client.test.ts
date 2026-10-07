@@ -136,9 +136,9 @@ describe.each(['v2', 'v3'] as const)('XPlaneClient over %s', (apiVersion) => {
   });
 
   it('reports the dataref count', async () => {
-    // 94 pre-F-32 DataRefs, the CDU's 66 (32 screen cells per unit, two EXEC lights), and the 35
-    // systems DataRefs added in 1.7.0.
-    await expect(client.getDataRefCount()).resolves.toBe(195);
+    // 94 pre-F-32 DataRefs, the CDU's 66 (32 screen cells per unit, two EXEC lights), the 35
+    // systems DataRefs added in 1.7.0, and the 91 engine DataRefs added in 1.8.0.
+    await expect(client.getDataRefCount()).resolves.toBe(286);
   });
 
   it('reads scalar, array, indexed and data values', async () => {

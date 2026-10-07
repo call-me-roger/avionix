@@ -25,6 +25,14 @@ import {
   cduTextLine,
 } from '@/domain/cdu/keys';
 import type { XPlaneConnectionConfig } from '@/domain/connection/connection-config';
+import {
+  ELECTRICAL,
+  ENGINE_CONFIG,
+  FUEL,
+  GAUGES,
+  GAUGE_IDS,
+  MARKING_NAMES,
+} from '@/domain/engines/catalogue';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
 import {
@@ -273,6 +281,42 @@ const SYSTEMS_FAKE_DATAREFS: Record<string, FakeDataRef> = (() => {
 })();
 
 /**
+ * The F-12 engine features' 91 new DataRefs, absent from `DEFAULT_FAKE_DATAREFS` for the same
+ * reason as the other feature datarefs above. `ENGINE_CONFIG.count`, `.type` and `FUEL.total` are
+ * already present in `SYSTEMS_FAKE_DATAREFS` and `GENERIC_DATAREFS`, so they are not repeated here.
+ */
+const ENGINES_FAKE_DATAREFS: Record<string, FakeDataRef> = (() => {
+  const refs: Record<string, FakeDataRef> = {};
+  let nextId = 400;
+  const next = () => nextId++;
+  for (const id of GAUGE_IDS) {
+    refs[GAUGES[id].name] = { id: next(), valueType: 'float_array' };
+  }
+  refs[ENGINE_CONFIG.egtIsCelsius] = { id: next(), valueType: 'int' };
+  refs[ENGINE_CONFIG.ittIsCelsius] = { id: next(), valueType: 'int' };
+  refs[ENGINE_CONFIG.oilTempIsCelsius] = { id: next(), valueType: 'int' };
+  refs[ENGINE_CONFIG.engineRedline] = { id: next(), valueType: 'float' };
+  refs[ENGINE_CONFIG.propRedline] = { id: next(), valueType: 'float' };
+  for (const name of MARKING_NAMES) {
+    refs[name] = { id: next(), valueType: 'float' };
+  }
+  refs[FUEL.perTank] = { id: next(), valueType: 'float_array' };
+  refs[FUEL.ratio] = { id: next(), valueType: 'float_array' };
+  refs[FUEL.count] = { id: next(), valueType: 'int' };
+  refs[FUEL.capacity] = { id: next(), valueType: 'float' };
+  refs[FUEL.side] = { id: next(), valueType: 'float_array' };
+  refs[FUEL.used] = { id: next(), valueType: 'float' };
+  refs[ELECTRICAL.busCount] = { id: next(), valueType: 'int' };
+  refs[ELECTRICAL.batteryCount] = { id: next(), valueType: 'int' };
+  refs[ELECTRICAL.busVolts] = { id: next(), valueType: 'float_array' };
+  refs[ELECTRICAL.busAmps] = { id: next(), valueType: 'float_array' };
+  refs[ELECTRICAL.batteryVolts] = { id: next(), valueType: 'float_array' };
+  refs[ELECTRICAL.batteryAmps] = { id: next(), valueType: 'float_array' };
+  refs[ELECTRICAL.generatorAmps] = { id: next(), valueType: 'float_array' };
+  return refs;
+})();
+
+/**
  * The 83 systems commands (F-24) added in 1.7.0: every switch's on/off pair, every dimmer's
  * down/up pair, gear and flaps, every trim's three commands, the fuel selector's positions, and
  * every engine's magnetos and starter.
@@ -464,10 +508,10 @@ class ManualScheduler implements Scheduler {
 
 // Drains the microtask queue. The connect flow awaits the token store and the connector
 // probe before the simulator flow starts, so this needs enough turns to reach the
-// subscription step; 300 (bumped from 100 for F-30's nineteen new bindings) comfortably covers a
+// subscription step; 500 (bumped from 300 for F-12's 91 new bindings) comfortably covers a
 // full `probeBindings` pass over the whole profile at `PROBE_CONCURRENCY`.
 async function flush(): Promise<void> {
-  for (let i = 0; i < 300; i += 1) {
+  for (let i = 0; i < 500; i += 1) {
     await Promise.resolve();
   }
 }
@@ -2059,6 +2103,7 @@ describe('aircraft compatibility', () => {
       ...NAV_FAKE_DATAREFS,
       ...CDU_FAKE_DATAREFS,
       ...SYSTEMS_FAKE_DATAREFS,
+      ...ENGINES_FAKE_DATAREFS,
     };
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
