@@ -16,6 +16,7 @@ import { silentLogger } from '@/infrastructure/logging/logger';
 import { holdScreenAwake, releaseScreenAwake } from '@/platform/keep-awake';
 import { ThemeProvider } from '@/theme/theme-context';
 
+import { AUDIO_VALUES, audioCompatibility, audioTelemetry } from '../helpers/audio';
 import { toyScreenTelemetry } from '../helpers/cdu';
 import { SYSTEMS_VALUES, systemsCompatibility, systemsTelemetry } from '../helpers/systems';
 import {
@@ -477,3 +478,40 @@ describe.each(LAYOUTS)(
     });
   },
 );
+
+/**
+ * The sweep above renders Radios with no audio telemetry, so the AUDIO unit never resolves a
+ * binding and draws no keys. This case gives it a full set of audio values (`AUDIO_VALUES`) and
+ * compatibility through the real deriver, so the MIC and monitor keys are measured too.
+ */
+describe('touch targets on the Radios panel with audio telemetry', () => {
+  it('every control, the AUDIO unit included, is at least 48 dp', async () => {
+    mockLayout = { deviceClass: 'phone', orientation: 'portrait' };
+    const live = liveSnapshot();
+    const { services } = makeServices(
+      {
+        ...live,
+        compatibility: audioCompatibility(live.compatibility),
+        telemetry: audioTelemetry(AUDIO_VALUES, NOW),
+      },
+      await seeded('radios'),
+    );
+    await render(tree(services));
+    await screen.findByTestId('panel-radios');
+    expect(screen.getByLabelText('Listen to COM2, off')).toBeTruthy();
+    const targets = panelTargets();
+    expect(targets.length).toBeGreaterThan(0);
+    for (const target of targets) {
+      const style = StyleSheet.flatten(target.props.style) ?? {};
+      const label = String(target.props.accessibilityLabel ?? target.props.testID ?? 'unlabelled');
+      expect({ label, minHeight: Number(style.minHeight ?? style.height ?? 0) >= 48 }).toEqual({
+        label,
+        minHeight: true,
+      });
+      expect({ label, minWidth: Number(style.minWidth ?? style.width ?? 0) >= 48 }).toEqual({
+        label,
+        minWidth: true,
+      });
+    }
+  });
+});

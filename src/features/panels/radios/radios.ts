@@ -9,6 +9,7 @@ import {
   GENERIC_COMMANDS as C,
   GENERIC_DATAREFS as D,
 } from '@/domain/aircraft/profiles/generic';
+import { AUDIO_FEATURES } from '@/domain/audio/catalogue';
 import { EVERYWHERE, type PanelDescriptor } from '@/domain/panels/panel';
 import { formatCom, formatNav } from '@/domain/radios/channels';
 import type { EntryKind } from '@/domain/radios/entry';
@@ -128,6 +129,7 @@ export const RADIOS_PANEL: PanelDescriptor = {
     FEATURE_TRANSPONDER_CODE,
     FEATURE_TRANSPONDER_MODE,
     FEATURE_TRANSPONDER_IDENT,
+    ...AUDIO_FEATURES,
   ],
   supports: EVERYWHERE,
 };

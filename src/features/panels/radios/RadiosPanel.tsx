@@ -4,6 +4,7 @@ import { View, useWindowDimensions } from 'react-native';
 import { TWO_COLUMN_MIN_WIDTH } from '@/domain/panels/device-layout';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import { useReadBack } from '@/features/panels/primitives/useReadBack';
+import { AudioUnit } from '@/features/panels/radios/AudioUnit';
 import { EntryPad } from '@/features/panels/radios/EntryPad';
 import { RadioRow } from '@/features/panels/radios/RadioRow';
 import { RADIOS } from '@/features/panels/radios/radios';
@@ -50,6 +51,7 @@ function RadiosContent() {
       <View
         style={[{ gap: theme.spacing.md }, wide ? { flex: 1 } : { alignSelf: 'stretch' as const }]}
       >
+        <AudioUnit readBack={readBack} />
         {RADIOS.map((radio) => (
           <RadioRow
             key={radio.key}

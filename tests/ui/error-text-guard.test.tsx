@@ -23,6 +23,7 @@ import { PANELS } from '@/features/panels/registry';
 import { UnitsProvider } from '@/features/units/UnitsProvider';
 import { ThemeProvider } from '@/theme/theme-context';
 
+import { AUDIO_VALUES, audioCompatibility, audioTelemetry } from '../helpers/audio';
 import { toyScreenTelemetry } from '../helpers/cdu';
 import { C172_VALUES, enginesCompatibility, enginesTelemetry } from '../helpers/engines';
 import { SYSTEMS_VALUES, systemsCompatibility, systemsTelemetry } from '../helpers/systems';
@@ -139,6 +140,7 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
               // its own telemetry so FLAPS, the parking brake and the rest have values to show.
               const systems = descriptor.id === 'systems';
               const engines = descriptor.id === 'engines';
+              const radios = descriptor.id === 'radios';
               return (
                 <PanelFrame
                   key={descriptor.id}
@@ -151,13 +153,17 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
                       ? systemsTelemetry(SYSTEMS_VALUES, 9_000)
                       : engines
                         ? enginesTelemetry(C172_VALUES, 9_000)
-                        : // The CDU's live glass and keys, not its waiting state: a screen on both units.
-                          { ...toyScreenTelemetry(1, 9_000), ...toyScreenTelemetry(2, 9_000) },
+                        : radios
+                          ? audioTelemetry(AUDIO_VALUES, 9_000)
+                          : // The CDU's live glass and keys, not its waiting state: a screen on both units.
+                            { ...toyScreenTelemetry(1, 9_000), ...toyScreenTelemetry(2, 9_000) },
                     ...(systems
                       ? { compatibility: systemsCompatibility(snapshotFor(code).compatibility) }
                       : engines
                         ? { compatibility: enginesCompatibility(snapshotFor(code).compatibility) }
-                        : null),
+                        : radios
+                          ? { compatibility: audioCompatibility(snapshotFor(code).compatibility) }
+                          : null),
                   }}
                   now={10_000}
                   actions={{
@@ -185,6 +191,8 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
     // Engines is covered live too: its dial is drawn from its own telemetry, so the sentences
     // checked below include the ones it would print.
     expect(screen.getByLabelText('Engine 1 RPM 2,350')).toBeTruthy();
+    // Radios' AUDIO unit is covered live too: drawn from its own telemetry, not S6's waiting state.
+    expect(screen.getByLabelText('Listen to COM2, off')).toBeTruthy();
     expect(screen.queryByText(new RegExp('http://'))).toBeNull();
     expect(screen.queryByText(/HTTP 403/)).toBeNull();
     expect(screen.queryByText(/avx_secret/)).toBeNull();
