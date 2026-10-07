@@ -5,16 +5,23 @@ export const CDU_QUEUE_LIMIT = 24;
 /** An answer slower than this lights the SLOW annunciator (R6). */
 export const SLOW_KEY_MS = 500;
 
+/**
+ * `seq` numbers every accepted press, from 1, in press order, for the queue's whole life. A message
+ * shown for one event can then tell a key pressed before it (whose answer must not clear it) from a
+ * key pressed after it (spec §4.5: "clear … on the next successful key"). `lastSeq` is the number of
+ * the last press accepted before a refused one.
+ */
 export type CduQueueEvent =
-  | { kind: 'sent'; key: string; elapsedMs: number }
+  | { kind: 'sent'; key: string; seq: number; elapsedMs: number }
   | {
       kind: 'failed';
       key: string;
+      seq: number;
       result: 'failed' | 'refused';
       dropped: number;
       elapsedMs: number;
     }
-  | { kind: 'full' };
+  | { kind: 'full'; lastSeq: number };
 
 /**
  * Sends CDU key presses one at a time, in order (C2): "KLAX" typed quickly must never arrive as
@@ -22,7 +29,8 @@ export type CduQueueEvent =
  * enter a different string than the pilot typed.
  */
 export class CduKeyQueue {
-  private waiting: string[] = [];
+  private waiting: { key: string; seq: number }[] = [];
+  private accepted = 0;
   private running = false;
   private generation = 0;
 
@@ -38,10 +46,11 @@ export class CduKeyQueue {
 
   press(key: string): boolean {
     if (this.size >= CDU_QUEUE_LIMIT) {
-      this.onEvent({ kind: 'full' });
+      this.onEvent({ kind: 'full', lastSeq: this.accepted });
       return false;
     }
-    this.waiting.push(key);
+    this.accepted += 1;
+    this.waiting.push({ key, seq: this.accepted });
     if (!this.running) {
       void this.pump();
     }
@@ -59,7 +68,7 @@ export class CduKeyQueue {
     const generation = this.generation;
     this.running = true;
     while (this.waiting.length > 0 && generation === this.generation) {
-      const key = this.waiting.shift() as string;
+      const { key, seq } = this.waiting.shift() as { key: string; seq: number };
       const started = this.now();
       let result: ActivationResult;
       try {
@@ -75,10 +84,17 @@ export class CduKeyQueue {
       if (result !== 'ok') {
         const dropped = this.waiting.length;
         this.waiting = [];
-        this.onEvent({ kind: 'failed', key, result, dropped, elapsedMs: this.now() - started });
+        this.onEvent({
+          kind: 'failed',
+          key,
+          seq,
+          result,
+          dropped,
+          elapsedMs: this.now() - started,
+        });
         break;
       }
-      this.onEvent({ kind: 'sent', key, elapsedMs: this.now() - started });
+      this.onEvent({ kind: 'sent', key, seq, elapsedMs: this.now() - started });
     }
     if (generation === this.generation) {
       this.running = false;

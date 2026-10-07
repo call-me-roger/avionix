@@ -209,6 +209,49 @@ describe('the CDU panel reads a physical keyboard on the web build', () => {
     await unmount();
   });
 
+  it('sends one key for a held key: its auto-repeats are swallowed (C2)', async () => {
+    await mount();
+    await keydown({ key: 'k' });
+    for (let i = 0; i < 3; i += 1) {
+      const repeat = await keydown({ key: 'k', repeat: true });
+      // Still consumed: a held mapped key must not reach the browser's own binding either.
+      expect(repeat.defaultPrevented).toBe(true);
+    }
+    expect(activate).toHaveBeenCalledTimes(1);
+    expect(activate).toHaveBeenCalledWith('cdu1-keys', 'sim/FMS/key_K');
+    await unmount();
+  });
+
+  it('stops a consumed key reaching the page, so a focused on-screen key cannot also take it', async () => {
+    await mount();
+    const onPage = jest.fn();
+    document.body.addEventListener('keydown', onPage);
+    // The DOM clears an event's stop-propagation flag once dispatch ends, so watch the call itself.
+    const stopPropagation = jest.spyOn(Event.prototype, 'stopPropagation');
+    const event = await keydown({ key: ' ' }, document.body);
+    expect(activate).toHaveBeenCalledWith('cdu1-keys', 'sim/FMS/key_space');
+    expect(stopPropagation.mock.contexts).toContain(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(onPage).not.toHaveBeenCalled();
+    stopPropagation.mockRestore();
+    document.body.removeEventListener('keydown', onPage);
+    await unmount();
+  });
+
+  it('lets an unconsumed key (Enter) propagate untouched', async () => {
+    await mount();
+    const onPage = jest.fn();
+    document.body.addEventListener('keydown', onPage);
+    const stopPropagation = jest.spyOn(Event.prototype, 'stopPropagation');
+    const event = await keydown({ key: 'Enter' }, document.body);
+    expect(stopPropagation.mock.contexts).not.toContain(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(onPage).toHaveBeenCalledTimes(1);
+    stopPropagation.mockRestore();
+    document.body.removeEventListener('keydown', onPage);
+    await unmount();
+  });
+
   it('removes the listener on unmount: a later keydown sends nothing', async () => {
     await mount();
     await unmount();

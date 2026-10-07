@@ -168,7 +168,8 @@ function LskBar() {
  * and NOT LIVE tags, the mirrored glass between two columns of line-select keys, the message line
  * (only while there is something to say), and the function, alpha and numeric keys.
  * `useCduScreen` is called here, once, with whichever unit is shown: nothing that owns it is keyed
- * on the unit, so each unit's "seen" and rows 14–15 memory survives switching back and forth.
+ * on the unit, so each unit's "seen" and rows 14–15 memory survives switching back and forth; the
+ * memory itself lives in `CduPreferenceProvider`, so it also survives leaving the panel.
  *
  * The frame does not scroll this panel (`fillsFrame`). Narrow, the bezel is pinned and the keys
  * scroll in the rest of the height; wide (a window of 720 dp or more, landscape phones included),
@@ -255,7 +256,11 @@ export function CduPanel() {
         if (id === null || missingIdsRef.current.has(id) || !keysEnabledRef.current) {
           return false;
         }
-        pressRef.current(id);
+        // A held key's auto-repeat is consumed (a held Page Down must not scroll the page either)
+        // but never pressed: one press is one activation (C2).
+        if (!event.repeat) {
+          pressRef.current(id);
+        }
         return true;
       }),
     [],

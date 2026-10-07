@@ -1,12 +1,18 @@
 export const QUEUE_FULL_MESSAGE = 'Too many keys waiting. Let the screen catch up.';
 
+/**
+ * The one message for a failed key (R11). `name` is the catalogue's key name ("K", "LSK 1L"); null
+ * for a key the catalogue does not know, which is then just "that key" — a raw key id is never shown
+ * (R12).
+ */
 export function keyFailedMessage(
-  name: string,
+  name: string | null,
   result: 'failed' | 'refused',
   dropped: number,
 ): string {
-  const first =
-    result === 'failed' ? `X-Plane didn't take the ${name} key.` : `The ${name} key wasn't sent.`;
+  const key = name === null ? 'that key' : `the ${name} key`;
+  const Key = name === null ? 'That key' : `The ${name} key`;
+  const first = result === 'failed' ? `X-Plane didn't take ${key}.` : `${Key} wasn't sent.`;
   if (dropped === 0) {
     return first;
   }

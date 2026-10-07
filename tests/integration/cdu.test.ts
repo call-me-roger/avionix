@@ -81,7 +81,7 @@ describe('the CDU panel against the mock X-Plane (the toy FMS)', () => {
     return typeof value === 'number' ? value : undefined;
   }
 
-  it('types KLAX, line-selects it into the origin and runs EXEC through the real key queue', async () => {
+  it('types KLAX one awaited key at a time, line-selects it into the origin and runs EXEC', async () => {
     const session = await connected();
     const { compatibility } = session.store.getSnapshot();
     for (const id of CDU_DEMAND) {

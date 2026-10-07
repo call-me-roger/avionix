@@ -18,9 +18,13 @@ export interface CduKeys {
 }
 
 /** A shown message, wrapped so a repeat of the same text is still a new object: the clearing
- * effect below keys off identity, so an identical message restarts its own MESSAGE_MS. */
+ * effect below keys off identity, so an identical message restarts its own MESSAGE_MS.
+ * `clearsAfter` is the queue's last press number when it appeared: only the answer to a key pressed
+ * after it clears it early, so the keys still draining from before "Too many keys waiting" (or
+ * dropped behind a failure) can never wipe it before the pilot has read it. */
 interface Shown {
   text: string;
+  clearsAfter: number;
 }
 
 /** Which `(unit, controlsEnabled)` pair a built queue serves. */
@@ -95,21 +99,21 @@ export function useCduKeys(unit: CduUnit): CduKeys {
       (event) => {
         switch (event.kind) {
           case 'sent':
-            setShown(null);
+            setShown((current) =>
+              current !== null && event.seq > current.clearsAfter ? null : current,
+            );
             applySlow(event.elapsedMs);
             return;
           case 'failed':
             setShown({
-              text: keyFailedMessage(
-                cduKey(event.key)?.name ?? event.key,
-                event.result,
-                event.dropped,
-              ),
+              // Never the raw id (R12): a key outside the catalogue is just "that key".
+              text: keyFailedMessage(cduKey(event.key)?.name ?? null, event.result, event.dropped),
+              clearsAfter: event.seq + event.dropped,
             });
             applySlow(event.elapsedMs);
             return;
           case 'full':
-            setShown({ text: QUEUE_FULL_MESSAGE });
+            setShown({ text: QUEUE_FULL_MESSAGE, clearsAfter: event.lastSeq });
             return;
         }
       },

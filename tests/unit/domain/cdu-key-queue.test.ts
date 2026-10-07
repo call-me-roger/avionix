@@ -58,7 +58,7 @@ describe('CduKeyQueue', () => {
     const h = harness();
     h.queue.press('exec');
     await h.settle('ok', 640);
-    expect(h.events).toEqual([{ kind: 'sent', key: 'exec', elapsedMs: 640 }]);
+    expect(h.events).toEqual([{ kind: 'sent', key: 'exec', seq: 1, elapsedMs: 640 }]);
   });
 
   it('drops the keys behind a failed one and says how many, with how long it took', async () => {
@@ -67,7 +67,7 @@ describe('CduKeyQueue', () => {
     await h.settle('failed', 640);
     expect(h.sent).toEqual(['key_K']);
     expect(h.events).toEqual([
-      { kind: 'failed', key: 'key_K', result: 'failed', dropped: 3, elapsedMs: 640 },
+      { kind: 'failed', key: 'key_K', seq: 1, result: 'failed', dropped: 3, elapsedMs: 640 },
     ]);
     expect(h.queue.size).toBe(0);
   });
@@ -91,7 +91,7 @@ describe('CduKeyQueue', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(events).toEqual([
-      { kind: 'failed', key: 'key_K', result: 'failed', dropped: 1, elapsedMs: 0 },
+      { kind: 'failed', key: 'key_K', seq: 1, result: 'failed', dropped: 1, elapsedMs: 0 },
     ]);
     expect(queue.size).toBe(0);
     // Not wedged: a later press still sends.
@@ -105,7 +105,18 @@ describe('CduKeyQueue', () => {
       expect(h.queue.press('key_A')).toBe(true);
     }
     expect(h.queue.press('key_B')).toBe(false);
-    expect(h.events).toEqual([{ kind: 'full' }]);
+    expect(h.events).toEqual([{ kind: 'full', lastSeq: CDU_QUEUE_LIMIT }]);
+  });
+
+  it('numbers each accepted press in press order, across a clear()', async () => {
+    const h = harness();
+    ['key_K', 'key_L'].forEach((key) => h.queue.press(key));
+    await h.settle('ok');
+    await h.settle('ok');
+    h.queue.clear();
+    h.queue.press('key_A');
+    await h.settle('ok');
+    expect(h.events.map((event) => (event.kind === 'sent' ? event.seq : null))).toEqual([1, 2, 3]);
   });
 
   it('clear() drops waiting keys and silences the key in flight', async () => {

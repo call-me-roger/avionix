@@ -427,6 +427,75 @@ describe('CDU panel states', () => {
   });
 });
 
+describe('CDU panel screen memory (spec §4.4)', () => {
+  const aircraftA: AircraftIdentity = {
+    description: 'Laminar 737-800',
+    icaoType: 'B738',
+    tailNumber: 'N737XP',
+    addOnVersion: null,
+  };
+  const aircraftB: AircraftIdentity = {
+    description: 'Zibo 737-800',
+    icaoType: 'B738',
+    tailNumber: 'N738ZB',
+    addOnVersion: null,
+  };
+
+  /** CDU 1 and CDU 2 both connected, every text line blank: a powered-down (or add-on) FMS. */
+  function blankTelemetry(): SessionSnapshot['telemetry'] {
+    const blank: SessionSnapshot['telemetry'] = {};
+    for (const unit of [1, 2] as const) {
+      for (let line = 0; line < CDU_LINE_COUNT; line += 1) {
+        blank[cduTextLine(unit, line)] = { value: text(''), receivedAt: NOW };
+      }
+    }
+    return blank;
+  }
+
+  /** The shell's shape: the provider stays mounted while the panel comes and goes. */
+  function shell(snapshot: SessionSnapshot, storage: SettingsStorage, panelShown: boolean) {
+    return (
+      <ThemeProvider storage={THEME_STORAGE} systemSchemeOverride="light">
+        <CduPreferenceProvider storage={storage}>
+          {panelShown ? (
+            <PanelScope snapshot={snapshot} now={NOW} actions={actions}>
+              <CduPanel />
+            </PanelScope>
+          ) : null}
+        </CduPreferenceProvider>
+      </ThemeProvider>
+    );
+  }
+
+  it('stays live after the panel unmounts and comes back to a blank screen on the same aircraft', async () => {
+    const storage = createMemorySettingsStorage();
+    const view = await render(shell(live({ identity: aircraftA }), storage, true));
+    expect(screen.getByTestId('cdu-screen')).toBeTruthy();
+    await view.rerender(shell(live({ identity: aircraftA }), storage, false));
+    expect(screen.queryByTestId('cdu-screen')).toBeNull();
+    await view.rerender(
+      shell(live({ identity: aircraftA, telemetry: blankTelemetry() }), storage, true),
+    );
+    expect(screen.queryByTestId('cdu-no-fms')).toBeNull();
+    expect(screen.getByTestId('cdu-screen')).toBeTruthy();
+    expect(isDisabled('K')).toBe(false);
+  });
+
+  it('shows No FMS when the panel comes back to a blank screen on a different aircraft', async () => {
+    const storage = createMemorySettingsStorage();
+    const view = await render(shell(live({ identity: aircraftA }), storage, true));
+    expect(screen.getByTestId('cdu-screen')).toBeTruthy();
+    await view.rerender(shell(live({ identity: aircraftA }), storage, false));
+    await view.rerender(
+      shell(live({ identity: aircraftB, telemetry: blankTelemetry() }), storage, true),
+    );
+    expect(screen.getByTestId('cdu-no-fms')).toHaveTextContent(
+      /Zibo 737-800 isn't showing anything on X-Plane's built-in CDU\./,
+    );
+    expect(screen.queryByLabelText('K')).toBeNull();
+  });
+});
+
 describe('CDU panel layout', () => {
   it('pins the screen above a scrolling key area on a narrow window', async () => {
     await withWindow(390, 844, async () => {

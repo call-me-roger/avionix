@@ -22,8 +22,8 @@ import { PanelScope } from '@/features/panels/primitives/PanelFrame';
 const NOW = 1_000_000;
 const base = initialSnapshot(GENERIC_PROFILE, 5);
 
-/** The only keys the probe below needs to exercise the hook. */
-const PROBE_KEYS = ['key_K', 'key_L', 'key_A', 'key_B'];
+/** The only keys the probe below needs to exercise the hook, plus one id the catalogue lacks. */
+const PROBE_KEYS = ['key_K', 'key_L', 'key_A', 'key_B', 'not_a_cdu_key'];
 
 /** Every binding either CDU unit's keys feature reads, 'ok': the generic profile's own shape. */
 function cduBindingsOk(): BindingResults {
@@ -250,6 +250,39 @@ describe('useCduKeys', () => {
     expect(messageText()).toBe('');
     await press('key_B');
     expect(messageText()).toBe(QUEUE_FULL_MESSAGE);
+  });
+
+  it('keeps QUEUE_FULL_MESSAGE while the keys pressed before it are answered, and clears it on the answer to a key pressed after it', async () => {
+    await render(tree(live(), 1));
+    await press('key_A', CDU_QUEUE_LIMIT);
+    await press('key_B');
+    expect(messageText()).toBe(QUEUE_FULL_MESSAGE);
+    for (let i = 0; i < CDU_QUEUE_LIMIT; i += 1) {
+      await resolveNext('ok');
+    }
+    expect(activate).toHaveBeenCalledTimes(CDU_QUEUE_LIMIT);
+    expect(messageText()).toBe(QUEUE_FULL_MESSAGE);
+    await press('key_K');
+    await resolveNext('ok');
+    expect(messageText()).toBe('');
+  });
+
+  it('replaces QUEUE_FULL_MESSAGE with a failure among the keys pressed before it', async () => {
+    await render(tree(live(), 1));
+    await press('key_A', CDU_QUEUE_LIMIT);
+    await press('key_B');
+    expect(messageText()).toBe(QUEUE_FULL_MESSAGE);
+    await resolveNext('failed');
+    expect(messageText()).toBe(
+      `X-Plane didn't take the A key. The ${CDU_QUEUE_LIMIT - 1} keys after it weren't sent.`,
+    );
+  });
+
+  it('calls a key outside the catalogue "that key" in its failure message, never by its id (R12)', async () => {
+    await render(tree(live(), 1));
+    await press('not_a_cdu_key');
+    await resolveNext('failed');
+    expect(messageText()).toBe("X-Plane didn't take that key.");
   });
 
   it('empties the queue when controls become disabled: the in-flight answer sends nothing more, shows no message, and nothing is sent once the link returns', async () => {

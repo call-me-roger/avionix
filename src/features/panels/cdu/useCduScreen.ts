@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 
 import { featureOf } from '@/application/compatibility';
 import { cduScreenFeatureId } from '@/domain/aircraft/profiles/generic';
@@ -16,6 +16,10 @@ import {
   decodeTextLine,
   isBlankLine,
 } from '@/domain/cdu/screen';
+import {
+  EMPTY_UNIT_MEMORY,
+  useCduScreenMemoryStore,
+} from '@/features/panels/cdu/cdu-screen-memory';
 import { firstNumber } from '@/features/panels/instruments/useInstrumentValues';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 
@@ -32,25 +36,6 @@ export interface CduScreenValues {
 
 const BLANK_LINE = Array.from({ length: CDU_COLUMNS }, () => ' ');
 
-interface UnitMemory {
-  seen: boolean;
-  extraRows: boolean;
-}
-
-const EMPTY_UNIT_MEMORY: UnitMemory = { seen: false, extraRows: false };
-
-/**
- * "Has text appeared since identification" and "have rows 14–15 ever been used", kept per unit so
- * switching CDU 1 → CDU 2 → CDU 1 never resets unit 1's own memory (spec §4.4: "every text line of
- * the selected unit has been blank since the aircraft was identified" — the memory belongs to the
- * unit, not to whichever unit happened to be selected when it last changed). Only an aircraft
- * change (a new `identity`) resets both units' memory.
- */
-interface ScreenMemory {
-  identity: string;
-  units: Record<CduUnit, UnitMemory>;
-}
-
 function aircraftKey(identity: {
   description: string | null;
   icaoType: string | null;
@@ -59,16 +44,12 @@ function aircraftKey(identity: {
   return `${identity.description}|${identity.icaoType}|${identity.tailNumber}`;
 }
 
-function initialMemory(identity: string): ScreenMemory {
-  return { identity, units: { 1: EMPTY_UNIT_MEMORY, 2: EMPTY_UNIT_MEMORY } };
-}
-
 /**
  * Reads the default FMS's 16 text and style lines for one unit and reduces them to what the panel
- * draws. The per-unit memory above is kept as state adjusted during render (React's documented
- * pattern for resetting derived state on a prop change, as ControlButton does for `armed`): the
- * next value is a pure function of the current one and this render's lines, and setting it is a
- * no-op once it already matches, so this never loops.
+ * draws. The per-unit "seen" and rows 14–15 memory lives in a `CduScreenMemoryStore` that outlives
+ * the panel (`cdu-screen-memory.ts`). This render's values are a pure function of what the store
+ * remembers and this render's lines; an effect then records them, a no-op once the store already
+ * matches, so this never loops.
  */
 export function useCduScreen(unit: CduUnit): CduScreenValues {
   const { snapshot, link } = usePanel();
@@ -94,20 +75,16 @@ export function useCduScreen(unit: CduUnit): CduScreenValues {
     return line !== null && !isBlankLine(line);
   });
 
-  const [memory, setMemory] = useState<ScreenMemory>(() => initialMemory(identityNow));
-  const identityChanged = memory.identity !== identityNow;
-  const baseUnits: Record<CduUnit, UnitMemory> = identityChanged
-    ? { 1: EMPTY_UNIT_MEMORY, 2: EMPTY_UNIT_MEMORY }
-    : memory.units;
-  const currentUnit = baseUnits[unit];
-  const nextSeen = currentUnit.seen || nonBlankNow;
-  const nextExtraRows = currentUnit.extraRows || extraNow;
-  if (identityChanged || nextSeen !== currentUnit.seen || nextExtraRows !== currentUnit.extraRows) {
-    setMemory({
-      identity: identityNow,
-      units: { ...baseUnits, [unit]: { seen: nextSeen, extraRows: nextExtraRows } },
-    });
-  }
+  const store = useCduScreenMemoryStore();
+  const memory = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  // Another aircraft's memory counts for nothing: a new identity starts both units afresh.
+  const remembered =
+    memory !== null && memory.identity === identityNow ? memory.units[unit] : EMPTY_UNIT_MEMORY;
+  const nextSeen = remembered.seen || nonBlankNow;
+  const nextExtraRows = remembered.extraRows || extraNow;
+  useEffect(() => {
+    store.record(identityNow, unit, { seen: nextSeen, extraRows: nextExtraRows });
+  }, [store, identityNow, unit, nextSeen, nextExtraRows]);
 
   const feature = featureOf(snapshot.compatibility, cduScreenFeatureId(unit));
   const state: CduScreenState =

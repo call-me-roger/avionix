@@ -3,6 +3,8 @@ export interface HardwareKeyEvent {
   ctrlKey: boolean;
   altKey: boolean;
   metaKey: boolean;
+  /** The platform's auto-repeat for a held key: never a press of its own (C2). */
+  repeat: boolean;
 }
 
 const NAMED: Record<string, string> = {

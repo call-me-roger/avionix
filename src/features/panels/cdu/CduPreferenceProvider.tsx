@@ -11,6 +11,10 @@ import React, {
 import type { SettingsStorage } from '@/application/settings-store';
 import type { CduUnit } from '@/domain/cdu/keys';
 import { loadCduPreference, saveCduPreference } from '@/features/panels/cdu/cdu-preference';
+import {
+  CduScreenMemoryContext,
+  CduScreenMemoryStore,
+} from '@/features/panels/cdu/cdu-screen-memory';
 
 type CduUnitValue = [CduUnit, (unit: CduUnit) => void];
 
@@ -18,7 +22,8 @@ const CduPreferenceContext = createContext<CduUnitValue | null>(null);
 
 /**
  * The CDU 1 / CDU 2 choice (spec §4.6). Same load rule as the haptics preference: a real change
- * made before the stored value arrives wins over it.
+ * made before the stored value arrives wins over it. Also holds the CDU's screen memory (spec §4.4,
+ * `cdu-screen-memory.ts`) at shell level, so it outlives the panel; never saved.
  */
 export function CduPreferenceProvider({
   storage,
@@ -29,6 +34,7 @@ export function CduPreferenceProvider({
 }) {
   const [unit, setUnitState] = useState<CduUnit>(1);
   const touched = useRef(false);
+  const [screenMemory] = useState(() => new CduScreenMemoryStore());
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +62,13 @@ export function CduPreferenceProvider({
 
   const value = useMemo<CduUnitValue>(() => [unit, setUnit], [unit, setUnit]);
 
-  return <CduPreferenceContext.Provider value={value}>{children}</CduPreferenceContext.Provider>;
+  return (
+    <CduPreferenceContext.Provider value={value}>
+      <CduScreenMemoryContext.Provider value={screenMemory}>
+        {children}
+      </CduScreenMemoryContext.Provider>
+    </CduPreferenceContext.Provider>
+  );
 }
 
 /**

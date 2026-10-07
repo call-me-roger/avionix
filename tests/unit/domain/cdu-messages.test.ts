@@ -10,6 +10,7 @@ function hw(
     ctrlKey: modifiers.ctrlKey ?? false,
     altKey: modifiers.altKey ?? false,
     metaKey: modifiers.metaKey ?? false,
+    repeat: false,
   };
 }
 
@@ -27,6 +28,13 @@ describe('keyFailedMessage', () => {
   it('phrases a refusal, and the dropped key, differently from a failure', () => {
     expect(keyFailedMessage('LSK 1L', 'refused', 1)).toBe(
       "The LSK 1L key wasn't sent. The key after it wasn't sent either.",
+    );
+  });
+
+  it('calls a key outside the catalogue "that key", never by its id (R12)', () => {
+    expect(keyFailedMessage(null, 'failed', 0)).toBe("X-Plane didn't take that key.");
+    expect(keyFailedMessage(null, 'refused', 2)).toBe(
+      "That key wasn't sent. The 2 keys after it weren't sent either.",
     );
   });
 

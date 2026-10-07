@@ -542,7 +542,10 @@ text has appeared since identification — the mirror and keys); and *stale*, la
 every key disabled, C5). Rows 14–15, which the default layout leaves empty, are added below the
 scratchpad only once either has shown a non-blank character in the session, kept per unit (switching
 CDU 1 → CDU 2 → CDU 1 never resets unit 1's own "seen" and rows-14–15 memory); only a new aircraft
-identity resets both units'.
+identity resets both units'. The memory lives in a `CduScreenMemoryStore`
+(`src/features/panels/cdu/cdu-screen-memory.ts`) that `CduPreferenceProvider` holds at shell level,
+so it also survives leaving the panel: a screen that went blank after being live is still Live when
+the pilot comes back to the CDU. Outside a provider the hook keeps its own.
 
 **The key queue (why serial).** A real FMS takes keys one at a time, in order: typing `KLAX`
 quickly must never arrive as `KLXA`, which sending every press as soon as it is tapped could do over
@@ -550,7 +553,9 @@ a network link with varying latency. `CduKeyQueue` (`src/domain/cdu/key-queue.ts
 waiting keys (one scratchpad line) and activates them one at a time, waiting for X-Plane's answer
 before sending the next (C2). A press beyond the limit is refused with one message; when a key
 fails, every key still queued behind it is dropped — sending them would type a different string
-than the pilot meant — and one message says so, naming the key and how many were dropped. Losing the
+than the pilot meant — and one message says so, naming the key and how many were dropped. Each
+accepted press is numbered, so a message clears early only on the answer to a key pressed after it
+appeared: the keys still draining from before "Too many keys waiting" never wipe it unread. Losing the
 link or switching CDU unit clears the queue outright. `useCduKeys(unit)` (the hook `CduPanel` reads)
 owns one queue per `(unit, link.controlsEnabled)` pair, rebuilding it — and so dropping whatever
 waited — whenever either changes; `press()` is a no-op while no queue exists (controls disabled,
@@ -584,16 +589,21 @@ the two screens, so the saved choice is never overwritten by a fallback.
 
 **Physical keyboard (web, spec §4.8).** `src/platform/hardware-keys.ts` is a no-op on native (iOS
 and Android expose no hardware-key API without a native module); `hardware-keys.web.ts` adds one
-`keydown` listener on `window`, skipped while an `<input>`, `<textarea>`, `<select>` or anything
-`contenteditable` has focus. `hardwareKeyToCdu` (`src/domain/cdu/hardware-keys.ts`) maps the event to
+`keydown` listener on `window`, in the capture phase, skipped while an `<input>`, `<textarea>`,
+`<select>` or anything `contenteditable` has focus. `hardwareKeyToCdu` (`src/domain/cdu/hardware-keys.ts`) maps the event to
 a key id — letters and digits uppercase to `key_<letter>`, `.`/`-`/`/`/space/Delete/Backspace/Escape
 to their named keys, Page Up/Down to `prev`/`next` — and returns null for anything else, including
 every key held with Ctrl, Alt or Meta (left to the browser) and Enter (deliberately unmapped: EXEC
 commits a route change and stays a tap, never a keyboard reflex). `CduPanel` subscribes once for its
-whole mounted life; the handler reads the current unit, `press`, and whether the key would do
-anything (`link.controlsEnabled` and the screen not still waiting) through refs, so the one
-subscription never races a render. A key it cannot act on (missing command, or the gate closed) is
-left unconsumed, so the browser's own binding for it (Page Down scrolling the page) still runs.
+whole mounted life; the handler reads `press` (which carries the unit), the missing key ids and the
+gate through refs, so the one subscription never races a render. The gate is open only while the
+screen is live (`screen.state === 'live'`, which also rules out waiting, No FMS and unavailable) with
+controls enabled (`link.controlsEnabled`). A key it cannot act on (missing command, or the gate
+closed) is left unconsumed and propagates untouched, so the browser's own binding for it (Page Down
+scrolling the page) still runs. A consumed key gets `preventDefault` and `stopPropagation`: being in
+the capture phase, the listener stops it before react-native-web's own key handling, so Space on a
+focused on-screen key presses SP alone, never that key too. A held key's auto-repeat
+(`event.repeat`) is consumed but never pressed: one press, one activation (C2).
 
 ## Error model
 
