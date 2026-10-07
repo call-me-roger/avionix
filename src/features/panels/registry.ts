@@ -10,6 +10,8 @@ import {
 } from '@/features/panels/instruments/InstrumentsPanel';
 import { NAVIGATION_PANEL, NavigationPanel } from '@/features/panels/navigation/NavigationPanel';
 import { RADIOS_PANEL, RadiosPanel } from '@/features/panels/radios/RadiosPanel';
+import { SystemsPanel } from '@/features/panels/systems/SystemsPanel';
+import { SYSTEMS_PANEL } from '@/features/panels/systems/systems';
 
 export interface RegisteredPanel {
   descriptor: PanelDescriptor;
@@ -22,6 +24,7 @@ export const PANELS: readonly RegisteredPanel[] = [
   { descriptor: RADIOS_PANEL, Component: RadiosPanel },
   { descriptor: AUTOPILOT_PANEL, Component: AutopilotPanel },
   { descriptor: NAVIGATION_PANEL, Component: NavigationPanel },
+  { descriptor: SYSTEMS_PANEL, Component: SystemsPanel },
   { descriptor: CDU_PANEL, Component: CduPanel },
   { descriptor: FLIGHT_DATA_PANEL, Component: FlightDataPanel },
 ];

@@ -61,6 +61,7 @@ describe('panel registry', () => {
       'radios',
       'autopilot',
       'navigation',
+      'systems',
       'cdu',
       'flight-data',
     ]);

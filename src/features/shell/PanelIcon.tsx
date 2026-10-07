@@ -30,6 +30,9 @@ const GEAR_OUTLINE = gearOutline(12, 12, 10, 7.2, 8);
 const CDU_KEY_COLUMNS = [4.75, 8.75, 12.75, 16.75];
 const CDU_KEY_ROWS = [13.5, 17, 20.5];
 
+/** The Systems glyph's three toggle switches, evenly spaced. */
+const SYSTEMS_SWITCH_X = [4, 10.5, 17];
+
 /**
  * The switcher's 22 dp icons (R-01, spec section 4), each a plain glyph that still reads once
  * the full blue fill is gone: `color` alone (plus shape) tells unselected from selected. An
@@ -93,6 +96,28 @@ function renderGlyph(id: string, color: string): React.ReactNode {
           {/* A course arrow through the centre, pointing north. */}
           <Polygon points="12,5 9.5,12 12,10 14.5,12" fill={color} />
           <Line x1={12} y1={10} x2={12} y2={18} stroke={color} strokeWidth={2} />
+        </>
+      );
+    case 'systems':
+      return (
+        <>
+          {/* Three vertical toggle switches: a rounded slot each with a knob, two up and one down. */}
+          {SYSTEMS_SWITCH_X.map((x) => (
+            <Rect
+              key={x}
+              x={x}
+              y={4}
+              width={5}
+              height={16}
+              rx={2.5}
+              stroke={color}
+              strokeWidth={1.5}
+              fill="none"
+            />
+          ))}
+          {SYSTEMS_SWITCH_X.map((x, index) => (
+            <Circle key={x} cx={x + 2.5} cy={index === 2 ? 15 : 9} r={2} fill={color} />
+          ))}
         </>
       );
     case 'cdu':
