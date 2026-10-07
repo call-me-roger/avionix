@@ -1516,6 +1516,13 @@ import {
   type HoldTimers,
 } from '@/domain/panels/hold-lease';
 
+/** Lets every promise chain started by a fired timer (an awaited async `send`) run to its end. */
+async function settle(): Promise<void> {
+  for (let tick = 0; tick < 10; tick += 1) {
+    await Promise.resolve();
+  }
+}
+
 /** Manual clock: `advance` fires due timers in time order. */
 function fakeTimers(): HoldTimers & { advance: (ms: number) => Promise<void>; pending: () => number } {
   let now = 0;
@@ -1544,8 +1551,7 @@ function fakeTimers(): HoldTimers & { advance: (ms: number) => Promise<void>; pe
         timers.delete(due[0]);
         now = due[1].at;
         due[1].callback();
-        await Promise.resolve();
-        await Promise.resolve();
+        await settle();
       }
       now = end;
     },
@@ -1568,10 +1574,7 @@ function setup(results: Partial<Record<HoldPhase, ActivationResult>> = {}, capMs
   return { lease, timers, sent, ends };
 }
 
-const flush = async () => {
-  await Promise.resolve();
-  await Promise.resolve();
-};
+const flush = settle;
 
 describe('HoldLease (spec §4.3)', () => {
   it('presses, renews every 200 ms while held, and releases at once on let go', async () => {
