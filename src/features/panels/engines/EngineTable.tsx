@@ -16,6 +16,8 @@ import { avionicsText, numeric } from '@/theme/typography';
 const GAP = 8;
 const LABEL_WIDTH = 72;
 const MIN_DIAL = 64;
+/** Four engines on a 360 dp phone leave a cell about 50 dp wide: "5,200" shrinks, never wraps. */
+const MIN_FONT_SCALE = 0.7;
 
 const makeStyles = (theme: Theme) => ({
   root: { gap: GAP },
@@ -68,7 +70,12 @@ function GaugeCell({
       accessible
       accessibilityLabel={reading.spoken}
     >
-      <Text style={[styles.value, { color: toneColour(theme, reading.tone, stale) }]}>
+      <Text
+        style={[styles.value, { color: toneColour(theme, reading.tone, stale) }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={MIN_FONT_SCALE}
+      >
         {reading.text}
       </Text>
       {reading.scale === null ? null : (
@@ -123,7 +130,12 @@ function LeanRow({
             accessible
             accessibilityLabel={delta.spoken}
           >
-            <Text style={[styles.value, { color: toneColour(theme, 'normal', stale) }]}>
+            <Text
+              style={[styles.value, { color: toneColour(theme, 'normal', stale) }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={MIN_FONT_SCALE}
+            >
               {delta.text}
             </Text>
           </View>

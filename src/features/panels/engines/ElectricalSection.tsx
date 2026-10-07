@@ -18,7 +18,17 @@ function PowerRowView({ row, stale }: { row: PowerRow; stale: boolean }) {
   return (
     <View testID={`elec-${row.key}`} style={styles.row} accessible accessibilityLabel={row.spoken}>
       <Text style={styles.label}>{row.label}</Text>
-      {row.volts === null ? null : <Text style={value}>{`${row.volts} V`}</Text>}
+      {row.volts === null ? (
+        // A generator has no volts: hold the column so its amps sit under the other rows' amps.
+        <View
+          testID={`elec-${row.key}-no-volts`}
+          style={styles.placeholder}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        />
+      ) : (
+        <Text style={value}>{`${row.volts} V`}</Text>
+      )}
       {row.amps === null ? null : <Text style={value}>{`${row.amps} A`}</Text>}
     </View>
   );

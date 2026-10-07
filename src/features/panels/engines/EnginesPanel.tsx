@@ -6,6 +6,7 @@ import { ENGINES_PAGES, type EnginesPage, WIDE_MIN_WIDTH } from '@/features/pane
 import { EnginesSection } from '@/features/panels/engines/EnginesSection';
 import { useEnginesPage } from '@/features/panels/engines/EnginesPreferenceProvider';
 import { FuelSection } from '@/features/panels/engines/FuelSection';
+import { EnginesModelProvider } from '@/features/panels/engines/useEnginesModel';
 import { LightBar } from '@/features/panels/primitives/LightBar';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import { useThemedStyles } from '@/theme/theme-context';
@@ -76,7 +77,8 @@ function EnginesPageKey({
  * F-12's Engines panel (spec §4.10–§4.11): read-only. A phone shows one page at a time behind
  * ENGINES, FUEL and ELEC keys (remembered under `avionix.engines`, ENGINES on first use); a
  * window 720 dp or wider shows ENGINES across the top and FUEL and ELEC side by side below. With
- * no flight loaded it draws nothing: the frame's notice says why (R5).
+ * no flight loaded it draws nothing: the frame's notice says why (R5). The ENGINES model is derived
+ * once here for whichever sections are shown.
  */
 export function EnginesPanel() {
   const styles = useThemedStyles(makeStyles);
@@ -90,17 +92,19 @@ export function EnginesPanel() {
 
   if (window.width >= WIDE_MIN_WIDTH) {
     return (
-      <View testID="engines-wide" style={styles.root}>
-        <EnginesSection />
-        <View style={styles.wideRow}>
-          <View style={styles.wideColumn}>
-            <FuelSection />
-          </View>
-          <View style={styles.wideColumn}>
-            <ElectricalSection />
+      <EnginesModelProvider>
+        <View testID="engines-wide" style={styles.root}>
+          <EnginesSection />
+          <View style={styles.wideRow}>
+            <View style={styles.wideColumn}>
+              <FuelSection />
+            </View>
+            <View style={styles.wideColumn}>
+              <ElectricalSection />
+            </View>
           </View>
         </View>
-      </View>
+      </EnginesModelProvider>
     );
   }
 
@@ -117,7 +121,9 @@ export function EnginesPanel() {
           />
         ))}
       </View>
-      <Section />
+      <EnginesModelProvider>
+        <Section />
+      </EnginesModelProvider>
     </View>
   );
 }

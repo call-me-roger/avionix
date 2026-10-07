@@ -18,6 +18,8 @@ import { avionicsText, numeric } from '@/theme/typography';
 
 /** A tank's level as a bar: its quantity over its capacity. */
 const LEVEL: Scale = { min: 0, max: 1, redline: null };
+/** A readout value's width, so values line up in columns. */
+const VALUE_WIDTH = 72;
 
 export const makeReadoutStyles = (theme: Theme) => ({
   row: {
@@ -35,12 +37,13 @@ export const makeReadoutStyles = (theme: Theme) => ({
   },
   value: {
     ...numeric(theme, true),
-    minWidth: 72,
+    minWidth: VALUE_WIDTH,
     fontSize: 18,
     textAlign: 'right' as const,
     color: theme.avionics.legend,
   },
   stale: { color: theme.avionics.legendDim },
+  placeholder: { minWidth: VALUE_WIDTH },
   bar: { flex: 1 },
   divider: { height: 1, backgroundColor: theme.avionics.bezelEdge },
 });

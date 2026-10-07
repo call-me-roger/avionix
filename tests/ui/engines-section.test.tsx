@@ -92,6 +92,14 @@ describe('the ENGINES page (spec §4.2–§4.6)', () => {
     expect(screen.getByTestId('engine-cell-itt-2')).toBeTruthy();
   });
 
+  it('shrinks a cell value to one line rather than wrapping it in a narrow cell', async () => {
+    await render(tree(snapshot(withEngines(C172_VALUES, 4, [1, 1, 1, 1]))));
+    const value = within(screen.getByTestId('engine-cell-egt-4')).getAllByText(/./)[0];
+    expect(value?.props.numberOfLines).toBe(1);
+    expect(value?.props.adjustsFontSizeToFit).toBe(true);
+    expect(value?.props.minimumFontScale).toBe(0.7);
+  });
+
   it('says engines 5 and up are not shown, and names an unsupported type', async () => {
     await render(tree(snapshot(withEngines(C172_VALUES, 6, [7, 7, 7, 6, 7, 7]))));
     expect(screen.getByText("Engines 5 and up aren't shown.")).toBeTruthy();

@@ -121,6 +121,21 @@ describe('the ELEC page (spec §4.8)', () => {
     expect(screen.getByLabelText('Battery 1, 24.3 volts, minus 4 amps')).toBeTruthy();
   });
 
+  it('keeps GEN amps under the amps column with a hidden placeholder for volts', async () => {
+    await render(tree(snapshot()));
+    const placeholder = within(screen.getByTestId('elec-gen-1')).getByTestId(
+      'elec-gen-1-no-volts',
+      HIDDEN,
+    );
+    const value = within(screen.getByTestId('elec-bus-1')).getByText('28.1 V');
+    expect(StyleSheet.flatten(placeholder.props.style).minWidth).toBe(
+      StyleSheet.flatten(value.props.style).minWidth,
+    );
+    expect(placeholder.props.accessibilityElementsHidden).toBe(true);
+    expect(placeholder.props.importantForAccessibility).toBe('no-hide-descendants');
+    expect(screen.queryByTestId('elec-bus-1-no-volts', HIDDEN)).toBeNull();
+  });
+
   it('has no generator on a glider (Review Focus 1)', async () => {
     await render(tree(snapshot({ ...C172_VALUES, [ENGINE_CONFIG.count]: 0 })));
     expect(screen.queryByTestId('elec-gen-1')).toBeNull();

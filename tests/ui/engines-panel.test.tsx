@@ -6,6 +6,7 @@ import { type SessionSnapshot, initialSnapshot } from '@/application/session-sna
 import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
 import { GENERIC_PROFILE } from '@/domain/aircraft/profiles/generic';
 import { ENGINES_FEATURES } from '@/domain/engines/catalogue';
+import * as enginePage from '@/domain/engines/engine-page';
 import { EVERYWHERE } from '@/domain/panels/panel';
 import { ENGINES_PAGES, ENGINES_PANEL } from '@/features/panels/engines/engines';
 import { ENGINES_STORAGE_KEY } from '@/features/panels/engines/engines-preference';
@@ -110,6 +111,19 @@ describe('Engines pages on a phone (spec §4.10)', () => {
 });
 
 describe('Engines on a wide window (spec §4.10)', () => {
+  it('derives the ENGINES model once per snapshot for all three sections', async () => {
+    setWindow(1024, 768);
+    const derive = jest.spyOn(enginePage, 'enginesPage');
+    try {
+      const view = await render(tree(snapshot()));
+      derive.mockClear();
+      await view.rerender(tree(snapshot()));
+      expect(derive).toHaveBeenCalledTimes(1);
+    } finally {
+      derive.mockRestore();
+    }
+  });
+
   it('shows all three sections and no page keys', async () => {
     setWindow(1024, 768);
     await render(tree(snapshot()));
