@@ -20,6 +20,9 @@ import {
   GAUGE_IDS,
   type GaugeId,
   MARKING_NAMES,
+  MAX_BATTERIES,
+  MAX_BUSES,
+  TANK_SLOTS,
   markingName,
 } from '@/domain/engines/catalogue';
 import type { DataRefValue, DataRefValueType } from '@/domain/simulator/types';
@@ -342,19 +345,20 @@ function enginesDataRefs(startId: number): MockDataRef[] {
   for (const name of MARKING_NAMES) {
     push(name, 'float', TOY_MARKINGS[name] ?? 0);
   }
-  push(FUEL.perTank, 'float_array', padded([617.25, 617.25], 9));
-  push(FUEL.ratio, 'float_array', padded([0.5, 0.5], 9));
+  push(FUEL.perTank, 'float_array', padded([617.25, 617.25], TANK_SLOTS));
+  push(FUEL.ratio, 'float_array', padded([0.5, 0.5], TANK_SLOTS));
   push(FUEL.count, 'int', 9);
   push(FUEL.capacity, 'float', 3000);
-  push(FUEL.side, 'float_array', padded([-11, 11], 9));
+  push(FUEL.side, 'float_array', padded([-11, 11], TANK_SLOTS));
   push(FUEL.used, 'float', 0);
   push(ELECTRICAL.busCount, 'int', 1);
   push(ELECTRICAL.batteryCount, 'int', 1);
-  push(ELECTRICAL.busVolts, 'float_array', padded([24], 6));
-  push(ELECTRICAL.busAmps, 'float_array', padded([2], 6));
-  push(ELECTRICAL.batteryVolts, 'float_array', padded([24], 8));
-  push(ELECTRICAL.batteryAmps, 'float_array', padded([-2], 8));
-  push(ELECTRICAL.generatorAmps, 'float_array', padded([0], 8));
+  push(ELECTRICAL.busVolts, 'float_array', padded([24], MAX_BUSES));
+  push(ELECTRICAL.busAmps, 'float_array', padded([2], MAX_BUSES));
+  push(ELECTRICAL.batteryVolts, 'float_array', padded([24], MAX_BATTERIES));
+  push(ELECTRICAL.batteryAmps, 'float_array', padded([-2], MAX_BATTERIES));
+  // Laminar's generator array has eight entries, the same length as the battery arrays.
+  push(ELECTRICAL.generatorAmps, 'float_array', padded([0], MAX_BATTERIES));
   return refs;
 }
 
@@ -889,6 +893,8 @@ export class MockXPlaneServer {
    * it found then, while its hold is live.
    */
   private readonly starterCranking = new Map<number, { since: number; key: number }>();
+  /** Engine index → the `ENGN_running` state the toy engine's indicators last followed. */
+  private readonly toyEngineRunning = new Map<number, boolean>();
   private lastTickAt = Date.now();
 
   private readonly apiVersions: string[];
@@ -929,6 +935,7 @@ export class MockXPlaneServer {
     this.connector = options.connector;
     this.reportWritability = options.reportWritability ?? true;
     this.rejectAllTokens = options.connector?.rejectAllTokens ?? false;
+    this.syncToyEngines();
     this.timer = setInterval(() => {
       this.tick();
       this.pushUpdates();
@@ -1623,8 +1630,8 @@ export class MockXPlaneServer {
    * and `starter_hit` to 1, and after 2 s of cranking with the magnetos on (the key it found at the
    * hold's start, 1 or more) and the fuel selector not OFF sets `ENGN_running` to 1. Releasing (or
    * lapsing) a starter hold restores `starter_hit` to 0 and the ignition key to where it was.
-   * Expired leases are removed here. The F-12 toy engine's thirteen indicators read running or
-   * stopped values per engine from `ENGN_running`.
+   * Expired leases are removed here. The F-12 toy engine's thirteen indicators follow each
+   * engine's `ENGN_running` when it changes (`syncToyEngines`).
    */
   private tick(): void {
     const now = Date.now();
@@ -1728,20 +1735,33 @@ export class MockXPlaneServer {
       }
     }
 
+    this.syncToyEngines();
+  }
+
+  /**
+   * F-12's toy engine: an engine's thirteen indicators take the running or stopped values only
+   * when its `ENGN_running` entry changes (first seen at construction), so a value a test sets on
+   * EGT or any other indicator survives every tick until that engine starts or stops.
+   */
+  private syncToyEngines(): void {
     const running = this.getDataRefByName(ENGINES.running)?.value;
-    if (Array.isArray(running)) {
+    if (!Array.isArray(running)) {
+      return;
+    }
+    for (let index = 0; index < MAX_ENGINES; index += 1) {
+      const on = running[index] === 1;
+      if (this.toyEngineRunning.get(index) === on) {
+        continue;
+      }
+      this.toyEngineRunning.set(index, on);
       for (const id of GAUGE_IDS) {
         const ref = this.getDataRefByName(GAUGES[id].name);
         if (ref === undefined || !Array.isArray(ref.value)) {
           continue;
         }
-        ref.value = ref.value.map((value, index) =>
-          index < MAX_ENGINES
-            ? running[index] === 1
-              ? TOY_ENGINE_RUNNING[id]
-              : TOY_ENGINE_STOPPED[id]
-            : value,
-        );
+        const next = [...ref.value];
+        next[index] = on ? TOY_ENGINE_RUNNING[id] : TOY_ENGINE_STOPPED[id];
+        ref.value = next;
       }
     }
   }

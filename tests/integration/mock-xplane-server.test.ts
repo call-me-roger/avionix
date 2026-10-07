@@ -1,3 +1,4 @@
+import { GAUGES } from '@/domain/engines/catalogue';
 import {
   BATTERY,
   DIMMERS,
@@ -883,5 +884,25 @@ describe('F-12 engines in the toy aircraft', () => {
     const refs = DEFAULT_MOCK_DATAREFS.filter((ref) => ref.id >= 1300);
     expect(refs).toHaveLength(91);
     expect(Math.min(...refs.map((ref) => ref.id))).toBe(1300);
+  });
+
+  it('keeps an indicator set from outside until that engine starts or stops', async () => {
+    const server = await MockXPlaneServer.start({ updateIntervalMs: 10 });
+    const ticks = (count: number) => new Promise((resolve) => setTimeout(resolve, 10 * count + 20));
+    try {
+      const egt = GAUGES.egt.name;
+      const set = [1500, ...arrayValue(server, egt).slice(1)];
+      server.setDataRefValue(egt, set);
+      await ticks(2);
+      expect(arrayValue(server, egt)).toEqual(set);
+
+      server.setDataRefValue(ENGINES.running, [1, ...new Array<number>(15).fill(0)]);
+      await ticks(2);
+      expect(arrayValue(server, egt)[0]).not.toBe(1500);
+      expect(arrayValue(server, egt)[0]).toBeGreaterThan(0);
+      expect(arrayValue(server, egt)[1]).toBe(set[1]);
+    } finally {
+      await server.stop();
+    }
   });
 });
