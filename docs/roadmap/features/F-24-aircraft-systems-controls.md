@@ -95,9 +95,8 @@ makes R5 safe: a dropped connection cannot leave trim running.
 
 Verified names: see `docs/xplane.md`, "Systems controls (F-24)". Every DataRef and command was
 checked against Laminar's own `DataRefs.txt` and `Commands.txt`, the same files the F-30 and F-32
-names were checked against; none of the "not identified" placeholders this file listed before the
-names were verified shipped. Electrical
-controls (battery, avionics master, generators) were added beyond this file's original scope: the
+names were checked against. The "not identified" placeholders this file listed before then were
+replaced by those names; none shipped. Electrical controls (battery, avionics master, generators) were added beyond this file's original scope: the
 panel is meant to run a whole flight from start to shutdown, and every switch panel simmers buy
 starts with the master switch (design spec §9, decision 6). Detent-by-detent flap selection by
 writing the flap handle ratio was left out of scope; flaps move by the existing notch commands only,

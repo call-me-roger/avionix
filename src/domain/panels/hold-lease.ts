@@ -41,7 +41,8 @@ export interface HoldLeaseOptions {
  * a 0.5 s lease and renews it every 200 ms; `release` ends it (after HOLD_MIN_MS at the earliest,
  * so a tap is a fixed nudge; a press during that tail merges into the hold); `cancel` ends it now.
  * Every end sends a release, best effort: if the link is gone the lease lapses in X-Plane by itself
- * within 0.5 s, which is the safety this class exists for. A late answer from an earlier hold never touches a later one (`generation`).
+ * within 0.5 s, which is the safety this class exists for. A late answer from an earlier hold
+ * never touches a later one (`generation`).
  */
 export class HoldLease {
   private holding = false;
