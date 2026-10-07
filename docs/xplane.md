@@ -439,3 +439,86 @@ reconnect (it carries the connection generation it was pressed on). Avionix boun
 itself at 10 s for trim and 30 s for the starter.
 
 Verified against `DataRefs.txt` / `Commands.txt`, 2026-10-06.
+
+## Engines (F-12)
+
+Every name below was verified against Laminar's `DataRefs.txt`, the same copy the earlier sections
+were checked against; the three `_deg_cel` temperature names (X-Plane 12.0.8 and newer) were checked
+against Laminar's live DataRef database instead, because that `DataRefs.txt` copy predates them.
+None are community-sourced. Engine number `n` is 1..16; DataRef arrays are zero-based, so engine `n`
+is index `n − 1`.
+
+**Engine indicators** (float[16] unless noted; engine 1 at index 0)
+
+| Gauge | DataRef | Unit | Unit flag |
+|---|---|---|---|
+| RPM | `sim/cockpit2/engine/indicators/engine_speed_rpm` | rev/min | — |
+| PROP | `sim/cockpit2/engine/indicators/prop_speed_rpm` | rev/min | — |
+| N1 | `sim/cockpit2/engine/indicators/N1_percent` | percent | — |
+| N2 | `sim/cockpit2/engine/indicators/N2_percent` | percent | — |
+| MAP | `sim/cockpit2/engine/indicators/MPR_in_hg` | inches Hg | — |
+| TRQ | `sim/cockpit2/engine/indicators/torque_n_mtr` | N·m (shown in ft-lb) | — |
+| EPR | `sim/cockpit2/engine/indicators/EPR_ratio` | ratio | — |
+| EGT | `sim/cockpit2/engine/indicators/EGT_deg_cel` | °C or °F | `acf_EGT_is_C` |
+| CHT | `sim/cockpit2/engine/indicators/CHT_deg_cel` | °C always | — |
+| ITT | `sim/cockpit2/engine/indicators/ITT_deg_cel` | °C or °F | `acf_ITT_is_C` |
+| FF | `sim/cockpit2/engine/indicators/fuel_flow_kg_sec` | kg/s (shown kg/h or lb/h) | — |
+| Oil P | `sim/cockpit2/engine/indicators/oil_pressure_psi` | psi | — |
+| Oil T | `sim/cockpit2/engine/indicators/oil_temperature_deg_C` | °C or °F | `acf_oilT_is_C` |
+
+A flag reads 1 for Celsius, 0 for Fahrenheit. CHT has no flag: Laminar's own notes say it is always
+Celsius, unlike the other three.
+
+**Engine configuration**
+
+| Purpose | DataRef | Type |
+|---|---|---|
+| Engine count | `sim/aircraft/engine/acf_num_engines` | int |
+| Engine type per engine | `sim/aircraft/prop/acf_en_type` | int[16] |
+| EGT unit flag | `sim/aircraft/engine/acf_EGT_is_C` | int, 1 Celsius |
+| ITT unit flag | `sim/aircraft/engine/acf_ITT_is_C` | int, 1 Celsius |
+| Oil temperature unit flag | `sim/aircraft/engine/acf_oilT_is_C` | int, 1 Celsius |
+| Engine redline | `sim/aircraft/engine/acf_RSC_redline_eng` | float, rad/s (shown rev/min) |
+| Propeller redline | `sim/aircraft/controls/acf_RSC_redline_prp` | float, rad/s (shown rev/min) |
+
+**Markings.** `sim/aircraft/limits/{green,yellow,red}_{lo,hi}_<x>`, float, one pair of edges per
+colour for each of ten instruments (`MP`, `TRQ`, `N1`, `N2`, `EPR`, `ITT`, `EGT`, `CHT`, `oilT`,
+`oilP`): 60 names. A band counts only when its high edge is above its low edge; Plane Maker leaves
+an unused band at 0/0. TRQ's markings are in ft-lb, the same unit the TRQ gauge is shown in, not the
+underlying DataRef's N·m. The temperature markings (EGT, CHT, ITT, oilT) are read in whatever unit
+the aircraft's limits happen to use; which unit that is is pending the device row (165).
+
+**Fuel**
+
+| Purpose | DataRef | Type |
+|---|---|---|
+| Fuel per tank | `sim/flightmodel/weight/m_fuel` | float[9], kg |
+| Fuel total | `sim/flightmodel/weight/m_fuel_total` | float, kg |
+| Tank ratio | `sim/aircraft/overflow/acf_tank_rat` | float[9], share of capacity, 0 unused |
+| Tank count | `sim/aircraft/overflow/acf_num_tanks` | int |
+| Tank capacity | `sim/aircraft/weight/acf_m_fuel_tot` | float, lb ("appears to be", Laminar) |
+| Tank lateral position | `sim/aircraft/overflow/acf_tank_X` | float[9], negative left |
+| Fuel used | `sim/cockpit2/fuel/fuel_totalizer_sum_kg` | float, kg |
+
+`m_fuel` sums to F-11's `m_fuel_total`; `acf_m_fuel_tot` is lb, the whole aircraft, not per tank —
+Avionix multiplies it by a tank's ratio to get that tank's own capacity. Its unit rests on Laminar's
+"appears to be"; other `acf_m_*` weights read as kg in practice. A tank holding more than 5 % over
+its computed capacity therefore draws no bar rather than a full one: were the capacity kg, full and
+half tanks would show no bar, never tanks stuck at 100 %.
+
+**Electrical**
+
+| Purpose | DataRef | Type |
+|---|---|---|
+| Bus count | `sim/aircraft/electrical/num_buses` | int |
+| Battery count | `sim/aircraft/electrical/num_batteries` | int |
+| Bus volts | `sim/cockpit2/electrical/bus_volts` | float[6] |
+| Bus load | `sim/cockpit2/electrical/bus_load_amps` | float[6] |
+| Battery volts | `sim/cockpit2/electrical/battery_voltage_indicated_volts` | float[8] |
+| Battery amps | `sim/cockpit2/electrical/battery_amps` | float[8], negative while discharging |
+| Generator amps | `sim/cockpit2/electrical/generator_amps` | float[8], one per engine |
+
+Total: 91 new names, probed at connect like every other binding (row 171 of the smoke test).
+
+Unsettled until the device rows: the marking units for temperatures (165), the unit flags (166),
+the tank side threshold and the tank capacity unit, lb or kg (167).

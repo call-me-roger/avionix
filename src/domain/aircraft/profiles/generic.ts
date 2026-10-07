@@ -9,6 +9,22 @@ import {
   type CduUnit,
 } from '@/domain/cdu/keys';
 import {
+  ELECTRICAL,
+  ENGINE_CONFIG,
+  FEATURE_ELECTRICAL_MONITOR,
+  FEATURE_ENGINE_GAUGES,
+  FEATURE_ENGINE_MARKINGS,
+  FEATURE_FUEL_QUANTITY,
+  FUEL,
+  GAUGES,
+  GAUGE_IDS,
+  MARKING_COLOURS,
+  MARKING_EDGES,
+  MARKING_KEYS,
+  MARKING_LABELS,
+  markingName,
+} from '@/domain/engines/catalogue';
+import {
   ANTI_ICE,
   AVIONICS_MASTER,
   BATTERY,
@@ -400,6 +416,64 @@ const SYSTEMS_FEATURE_SPECS: readonly FeatureSpec[] = [
   },
 ];
 
+/** F-12's four read-only features (spec §4.1): every binding an optional DataRef, none written. */
+const ENGINES_FEATURE_SPECS: readonly FeatureSpec[] = [
+  {
+    id: FEATURE_ENGINE_GAUGES,
+    label: 'Engine gauges',
+    bindings: [
+      dataRef(ENGINE_CONFIG.count, 'Engine count'),
+      dataRef(ENGINE_CONFIG.type, 'Engine type'),
+      ...GAUGE_IDS.map((id) => dataRef(GAUGES[id].name, `${capitalise(GAUGES[id].spoken)} gauge`)),
+      dataRef(ENGINE_CONFIG.egtIsCelsius, 'EGT unit'),
+      dataRef(ENGINE_CONFIG.ittIsCelsius, 'ITT unit'),
+      dataRef(ENGINE_CONFIG.oilTempIsCelsius, 'Oil temperature unit'),
+      dataRef(ENGINE_CONFIG.engineRedline, 'Engine redline'),
+      dataRef(ENGINE_CONFIG.propRedline, 'Propeller redline'),
+    ],
+  },
+  {
+    id: FEATURE_ENGINE_MARKINGS,
+    label: 'Gauge markings',
+    bindings: MARKING_KEYS.flatMap((key) =>
+      MARKING_COLOURS.flatMap((colour) =>
+        MARKING_EDGES.map((edge) =>
+          dataRef(
+            markingName(colour, edge, key),
+            `${MARKING_LABELS[key]} ${colour} band, ${edge === 'lo' ? 'low' : 'high'} edge`,
+          ),
+        ),
+      ),
+    ),
+  },
+  {
+    id: FEATURE_FUEL_QUANTITY,
+    label: 'Fuel quantity',
+    bindings: [
+      dataRef(FUEL.perTank, 'Fuel in each tank'),
+      dataRef(FUEL.total, 'Total fuel'),
+      dataRef(FUEL.ratio, 'Which fuel tanks are used'),
+      dataRef(FUEL.count, 'Fuel tank count'),
+      dataRef(FUEL.capacity, 'Fuel capacity'),
+      dataRef(FUEL.side, 'Fuel tank positions'),
+      dataRef(FUEL.used, 'Fuel used'),
+    ],
+  },
+  {
+    id: FEATURE_ELECTRICAL_MONITOR,
+    label: 'Electrical readings',
+    bindings: [
+      dataRef(ELECTRICAL.busCount, 'Bus count'),
+      dataRef(ELECTRICAL.batteryCount, 'Battery count'),
+      dataRef(ELECTRICAL.busVolts, 'Bus voltage'),
+      dataRef(ELECTRICAL.busAmps, 'Bus load'),
+      dataRef(ELECTRICAL.batteryVolts, 'Battery voltage'),
+      dataRef(ELECTRICAL.batteryAmps, 'Battery current'),
+      dataRef(ELECTRICAL.generatorAmps, 'Generator current'),
+    ],
+  },
+];
+
 const D = GENERIC_DATAREFS;
 const C = GENERIC_COMMANDS;
 
@@ -484,12 +558,13 @@ function modeFeature(
  * optional, so a missing key just disables that one key instead of the whole unit. The ten systems
  * features (F-24) bind every name optionally, so a missing name costs only the control it backs
  * (each control checks its own bindings, spec §4.1); the parking brake's one written DataRef is
- * required.
+ * required. The four engine features (F-12) are read-only and bind every name optionally, so a
+ * missing name costs only the gauges it feeds.
  */
 export const GENERIC_PROFILE: AircraftProfile = {
   id: 'avionix.generic',
   name: 'Generic X-Plane aircraft',
-  version: '1.7.0',
+  version: '1.8.0',
   match: { kind: 'generic' },
   features: [
     {
@@ -1033,5 +1108,6 @@ export const GENERIC_PROFILE: AircraftProfile = {
     cduScreenFeature(2),
     cduKeysFeature(2),
     ...SYSTEMS_FEATURE_SPECS,
+    ...ENGINES_FEATURE_SPECS,
   ],
 };

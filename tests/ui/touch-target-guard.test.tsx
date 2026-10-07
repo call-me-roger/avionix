@@ -18,6 +18,12 @@ import { ThemeProvider } from '@/theme/theme-context';
 
 import { toyScreenTelemetry } from '../helpers/cdu';
 import { SYSTEMS_VALUES, systemsCompatibility, systemsTelemetry } from '../helpers/systems';
+import {
+  C172_VALUES,
+  enginesCompatibility,
+  enginesTelemetry,
+  withEngines,
+} from '../helpers/engines';
 import { createFakeServiceBrowser } from '../support/fake-service-browser';
 
 let mockLayout: DeviceLayout = { deviceClass: 'phone', orientation: 'portrait' };
@@ -227,6 +233,58 @@ describe('touch targets on the Navigation panel with the course pad open', () =>
       });
     }
   });
+});
+
+/**
+ * The sweep above renders Engines with no telemetry, so its LEAN key never appears. This case
+ * gives it a piston twin, on a phone (page keys and LEAN) and a wide window (LEAN, no page keys).
+ */
+describe('touch targets on the Engines panel with a piston twin', () => {
+  it.each([
+    ['phone', { deviceClass: 'phone', orientation: 'portrait' } as DeviceLayout, 390, 844],
+    ['tablet', { deviceClass: 'tablet', orientation: 'landscape' } as DeviceLayout, 1024, 768],
+  ])(
+    'every control on a %s, including LEAN, is at least 48 dp',
+    async (_name, layout, width, height) => {
+      mockLayout = layout;
+      const original = Dimensions.get('window');
+      Dimensions.set({ window: { width, height, scale: 1, fontScale: 1 } });
+      try {
+        const live = liveSnapshot();
+        const { services } = makeServices(
+          {
+            ...live,
+            telemetry: enginesTelemetry(withEngines(C172_VALUES, 2, [1, 1]), NOW),
+            compatibility: enginesCompatibility(live.compatibility),
+          },
+          await seeded('engines'),
+        );
+        await render(tree(services));
+        await screen.findByTestId('panel-engines');
+        expect(screen.getByLabelText('Lean assist')).toBeTruthy();
+        const targets = panelTargets();
+        expect(targets.length).toBeGreaterThan(0);
+        for (const target of targets) {
+          const style = StyleSheet.flatten(target.props.style) ?? {};
+          const label = String(
+            target.props.accessibilityLabel ?? target.props.testID ?? 'unlabelled',
+          );
+          expect({ label, minHeight: Number(style.minHeight ?? style.height ?? 0) >= 48 }).toEqual({
+            label,
+            minHeight: true,
+          });
+          expect({ label, minWidth: Number(style.minWidth ?? style.width ?? 0) >= 48 }).toEqual({
+            label,
+            minWidth: true,
+          });
+        }
+      } finally {
+        await act(async () => {
+          Dimensions.set({ window: original });
+        });
+      }
+    },
+  );
 });
 
 /**

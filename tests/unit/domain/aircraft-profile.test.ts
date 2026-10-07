@@ -8,6 +8,19 @@ import {
 } from '@/domain/aircraft/profile';
 import { BUNDLED_PROFILES } from '@/domain/aircraft/profiles/catalog';
 import {
+  ELECTRICAL,
+  ENGINE_CONFIG,
+  ENGINES_FEATURES,
+  FEATURE_ELECTRICAL_MONITOR,
+  FEATURE_ENGINE_GAUGES,
+  FEATURE_ENGINE_MARKINGS,
+  FEATURE_FUEL_QUANTITY,
+  FUEL,
+  GAUGES,
+  GAUGE_IDS,
+  MARKING_NAMES,
+} from '@/domain/engines/catalogue';
+import {
   FEATURE_ALTIMETER_SETTING,
   FEATURE_AIRSPEED_SELECT,
   FEATURE_ALTITUDE_SELECT,
@@ -98,6 +111,22 @@ function systemsNames(): string[] {
       ),
     ),
   ].filter((name) => name !== GENERIC_DATAREFS.engineType);
+}
+
+/** F-12's names, each once, without the three earlier features already bind. */
+function enginesNames(): string[] {
+  const reused = new Set<string>([
+    GENERIC_DATAREFS.engineType,
+    GENERIC_DATAREFS.fuelTotal,
+    ENGINE_CONFIG.count,
+  ]);
+  return [
+    ...new Set(
+      ENGINES_FEATURES.flatMap(
+        (id) => findFeature(GENERIC_PROFILE, id)?.bindings.map((binding) => binding.name) ?? [],
+      ),
+    ),
+  ].filter((name) => !reused.has(name));
 }
 
 describe('profileBindings', () => {
@@ -243,6 +272,7 @@ describe('profileBindings', () => {
       ...cduScreenNames(2),
       ...cduKeysNames(2),
       ...systemsNames(),
+      ...enginesNames(),
     ]);
   });
 });
@@ -271,7 +301,7 @@ describe('the generic profile', () => {
     expect(GENERIC_PROFILE.version).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('declares the Stage 1 features, then the F-30, F-32 and F-24 features', () => {
+  it('declares the Stage 1 features, then the F-30, F-32, F-24 and F-12 features', () => {
     expect(GENERIC_PROFILE.features.map((feature) => feature.id)).toEqual([
       FEATURE_CONNECTION_HEALTH,
       FEATURE_FLIGHT_TELEMETRY,
@@ -309,6 +339,7 @@ describe('the generic profile', () => {
       cduScreenFeatureId(2),
       cduKeysFeatureId(2),
       ...SYSTEMS_FEATURES,
+      ...ENGINES_FEATURES,
     ]);
   });
 
@@ -345,20 +376,26 @@ describe('the generic profile', () => {
     }
   });
 
-  it('names every DataRef once across the whole profile, except airspeed and engine type, which another feature deliberately reuses', () => {
+  it('names every DataRef once across the whole profile, except the ones a later feature deliberately reuses', () => {
     const names = GENERIC_PROFILE.features.flatMap((feature) =>
       feature.bindings.map((binding) => binding.name),
     );
     const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
-    expect(duplicates).toEqual([GENERIC_DATAREFS.airspeed, GENERIC_DATAREFS.engineType]);
+    expect(duplicates).toEqual([
+      GENERIC_DATAREFS.airspeed,
+      GENERIC_DATAREFS.engineType,
+      ENGINE_CONFIG.count,
+      GENERIC_DATAREFS.engineType,
+      GENERIC_DATAREFS.fuelTotal,
+    ]);
   });
 
   it('bumps the profile version for the new bindings', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.7.0');
+    expect(GENERIC_PROFILE.version).toBe('1.8.0');
   });
 
   it('declares the flight instruments, every one optional, and the altimeter setting', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.7.0');
+    expect(GENERIC_PROFILE.version).toBe('1.8.0');
     const instruments = findFeature(GENERIC_PROFILE, FEATURE_FLIGHT_INSTRUMENTS);
     expect(instruments?.label).toBe('Flight instruments');
     expect(instruments?.bindings.map((binding) => binding.name)).toEqual([
@@ -603,7 +640,7 @@ describe('the generic profile’s navigation features (F-30)', () => {
 
 describe('CDU features (F-32)', () => {
   it('bumps the profile version for the CDU bindings', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.7.0');
+    expect(GENERIC_PROFILE.version).toBe('1.8.0');
   });
 
   it.each([1, 2] as const)(
@@ -706,5 +743,74 @@ describe('the F-24 systems features (profile 1.7.0)', () => {
         starterCommand(engine),
       ]),
     ]);
+  });
+});
+
+describe('the F-12 engine features (profile 1.8.0)', () => {
+  function bindings(id: string) {
+    return findFeature(GENERIC_PROFILE, id)?.bindings ?? [];
+  }
+
+  it('declares 94 bindings over the four features, 91 of them new names', () => {
+    expect(ENGINES_FEATURES.map((id) => bindings(id).length)).toEqual([20, 60, 7, 7]);
+    expect(enginesNames()).toHaveLength(91);
+  });
+
+  it('makes every binding an optional, read-only DataRef (R9)', () => {
+    for (const id of ENGINES_FEATURES) {
+      for (const binding of bindings(id)) {
+        expect({ id, name: binding.name, kind: binding.kind, required: binding.required }).toEqual({
+          id,
+          name: binding.name,
+          kind: 'dataref',
+          required: false,
+        });
+        expect(binding.write).toBeUndefined();
+      }
+    }
+  });
+
+  it('labels the four features', () => {
+    expect(ENGINES_FEATURES.map((id) => findFeature(GENERIC_PROFILE, id)?.label)).toEqual([
+      'Engine gauges',
+      'Gauge markings',
+      'Fuel quantity',
+      'Electrical readings',
+    ]);
+  });
+
+  it('gives the engine gauges the count, type, thirteen indicators, three unit flags and two redlines', () => {
+    expect(bindings(FEATURE_ENGINE_GAUGES).map((binding) => binding.name)).toEqual([
+      ENGINE_CONFIG.count,
+      ENGINE_CONFIG.type,
+      ...GAUGE_IDS.map((id) => GAUGES[id].name),
+      ENGINE_CONFIG.egtIsCelsius,
+      ENGINE_CONFIG.ittIsCelsius,
+      ENGINE_CONFIG.oilTempIsCelsius,
+      ENGINE_CONFIG.engineRedline,
+      ENGINE_CONFIG.propRedline,
+    ]);
+    expect(bindings(FEATURE_ENGINE_GAUGES)[2]?.purpose).toBe('RPM gauge');
+    expect(bindings(FEATURE_ENGINE_GAUGES)[3]?.purpose).toBe('Propeller RPM gauge');
+  });
+
+  it('gives the markings feature the 60 marking names, and fuel and electrical their seven each', () => {
+    expect(bindings(FEATURE_ENGINE_MARKINGS).map((binding) => binding.name)).toEqual(MARKING_NAMES);
+    expect(bindings(FEATURE_ENGINE_MARKINGS)[0]?.purpose).toBe(
+      'Manifold pressure green band, low edge',
+    );
+    expect(bindings(FEATURE_ENGINE_MARKINGS).at(-1)?.purpose).toBe(
+      'Oil pressure red band, high edge',
+    );
+    // Spoken names on the Compatibility screen, never Laminar's keys.
+    for (const binding of bindings(FEATURE_ENGINE_MARKINGS)) {
+      expect(binding.purpose).not.toMatch(/\b(MP|TRQ|oilT|oilP)\b/);
+    }
+    expect(bindings(FEATURE_FUEL_QUANTITY).map((binding) => binding.name)).toEqual(
+      Object.values(FUEL),
+    );
+    expect(bindings(FEATURE_ELECTRICAL_MONITOR).map((binding) => binding.name)).toEqual(
+      Object.values(ELECTRICAL),
+    );
   });
 });

@@ -1,3 +1,4 @@
+import { groupedWhole, signedWhole, whole } from '@/domain/units/numbers';
 import {
   type DistanceUnit,
   type FuelUnit,
@@ -8,26 +9,7 @@ import {
   convertTemperature,
 } from '@/domain/units/units';
 
-/** A true minus sign: a hyphen is easy to miss on a small screen. */
-export const MINUS = '−';
-
-/** Rounds and drops the sign of a negative zero, so -0.4 reads "0", never "-0". */
-function whole(value: number): number {
-  const rounded = Math.round(value);
-  return rounded === 0 ? 0 : rounded;
-}
-
-function signed(value: number): string {
-  const rounded = whole(value);
-  return rounded < 0 ? `${MINUS}${Math.abs(rounded)}` : String(rounded);
-}
-
-/** Thousands separators without Intl, whose availability differs between Hermes builds. */
-function grouped(value: number): string {
-  const rounded = whole(value);
-  const digits = String(Math.abs(rounded)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return rounded < 0 ? `${MINUS}${digits}` : digits;
-}
+export { MINUS } from '@/domain/units/numbers';
 
 function pad2(value: number): string {
   return String(value).padStart(2, '0');
@@ -51,11 +33,11 @@ export function formatWind(fromDegrees: number, kt: number): string {
 }
 
 export function formatTemperature(celsius: number, unit: TemperatureUnit): string {
-  return `${signed(convertTemperature(celsius, unit))} ${UNIT_LABEL.temperature[unit]}`;
+  return `${signedWhole(convertTemperature(celsius, unit))} ${UNIT_LABEL.temperature[unit]}`;
 }
 
 export function formatFuel(kg: number, unit: FuelUnit): string {
-  return `${grouped(convertFuel(kg, unit))} ${UNIT_LABEL.fuel[unit]}`;
+  return `${groupedWhole(convertFuel(kg, unit))} ${UNIT_LABEL.fuel[unit]}`;
 }
 
 /** Seconds since midnight (X-Plane's clock DataRefs) → HH:MM:SS. */

@@ -12,6 +12,19 @@ import {
   cduStyleLine,
   cduTextLine,
 } from '@/domain/cdu/keys';
+import {
+  ELECTRICAL,
+  ENGINE_CONFIG,
+  FUEL,
+  GAUGES,
+  GAUGE_IDS,
+  type GaugeId,
+  MARKING_NAMES,
+  MAX_BATTERIES,
+  MAX_BUSES,
+  TANK_SLOTS,
+  markingName,
+} from '@/domain/engines/catalogue';
 import type { DataRefValue, DataRefValueType } from '@/domain/simulator/types';
 import {
   ANTI_ICE,
@@ -24,6 +37,7 @@ import {
   FLAPS,
   FUEL_SELECTOR,
   GEAR,
+  MAX_ENGINES,
   PARKING_BRAKE,
   type SwitchSpec,
   TAKEOFF_TRIM,
@@ -261,6 +275,91 @@ function systemsCommands(startId: number): MockCommand[] {
     push(starterCommand(engine), `Starter ${engine}.`);
   }
   return commands;
+}
+
+/** F-12's toy engine: a C172 stopped (cold, ambient manifold pressure) and running at cruise. */
+const TOY_ENGINE_STOPPED: Record<GaugeId, number> = {
+  rpm: 0,
+  prop: 0,
+  n1: 0,
+  n2: 0,
+  map: 29.9,
+  trq: 0,
+  epr: 1,
+  egt: 60,
+  cht: 15,
+  itt: 15,
+  ff: 0,
+  oilP: 0,
+  oilT: 15,
+};
+
+const TOY_ENGINE_RUNNING: Record<GaugeId, number> = {
+  ...TOY_ENGINE_STOPPED,
+  rpm: 2300,
+  prop: 2300,
+  map: 22,
+  egt: 1350,
+  cht: 180,
+  ff: 0.0105,
+  oilP: 62,
+  oilT: 82,
+};
+
+/** The C172's own markings; every other marking reads 0 (unused), as Plane Maker leaves it. */
+const TOY_MARKINGS: Record<string, number> = {
+  [markingName('green', 'lo', 'EGT')]: 1200,
+  [markingName('green', 'hi', 'EGT')]: 1500,
+  [markingName('green', 'lo', 'CHT')]: 65,
+  [markingName('green', 'hi', 'CHT')]: 230,
+  [markingName('red', 'lo', 'CHT')]: 238,
+  [markingName('red', 'hi', 'CHT')]: 260,
+  [markingName('green', 'lo', 'oilP')]: 50,
+  [markingName('green', 'hi', 'oilP')]: 90,
+  [markingName('red', 'lo', 'oilP')]: 0,
+  [markingName('red', 'hi', 'oilP')]: 20,
+  [markingName('green', 'lo', 'oilT')]: 38,
+  [markingName('green', 'hi', 'oilT')]: 118,
+};
+
+/**
+ * F-12's 91 engine, fuel and electrical DataRefs (spec §3). Laminar's array lengths: 16 engines,
+ * 9 tank slots, 6 buses, 8 batteries and generators. EGT reads in °F (its flag 0), ITT and oil
+ * temperature in °C. Two wing tanks of nine hold the mock's 1,234.5 kg fuel total. All read-only:
+ * the panel never writes, and the tick drives the indicators.
+ */
+function enginesDataRefs(startId: number): MockDataRef[] {
+  const refs: MockDataRef[] = [];
+  let nextId = startId;
+  const push = (name: string, valueType: DataRefValueType, value: DataRefValue) =>
+    refs.push({ id: nextId++, name, valueType, value });
+
+  for (const id of GAUGE_IDS) {
+    push(GAUGES[id].name, 'float_array', padded([TOY_ENGINE_STOPPED[id]], 16));
+  }
+  push(ENGINE_CONFIG.egtIsCelsius, 'int', 0);
+  push(ENGINE_CONFIG.ittIsCelsius, 'int', 1);
+  push(ENGINE_CONFIG.oilTempIsCelsius, 'int', 1);
+  push(ENGINE_CONFIG.engineRedline, 'float', 282.743);
+  push(ENGINE_CONFIG.propRedline, 'float', 282.743);
+  for (const name of MARKING_NAMES) {
+    push(name, 'float', TOY_MARKINGS[name] ?? 0);
+  }
+  push(FUEL.perTank, 'float_array', padded([617.25, 617.25], TANK_SLOTS));
+  push(FUEL.ratio, 'float_array', padded([0.5, 0.5], TANK_SLOTS));
+  push(FUEL.count, 'int', 9);
+  push(FUEL.capacity, 'float', 3000);
+  push(FUEL.side, 'float_array', padded([-11, 11], TANK_SLOTS));
+  push(FUEL.used, 'float', 0);
+  push(ELECTRICAL.busCount, 'int', 1);
+  push(ELECTRICAL.batteryCount, 'int', 1);
+  push(ELECTRICAL.busVolts, 'float_array', padded([24], MAX_BUSES));
+  push(ELECTRICAL.busAmps, 'float_array', padded([2], MAX_BUSES));
+  push(ELECTRICAL.batteryVolts, 'float_array', padded([24], MAX_BATTERIES));
+  push(ELECTRICAL.batteryAmps, 'float_array', padded([-2], MAX_BATTERIES));
+  // Laminar's generator array has eight entries, the same length as the battery arrays.
+  push(ELECTRICAL.generatorAmps, 'float_array', padded([0], MAX_BATTERIES));
+  return refs;
 }
 
 export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
@@ -700,6 +799,9 @@ export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
   ...cduDataRefs(1095),
   // F-24: the systems catalogue's switches, selectors and engines, ids after the CDU's.
   ...systemsDataRefs(1161),
+  // F-12: the engines catalogue's gauges, markings, fuel and electrical DataRefs, well clear of
+  // the systems catalogue's range above.
+  ...enginesDataRefs(1300),
 ];
 
 export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [
@@ -791,6 +893,8 @@ export class MockXPlaneServer {
    * it found then, while its hold is live.
    */
   private readonly starterCranking = new Map<number, { since: number; key: number }>();
+  /** Engine index → the `ENGN_running` state the toy engine's indicators last followed. */
+  private readonly toyEngineRunning = new Map<number, boolean>();
   private lastTickAt = Date.now();
 
   private readonly apiVersions: string[];
@@ -831,6 +935,7 @@ export class MockXPlaneServer {
     this.connector = options.connector;
     this.reportWritability = options.reportWritability ?? true;
     this.rejectAllTokens = options.connector?.rejectAllTokens ?? false;
+    this.syncToyEngines();
     this.timer = setInterval(() => {
       this.tick();
       this.pushUpdates();
@@ -1525,7 +1630,8 @@ export class MockXPlaneServer {
    * and `starter_hit` to 1, and after 2 s of cranking with the magnetos on (the key it found at the
    * hold's start, 1 or more) and the fuel selector not OFF sets `ENGN_running` to 1. Releasing (or
    * lapsing) a starter hold restores `starter_hit` to 0 and the ignition key to where it was.
-   * Expired leases are removed here.
+   * Expired leases are removed here. The F-12 toy engine's thirteen indicators follow each
+   * engine's `ENGN_running` when it changes (`syncToyEngines`).
    */
   private tick(): void {
     const now = Date.now();
@@ -1626,6 +1732,36 @@ export class MockXPlaneServer {
         this.starterCranking.delete(id);
         this.setSwitchElement(ENGINES.starter, index, 0);
         this.setSwitchElement(ENGINES.key, index, cranking.key);
+      }
+    }
+
+    this.syncToyEngines();
+  }
+
+  /**
+   * F-12's toy engine: an engine's thirteen indicators take the running or stopped values only
+   * when its `ENGN_running` entry changes (first seen at construction), so a value a test sets on
+   * EGT or any other indicator survives every tick until that engine starts or stops.
+   */
+  private syncToyEngines(): void {
+    const running = this.getDataRefByName(ENGINES.running)?.value;
+    if (!Array.isArray(running)) {
+      return;
+    }
+    for (let index = 0; index < MAX_ENGINES; index += 1) {
+      const on = running[index] === 1;
+      if (this.toyEngineRunning.get(index) === on) {
+        continue;
+      }
+      this.toyEngineRunning.set(index, on);
+      for (const id of GAUGE_IDS) {
+        const ref = this.getDataRefByName(GAUGES[id].name);
+        if (ref === undefined || !Array.isArray(ref.value)) {
+          continue;
+        }
+        const next = [...ref.value];
+        next[index] = on ? TOY_ENGINE_RUNNING[id] : TOY_ENGINE_STOPPED[id];
+        ref.value = next;
       }
     }
   }

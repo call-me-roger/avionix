@@ -5,7 +5,7 @@
 | ID | `F-12` |
 | Stage | `2` |
 | Category | Monitoring |
-| Status | Proposed |
+| Status | Done |
 | Depends on | `F-03`, `F-04` |
 | Competitor prevalence | Matrix count 1 of 12 representative products (`research/competitors.md`). Wider set: 5 of 28 products researched cover engine or electrical values (Air Manager via community gauges, Touch Portal XP-FlightDeck, Flight Deck ONE, FS-FlightControl, SimControlX); no mobile X-Plane app ships a general engine page |
 
@@ -16,6 +16,9 @@ and ITT, fuel flow, fuel quantity per tank, oil pressure and temperature, and el
 and amps. Avionix reads the engine count and engine type from the simulator and shows only the
 gauges that type has, for only the engines that exist. Used on the ground during start and run-up,
 and in flight for cruise setting and for spotting a problem.
+
+Delivered: design in `../../superpowers/specs/2026-10-07-engine-monitoring-design.md`, research in
+`../research/engine-monitoring.md`.
 
 ## Why now
 
@@ -162,7 +165,8 @@ DataRefs need X-Plane 12.0.8 or newer.
 - Temperature units. Laminar states the unit of EGT, ITT and oil temperature varies by aircraft and
   the DataRef label is wrong. There is no known DataRef that reports which unit is in use. Open
   question: does Avionix show these unitless, infer the unit from the value range, or use an
-  aircraft profile in F-03? Inferring from range is a guess and could mislead.
+  aircraft profile in F-03? Inferring from range is a guess and could mislead. Resolved:
+  `acf_EGT_is_C`, `acf_ITT_is_C` and `acf_oilT_is_C` say which unit is in use (spec §4.4).
 - Which gauge set belongs to which `acf_en_type` value is a product decision; the enum includes
   electric and rocket types with no obvious gauge set. Array lengths are symbolic for some DataRefs
   and 16 for others, so confirm the real length and unused-index behaviour in the sim.

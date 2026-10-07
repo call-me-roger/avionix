@@ -188,6 +188,17 @@ Record results at the bottom.
 | 159 | At night: PANEL and INSTR ▼/▲ | Cockpit lighting changes; the percentage follows | |
 | 160 | Background the app during a trim hold | Trim stops; the panel says Avionix left the foreground | |
 | 161 | Phone: the four pages; tablet: two columns; web build: a trim hold through the connector | Pages remembered after relaunch; every key reachable; the web hold behaves like row 148 | |
+| 162 | Cessna 172: start the engine and do a run-up at 1,800 rpm; compare Engines with the G1000 | RPM, MAP, FF, EGT, CHT, oil pressure and oil temperature match the G1000 | |
+| 163 | A default turboprop: start an engine, watching Engines | TRQ, ITT, NG and PROP match the cockpit; ITT peaks then falls; TRQ is in ft-lb | |
+| 164 | A default airliner: start an engine | N1, EGT, N2 and FF match its engine display; EPR shows a plausible ratio | |
+| 165 | Cessna 172: compare the EGT, CHT and oil bands on Engines with the G1000's | The bands sit where the G1000 draws them (confirms the marking units) | |
+| 166 | Cessna 172: Settings → temperature °F, then °C | EGT matches the cockpit in both; no "doesn't say which unit" line on default aircraft | |
+| 167 | Cessna 172: FUEL page with full tanks, then about half fuel loaded in Weight & Balance | Two tanks named LEFT and RIGHT; full tanks read about 100 %, and each bar near 50 % at half fuel (settles whether the tank capacity is lb or kg: were it kg, full and half tanks would show no bar); TOTAL equals the flight-data strip | |
+| 168 | Cessna 172 in cruise: FUEL page | ENDURANCE roughly matches the G1000's fuel calculation; FLOW matches the cockpit's fuel flow | |
+| 169 | Cessna 172 in cruise: LEAN on, lean the mixture through peak EGT | The peak tick stays at the highest EGT; ΔPEAK reads 0 at peak and negative past it; LEAN off clears it | |
+| 170 | Cessna 172: ELEC page with the battery switch on, then off | Bus volts and battery amps match the G1000's electrical page; battery amps go negative with the alternator off | |
+| 171 | Connect with a flight loaded and time it against rows 124 and 143 | Connecting takes at most about a second longer than before F-12 (91 more names are checked) | |
+| 172 | Phone: the three pages; tablet: a twin in the wide layout | Pages switch and are remembered; on the tablet both engines' dials sit side by side, FUEL and ELEC below | |
 
 Rows 44 and 45 verify the keep-awake hold, and row 53 the safe areas: behaviour no automated test
 can observe.
