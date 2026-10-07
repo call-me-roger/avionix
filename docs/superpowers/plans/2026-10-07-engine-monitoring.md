@@ -4172,7 +4172,7 @@ describe('the FUEL page (spec §4.7)', () => {
   });
 
   it('mutes the numbers when the values are not current', async () => {
-    await render(tree(snapshot(C172_VALUES, [], NOW - 10_000)));
+    await render(tree({ ...snapshot(), state: 'reconnecting' }));
     const total = within(screen.getByTestId('fuel-total')).getByText('84');
     expect(StyleSheet.flatten(total.props.style).color).toBe(DIM);
   });
