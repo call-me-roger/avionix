@@ -27,6 +27,25 @@ import {
 import type { XPlaneConnectionConfig } from '@/domain/connection/connection-config';
 import { AvionixError } from '@/domain/errors/avionix-error';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
+import {
+  ANTI_ICE,
+  AVIONICS_MASTER,
+  BATTERY,
+  DIMMERS,
+  ENGINES,
+  ENGINE_NUMBERS,
+  EXTERIOR_LIGHTS,
+  FLAPS,
+  FUEL_SELECTOR,
+  GEAR,
+  PARKING_BRAKE,
+  TAKEOFF_TRIM,
+  TRIMS,
+  fuelPumpSwitch,
+  generatorSwitch,
+  magnetoPositions,
+  starterCommand,
+} from '@/domain/systems/controls';
 import type {
   DataRefDescriptor,
   DataRefUpdate,
@@ -209,10 +228,85 @@ const CDU_FAKE_DATAREFS: Record<string, FakeDataRef> = (() => {
   return refs;
 })();
 
+/**
+ * The systems features' (F-24) DataRefs, absent from `DEFAULT_FAKE_DATAREFS` for the same reason
+ * as the other feature datarefs above. `ENGINES.type` is `GENERIC_DATAREFS.engineType`, already
+ * present in `INSTRUMENT_FAKE_DATAREFS`, so it is not repeated here.
+ */
+const SYSTEMS_FAKE_DATAREFS: Record<string, FakeDataRef> = (() => {
+  const refs: Record<string, FakeDataRef> = {};
+  let nextId = 186;
+  const next = () => nextId++;
+  for (const light of EXTERIOR_LIGHTS) {
+    refs[light.state] = { id: next(), valueType: 'int' };
+  }
+  for (const spec of ANTI_ICE) {
+    refs[spec.state] = { id: next(), valueType: 'int' };
+  }
+  refs[BATTERY.state] = { id: next(), valueType: 'int' };
+  refs[AVIONICS_MASTER.state] = { id: next(), valueType: 'int' };
+  refs[generatorSwitch(1).state] = { id: next(), valueType: 'int_array' };
+  for (const dimmer of DIMMERS) {
+    refs[dimmer.state] = { id: next(), valueType: 'float' };
+  }
+  refs[GEAR.handle] = { id: next(), valueType: 'int', isWritable: true };
+  refs[GEAR.deployment] = { id: next(), valueType: 'float_array' };
+  refs[GEAR.retractable] = { id: next(), valueType: 'int' };
+  refs[FLAPS.handle] = { id: next(), valueType: 'float' };
+  refs[FLAPS.position] = { id: next(), valueType: 'float' };
+  refs[FLAPS.detents] = { id: next(), valueType: 'int' };
+  for (const trim of TRIMS) {
+    refs[trim.position] = { id: next(), valueType: 'float', isWritable: true };
+  }
+  refs[TAKEOFF_TRIM] = { id: next(), valueType: 'float' };
+  refs[PARKING_BRAKE.ratio] = { id: next(), valueType: 'float', isWritable: true };
+  refs[FUEL_SELECTOR.state] = { id: next(), valueType: 'int' };
+  refs[FUEL_SELECTOR.hasSelector] = { id: next(), valueType: 'int' };
+  refs[FUEL_SELECTOR.hasBoth] = { id: next(), valueType: 'int' };
+  refs[fuelPumpSwitch(1).state] = { id: next(), valueType: 'int_array' };
+  refs[ENGINES.count] = { id: next(), valueType: 'int' };
+  refs[ENGINES.key] = { id: next(), valueType: 'int_array' };
+  refs[ENGINES.starter] = { id: next(), valueType: 'int_array' };
+  refs[ENGINES.running] = { id: next(), valueType: 'int_array' };
+  return refs;
+})();
+
+/**
+ * The 83 systems commands (F-24) added in 1.7.0: every switch's on/off pair, every dimmer's
+ * down/up pair, gear and flaps, every trim's three commands, the fuel selector's positions, and
+ * every engine's magnetos and starter.
+ */
+const SYSTEMS_FAKE_COMMAND_NAMES: readonly string[] = [
+  ...EXTERIOR_LIGHTS.flatMap((light) => [light.on, light.off]),
+  ...ANTI_ICE.flatMap((spec) => [spec.on, spec.off]),
+  BATTERY.on,
+  BATTERY.off,
+  AVIONICS_MASTER.on,
+  AVIONICS_MASTER.off,
+  ...ENGINE_NUMBERS.flatMap((engine) => [
+    generatorSwitch(engine).on,
+    generatorSwitch(engine).off,
+    fuelPumpSwitch(engine).on,
+    fuelPumpSwitch(engine).off,
+  ]),
+  ...DIMMERS.flatMap((dimmer) => [dimmer.down, dimmer.up]),
+  GEAR.up,
+  GEAR.down,
+  FLAPS.up,
+  FLAPS.down,
+  ...TRIMS.flatMap((trim) => [trim.decrease.command, trim.increase.command, trim.set.command]),
+  ...FUEL_SELECTOR.positions.map((position) => position.command),
+  ...ENGINE_NUMBERS.flatMap((engine) => [
+    ...magnetoPositions(engine).map((position) => position.command),
+    starterCommand(engine),
+  ]),
+];
+
 /** Every command name `FakeClient.findCommand` recognises by default: a fully-equipped aircraft. */
 const ALL_FAKE_COMMAND_NAMES = new Set<string>([
   ...(Object.values(GENERIC_COMMANDS) as string[]),
   ...([1, 2] as const).flatMap((unit: CduUnit) => CDU_KEYS.map((key) => cduCommand(unit, key.id))),
+  ...SYSTEMS_FAKE_COMMAND_NAMES,
 ]);
 
 class FakeClient implements SimulatorClient {
@@ -1821,6 +1915,7 @@ describe('aircraft compatibility', () => {
       ...AUTOPILOT_FAKE_DATAREFS,
       ...NAV_FAKE_DATAREFS,
       ...CDU_FAKE_DATAREFS,
+      ...SYSTEMS_FAKE_DATAREFS,
     };
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
@@ -2132,9 +2227,9 @@ describe('aircraft changes', () => {
     await scheduler.runNext();
     // One re-check pass probes every command binding in the profile: headingUp, the five radio
     // and transponder commands added in 1.3.0, the fifteen autopilot commands added in 1.4.0, the
-    // HSI direct-to command added in 1.5.0, and the 140 CDU key commands (70 per unit) added in
-    // 1.6.0.
-    expect(client.findCommand.mock.calls.length).toBe(before + 162);
+    // HSI direct-to command added in 1.5.0, the 140 CDU key commands (70 per unit) added in
+    // 1.6.0, and the 83 systems commands added in 1.7.0.
+    expect(client.findCommand.mock.calls.length).toBe(before + 245);
   });
 
   it('ignores an update that repeats the identification already on record', async () => {

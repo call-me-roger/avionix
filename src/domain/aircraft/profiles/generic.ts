@@ -8,6 +8,36 @@ import {
   cduTextLine,
   type CduUnit,
 } from '@/domain/cdu/keys';
+import {
+  ANTI_ICE,
+  AVIONICS_MASTER,
+  BATTERY,
+  DIMMERS,
+  ENGINES,
+  ENGINE_NUMBERS,
+  EXTERIOR_LIGHTS,
+  FEATURE_ANTI_ICE,
+  FEATURE_ELECTRICAL,
+  FEATURE_ENGINE_START,
+  FEATURE_FLAPS,
+  FEATURE_FUEL,
+  FEATURE_GEAR,
+  FEATURE_LIGHTS_EXTERIOR,
+  FEATURE_LIGHTS_INTERIOR,
+  FEATURE_PARKING_BRAKE,
+  FEATURE_TRIM,
+  FLAPS,
+  FUEL_SELECTOR,
+  GEAR,
+  PARKING_BRAKE,
+  TAKEOFF_TRIM,
+  TRIMS,
+  type SwitchSpec,
+  fuelPumpSwitch,
+  generatorSwitch,
+  magnetoPositions,
+  starterCommand,
+} from '@/domain/systems/controls';
 
 /**
  * Laminar names, verified against Laminar Research's `DataRefs.txt` and `Commands.txt`
@@ -223,6 +253,153 @@ function cduKeysFeature(unit: CduUnit): FeatureSpec {
   };
 }
 
+function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function dataRef(name: string, purpose: string, write = false): BindingSpec {
+  return write
+    ? { kind: 'dataref', name, required: false, write: true, purpose }
+    : { kind: 'dataref', name, required: false, purpose };
+}
+
+function command(name: string, purpose: string): BindingSpec {
+  return { kind: 'command', name, required: false, purpose };
+}
+
+/** Per-engine controls share one array DataRef: keep each name once, its first purpose. */
+function uniqueByName(bindings: readonly BindingSpec[]): BindingSpec[] {
+  const seen = new Set<string>();
+  return bindings.filter((binding) => {
+    if (seen.has(binding.name)) {
+      return false;
+    }
+    seen.add(binding.name);
+    return true;
+  });
+}
+
+function switchBindings(spec: SwitchSpec, statePurpose = `${capitalise(spec.name)} switch`) {
+  return [
+    dataRef(spec.state, statePurpose),
+    command(spec.on, `${capitalise(spec.name)} on`),
+    command(spec.off, `${capitalise(spec.name)} off`),
+  ];
+}
+
+const SYSTEMS_FEATURE_SPECS: readonly FeatureSpec[] = [
+  {
+    id: FEATURE_LIGHTS_EXTERIOR,
+    label: 'Exterior lights',
+    bindings: EXTERIOR_LIGHTS.flatMap((light) => switchBindings(light)),
+  },
+  {
+    id: FEATURE_LIGHTS_INTERIOR,
+    label: 'Interior lights',
+    bindings: DIMMERS.flatMap((dimmer) => [
+      dataRef(dimmer.state, `${capitalise(dimmer.name)} brightness`),
+      command(dimmer.down, `${capitalise(dimmer.name)} dimmer`),
+      command(dimmer.up, `${capitalise(dimmer.name)} brighter`),
+    ]),
+  },
+  {
+    id: FEATURE_GEAR,
+    label: 'Landing gear',
+    bindings: [
+      dataRef(GEAR.handle, 'Gear handle'),
+      dataRef(GEAR.deployment, 'Gear position lights'),
+      dataRef(GEAR.retractable, 'Whether the gear retracts'),
+      command(GEAR.up, 'Gear up'),
+      command(GEAR.down, 'Gear down'),
+    ],
+  },
+  {
+    id: FEATURE_FLAPS,
+    label: 'Flaps',
+    bindings: [
+      dataRef(FLAPS.handle, 'Flap handle'),
+      dataRef(FLAPS.position, 'Flap position'),
+      dataRef(FLAPS.detents, 'Flap detents'),
+      command(FLAPS.up, 'Flaps up one notch'),
+      command(FLAPS.down, 'Flaps down one notch'),
+    ],
+  },
+  {
+    id: FEATURE_TRIM,
+    label: 'Trim',
+    bindings: [
+      ...TRIMS.flatMap((trim) => [
+        dataRef(trim.position, `${capitalise(trim.name)} position`),
+        command(trim.decrease.command, `${capitalise(trim.name)} ${trim.decrease.name}`),
+        command(trim.increase.command, `${capitalise(trim.name)} ${trim.increase.name}`),
+        command(trim.set.command, capitalise(trim.set.sentence)),
+      ]),
+      dataRef(TAKEOFF_TRIM, 'Takeoff trim mark'),
+    ],
+  },
+  {
+    id: FEATURE_PARKING_BRAKE,
+    label: 'Parking brake',
+    bindings: [
+      {
+        kind: 'dataref',
+        name: PARKING_BRAKE.ratio,
+        required: true,
+        write: true,
+        purpose: 'Parking brake, written when you set or release it',
+      },
+    ],
+  },
+  {
+    id: FEATURE_ANTI_ICE,
+    label: 'Anti-ice',
+    bindings: ANTI_ICE.flatMap((spec) => switchBindings(spec)),
+  },
+  {
+    id: FEATURE_ELECTRICAL,
+    label: 'Electrical',
+    bindings: uniqueByName([
+      ...switchBindings(BATTERY),
+      ...switchBindings(AVIONICS_MASTER),
+      ...ENGINE_NUMBERS.flatMap((engine) =>
+        switchBindings(generatorSwitch(engine), 'Generator switches'),
+      ),
+    ]),
+  },
+  {
+    id: FEATURE_FUEL,
+    label: 'Fuel',
+    bindings: uniqueByName([
+      dataRef(FUEL_SELECTOR.state, 'Fuel selector'),
+      dataRef(FUEL_SELECTOR.hasSelector, 'Whether the aircraft has a fuel selector'),
+      dataRef(FUEL_SELECTOR.hasBoth, 'Whether the fuel selector has BOTH'),
+      ...FUEL_SELECTOR.positions.map((position) =>
+        command(position.command, `Fuel selector ${position.name}`),
+      ),
+      ...ENGINE_NUMBERS.flatMap((engine) =>
+        switchBindings(fuelPumpSwitch(engine), 'Fuel pump switches'),
+      ),
+    ]),
+  },
+  {
+    id: FEATURE_ENGINE_START,
+    label: 'Engine start',
+    bindings: [
+      dataRef(ENGINES.count, 'Number of engines'),
+      dataRef(ENGINES.type, 'Engine types'),
+      dataRef(ENGINES.key, 'Magneto and key positions'),
+      dataRef(ENGINES.starter, 'Starter engaged lights'),
+      dataRef(ENGINES.running, 'Engine running lights'),
+      ...ENGINE_NUMBERS.flatMap((engine) => [
+        ...magnetoPositions(engine).map((position) =>
+          command(position.command, `Magnetos ${engine} ${position.name}`),
+        ),
+        command(starterCommand(engine), `Starter ${engine}`),
+      ]),
+    ],
+  },
+];
+
 const D = GENERIC_DATAREFS;
 const C = GENERIC_COMMANDS;
 
@@ -304,12 +481,15 @@ function modeFeature(
  * with no binding required, so a miss drops only that one cue. The four CDU features (F-32) split
  * each unit into its screen and its keys: every screen text line is required (a missing one means
  * the aircraft does not publish that unit's CDU at all), every style line and every key is
- * optional, so a missing key just disables that one key instead of the whole unit.
+ * optional, so a missing key just disables that one key instead of the whole unit. The ten systems
+ * features (F-24) bind every name optionally, so a missing name costs only the control it backs
+ * (each control checks its own bindings, spec §4.1); the parking brake's one written DataRef is
+ * required.
  */
 export const GENERIC_PROFILE: AircraftProfile = {
   id: 'avionix.generic',
   name: 'Generic X-Plane aircraft',
-  version: '1.6.0',
+  version: '1.7.0',
   match: { kind: 'generic' },
   features: [
     {
@@ -852,5 +1032,6 @@ export const GENERIC_PROFILE: AircraftProfile = {
     cduKeysFeature(1),
     cduScreenFeature(2),
     cduKeysFeature(2),
+    ...SYSTEMS_FEATURE_SPECS,
   ],
 };

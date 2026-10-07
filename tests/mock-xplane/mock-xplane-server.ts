@@ -13,6 +13,25 @@ import {
   cduTextLine,
 } from '@/domain/cdu/keys';
 import type { DataRefValue, DataRefValueType } from '@/domain/simulator/types';
+import {
+  ANTI_ICE,
+  AVIONICS_MASTER,
+  BATTERY,
+  DIMMERS,
+  ENGINES,
+  ENGINE_NUMBERS,
+  EXTERIOR_LIGHTS,
+  FLAPS,
+  FUEL_SELECTOR,
+  GEAR,
+  PARKING_BRAKE,
+  TAKEOFF_TRIM,
+  TRIMS,
+  fuelPumpSwitch,
+  generatorSwitch,
+  magnetoPositions,
+  starterCommand,
+} from '@/domain/systems/controls';
 
 export interface MockDataRef {
   id: number;
@@ -112,6 +131,103 @@ function cduCommands(startId: number): MockCommand[] {
         description: `CDU ${unit} ${entry.name} key.`,
       });
     }
+  }
+  return commands;
+}
+
+/**
+ * F-24's systems DataRefs: every switch's and selector's state, gear, flaps, trim and the engines.
+ * `ENGINES.type` is `sim/aircraft/prop/acf_en_type`, already present among the instrument DataRefs
+ * above, so it is not declared again here.
+ */
+function systemsDataRefs(startId: number): MockDataRef[] {
+  const refs: MockDataRef[] = [];
+  let nextId = startId;
+  const push = (name: string, valueType: DataRefValueType, value: DataRefValue, writable = false) =>
+    refs.push({ id: nextId++, name, valueType, value, ...(writable ? { writable: true } : {}) });
+
+  for (const light of EXTERIOR_LIGHTS) {
+    push(light.state, 'int', 0);
+  }
+  for (const spec of ANTI_ICE) {
+    push(spec.state, 'int', 0);
+  }
+  push(BATTERY.state, 'int', 1);
+  push(AVIONICS_MASTER.state, 'int', 1);
+  push(generatorSwitch(1).state, 'int_array', [1, 1, 1, 1]);
+  for (const dimmer of DIMMERS) {
+    push(dimmer.state, 'float', 0.8);
+  }
+  push(GEAR.handle, 'int', 1, true);
+  push(GEAR.deployment, 'float_array', [1, 1, 1, 0, 0, 0, 0, 0, 0, 0]);
+  push(GEAR.retractable, 'int', 1);
+  push(FLAPS.handle, 'float', 0);
+  push(FLAPS.position, 'float', 0);
+  push(FLAPS.detents, 'int', 4);
+  for (const trim of TRIMS) {
+    push(trim.position, 'float', 0, true);
+  }
+  push(TAKEOFF_TRIM, 'float', 0);
+  push(PARKING_BRAKE.ratio, 'float', 0, true);
+  push(FUEL_SELECTOR.state, 'int', 4);
+  push(FUEL_SELECTOR.hasSelector, 'int', 1);
+  push(FUEL_SELECTOR.hasBoth, 'int', 1);
+  push(fuelPumpSwitch(1).state, 'int_array', [1, 1, 1, 1]);
+  push(ENGINES.count, 'int', 1);
+  push(ENGINES.key, 'int_array', [3, 0, 0, 0]);
+  push(ENGINES.starter, 'int_array', [0, 0, 0, 0]);
+  push(ENGINES.running, 'int_array', [1, 0, 0, 0]);
+  return refs;
+}
+
+/** F-24's 83 systems commands: every switch's on/off pair, gear, flaps, trim and the engines. */
+function systemsCommands(startId: number): MockCommand[] {
+  const commands: MockCommand[] = [];
+  let nextId = startId;
+  const push = (name: string, description: string) =>
+    commands.push({ id: nextId++, name, description });
+
+  for (const light of EXTERIOR_LIGHTS) {
+    push(light.on, `${light.legend} on.`);
+    push(light.off, `${light.legend} off.`);
+  }
+  for (const spec of ANTI_ICE) {
+    push(spec.on, `${spec.legend} on.`);
+    push(spec.off, `${spec.legend} off.`);
+  }
+  push(BATTERY.on, 'Battery on.');
+  push(BATTERY.off, 'Battery off.');
+  push(AVIONICS_MASTER.on, 'Avionics master on.');
+  push(AVIONICS_MASTER.off, 'Avionics master off.');
+  for (const engine of ENGINE_NUMBERS) {
+    const generator = generatorSwitch(engine);
+    push(generator.on, `Generator ${engine} on.`);
+    push(generator.off, `Generator ${engine} off.`);
+    const fuelPump = fuelPumpSwitch(engine);
+    push(fuelPump.on, `Fuel pump ${engine} on.`);
+    push(fuelPump.off, `Fuel pump ${engine} off.`);
+  }
+  for (const dimmer of DIMMERS) {
+    push(dimmer.down, `${dimmer.legend} dimmer.`);
+    push(dimmer.up, `${dimmer.legend} brighter.`);
+  }
+  push(GEAR.up, 'Gear up.');
+  push(GEAR.down, 'Gear down.');
+  push(FLAPS.up, 'Flaps up.');
+  push(FLAPS.down, 'Flaps down.');
+  for (const trim of TRIMS) {
+    push(trim.decrease.command, `${trim.label} ${trim.decrease.name}.`);
+    push(trim.increase.command, `${trim.label} ${trim.increase.name}.`);
+    push(trim.set.command, `${trim.label} ${trim.set.name}.`);
+  }
+  for (const position of FUEL_SELECTOR.positions) {
+    push(position.command, `Fuel selector ${position.name}.`);
+  }
+  for (const engine of ENGINE_NUMBERS) {
+    for (const position of magnetoPositions(engine)) {
+      push(position.command, `Magnetos ${engine} ${position.name}.`);
+    }
+    push(starterCommand(engine), `Starter ${engine}.`);
   }
   return commands;
 }
@@ -551,6 +667,8 @@ export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
   { id: 1094, name: 'sim/cockpit2/radios/indicators/inner_marker_lit', valueType: 'int', value: 0 },
   // F-32: the default FMS CDU's screen and EXEC lights, ids after 1094.
   ...cduDataRefs(1095),
+  // F-24: the systems catalogue's switches, selectors and engines, ids after the CDU's.
+  ...systemsDataRefs(1161),
 ];
 
 export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [
@@ -579,6 +697,8 @@ export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [
   { id: 2023, name: 'sim/radios/obs_HSI_direct', description: 'HSI course direct-to.' },
   // F-32: the default FMS CDU's 70 keys per unit, ids after 2023.
   ...cduCommands(2024),
+  // F-24: the systems catalogue's 83 commands, ids after the CDU's.
+  ...systemsCommands(2164),
 ];
 
 interface JsonError {
