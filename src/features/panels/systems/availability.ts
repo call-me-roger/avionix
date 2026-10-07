@@ -8,6 +8,16 @@ export function bindingOk(snapshot: SessionSnapshot, name: string): boolean {
   return snapshot.compatibility.bindings[name]?.status === 'ok';
 }
 
+/**
+ * Definitively absent on this aircraft (missing, or read-only where the feature writes). A name
+ * with no binding result yet — right after connect — is neither this nor `bindingOk`, and must
+ * never produce a "not available" sentence (F-12's rule, spec §5).
+ */
+export function bindingMissing(snapshot: SessionSnapshot, name: string): boolean {
+  const status = snapshot.compatibility.bindings[name]?.status;
+  return status === 'missing' || status === 'readOnly';
+}
+
 /** The profile feature acts now (R8): what ControlButton checks, for a hold key's own lease. */
 export function featureUsable(snapshot: SessionSnapshot, featureId: string): boolean {
   return controlAvailability(featureOf(snapshot.compatibility, featureId)).usable;
@@ -16,6 +26,8 @@ export function featureUsable(snapshot: SessionSnapshot, featureId: string): boo
 export interface Presence {
   shown: boolean;
   enabled: boolean;
+  /** The state or an action is definitively absent: the unit's S3 line names this control. */
+  missing: boolean;
 }
 
 /** S3: drawn when the state resolved; enabled when every command (or the write) resolved too. */
@@ -25,7 +37,11 @@ export function presence(
   actions: readonly string[],
 ): Presence {
   const shown = bindingOk(snapshot, state);
-  return { shown, enabled: shown && actions.every((name) => bindingOk(snapshot, name)) };
+  return {
+    shown,
+    enabled: shown && actions.every((name) => bindingOk(snapshot, name)),
+    missing: [state, ...actions].some((name) => bindingMissing(snapshot, name)),
+  };
 }
 
 /** X-Plane's description of the loaded aircraft for sentences, else its ICAO type, else null. */

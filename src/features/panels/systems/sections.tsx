@@ -9,6 +9,7 @@ import {
   ENGINES,
   EXTERIOR_LIGHTS,
   FUEL_SELECTOR,
+  PARKING_BRAKE,
   TRIMS,
 } from '@/domain/systems/controls';
 import { ENGINES_NOT_SHOWN, unitUnavailable } from '@/domain/systems/messages';
@@ -16,7 +17,12 @@ import { engineColumns, numberAt } from '@/domain/systems/readouts';
 import { AvionicsUnit } from '@/features/panels/primitives/AvionicsUnit';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
-import { aircraftName, bindingOk, valueOf } from '@/features/panels/systems/availability';
+import {
+  aircraftName,
+  bindingMissing,
+  bindingOk,
+  valueOf,
+} from '@/features/panels/systems/availability';
 import { DimmerRow } from '@/features/panels/systems/DimmerRow';
 import { EngineColumn } from '@/features/panels/systems/EngineColumn';
 import { FlapsUnit } from '@/features/panels/systems/FlapsUnit';
@@ -53,11 +59,11 @@ function FuelUnit({ readBack }: SectionProps) {
     (position) => position.key !== 'both' || flag(FUEL_SELECTOR.hasBoth) !== 0,
   );
   if (!bindingOk(snapshot, FUEL_SELECTOR.state)) {
-    return (
+    return bindingMissing(snapshot, FUEL_SELECTOR.state) ? (
       <AvionicsUnit label="FUEL">
         <BodyText muted>{unitUnavailable('Fuel selector', aircraftName(snapshot))}</BodyText>
       </AvionicsUnit>
-    );
+    ) : null;
   }
   return (
     <AvionicsUnit label="FUEL">
@@ -110,24 +116,26 @@ export function LightsSection({ readBack }: SectionProps) {
   const { snapshot } = usePanel();
   const styles = useThemedStyles(makeStyles);
   const drawn = DIMMERS.filter((spec) => bindingOk(snapshot, spec.state));
-  const missing = DIMMERS.filter(
-    (spec) => ![spec.state, spec.down, spec.up].every((name) => bindingOk(snapshot, name)),
+  const missing = DIMMERS.filter((spec) =>
+    [spec.state, spec.down, spec.up].some((name) => bindingMissing(snapshot, name)),
   ).map((spec) => spec.legend);
   return (
     <View style={styles.section}>
       <SwitchGroup label="EXTERIOR LIGHTS" specs={EXTERIOR_LIGHTS} readBack={readBack} />
-      <AvionicsUnit label="INTERIOR LIGHTS">
-        {drawn.length === 0 ? (
-          <BodyText muted>{unitUnavailable('Interior lights', aircraftName(snapshot))}</BodyText>
-        ) : (
-          <>
-            {drawn.map((spec) => (
-              <DimmerRow key={spec.key} spec={spec} readBack={readBack} />
-            ))}
-            <UnitLines missing={missing} readBack={readBack} keys={drawn.map((spec) => spec.key)} />
-          </>
-        )}
-      </AvionicsUnit>
+      {drawn.length === 0 ? (
+        DIMMERS.every((spec) => bindingMissing(snapshot, spec.state)) ? (
+          <AvionicsUnit label="INTERIOR LIGHTS">
+            <BodyText muted>{unitUnavailable('Interior lights', aircraftName(snapshot))}</BodyText>
+          </AvionicsUnit>
+        ) : null
+      ) : (
+        <AvionicsUnit label="INTERIOR LIGHTS">
+          {drawn.map((spec) => (
+            <DimmerRow key={spec.key} spec={spec} readBack={readBack} />
+          ))}
+          <UnitLines missing={missing} readBack={readBack} keys={drawn.map((spec) => spec.key)} />
+        </AvionicsUnit>
+      )}
     </View>
   );
 }
@@ -140,34 +148,38 @@ export function FlightSection({ readBack }: SectionProps) {
   const trims = TRIMS.filter((spec) => bindingOk(snapshot, spec.position));
   const trimMissing = TRIMS.filter(
     (spec) =>
-      !bindingOk(snapshot, spec.position) ||
-      ![spec.decrease, spec.increase, spec.set].every((action) =>
-        bindingOk(snapshot, action.command),
+      bindingMissing(snapshot, spec.position) ||
+      [spec.decrease, spec.increase, spec.set].some((action) =>
+        bindingMissing(snapshot, action.command),
       ),
   ).map((spec) => spec.label);
   return (
     <View style={styles.section}>
       <FlapsUnit readBack={readBack} />
-      <AvionicsUnit label="TRIM">
-        {trims.length === 0 ? (
-          <BodyText muted>{unitUnavailable('Trim', aircraft)}</BodyText>
-        ) : (
-          <>
-            {trims.map((spec) => (
-              <TrimUnit key={spec.axis} spec={spec} readBack={readBack} />
-            ))}
-            <UnitLines missing={trimMissing} readBack={readBack} keys={[]} />
-          </>
-        )}
-      </AvionicsUnit>
+      {trims.length === 0 ? (
+        TRIMS.every((spec) => bindingMissing(snapshot, spec.position)) ? (
+          <AvionicsUnit label="TRIM">
+            <BodyText muted>{unitUnavailable('Trim', aircraft)}</BodyText>
+          </AvionicsUnit>
+        ) : null
+      ) : (
+        <AvionicsUnit label="TRIM">
+          {trims.map((spec) => (
+            <TrimUnit key={spec.axis} spec={spec} readBack={readBack} />
+          ))}
+          <UnitLines missing={trimMissing} readBack={readBack} keys={[]} />
+        </AvionicsUnit>
+      )}
       <GearUnit readBack={readBack} />
-      <AvionicsUnit label="BRAKES">
-        {parkingBrakeShown(snapshot) ? (
+      {parkingBrakeShown(snapshot) ? (
+        <AvionicsUnit label="BRAKES">
           <ParkingBrakeKey readBack={readBack} />
-        ) : (
+        </AvionicsUnit>
+      ) : bindingMissing(snapshot, PARKING_BRAKE.ratio) ? (
+        <AvionicsUnit label="BRAKES">
           <BodyText muted>{unitUnavailable('Parking brake', aircraft)}</BodyText>
-        )}
-      </AvionicsUnit>
+        </AvionicsUnit>
+      ) : null}
     </View>
   );
 }

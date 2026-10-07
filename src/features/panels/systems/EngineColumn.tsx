@@ -20,6 +20,7 @@ import { useHoldControl } from '@/features/panels/primitives/useHoldControl';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
 import {
   aircraftName,
+  bindingMissing,
   bindingOk,
   featureUsable,
   presence,
@@ -86,13 +87,13 @@ export function EngineColumn({
 
   const missing = [
     ...[generator, pump]
-      .filter((spec) => !presence(snapshot, spec.state, [spec.on, spec.off]).enabled)
+      .filter((spec) => presence(snapshot, spec.state, [spec.on, spec.off]).missing)
       .map((spec) => spec.legend),
     ...(column.piston && selectorMissing(snapshot, ENGINES.key, magnetos).length > 0
       ? ['MAGNETOS']
       : []),
-    ...(starter.enabled ? [] : ['START']),
-    ...(bindingOk(snapshot, ENGINES.running) ? [] : ['RUN']),
+    ...(starter.missing ? ['START'] : []),
+    ...(bindingMissing(snapshot, ENGINES.running) ? ['RUN'] : []),
   ];
 
   return (

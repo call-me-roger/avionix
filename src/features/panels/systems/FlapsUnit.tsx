@@ -8,7 +8,12 @@ import { AvionicsUnit } from '@/features/panels/primitives/AvionicsUnit';
 import { ControlButton } from '@/features/panels/primitives/ControlButton';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
-import { aircraftName, bindingOk, valueOf } from '@/features/panels/systems/availability';
+import {
+  aircraftName,
+  bindingMissing,
+  bindingOk,
+  valueOf,
+} from '@/features/panels/systems/availability';
 import { UnitLines } from '@/features/panels/systems/SwitchGroup';
 import { BodyText } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
@@ -53,11 +58,11 @@ export function FlapsUnit({ readBack }: { readBack: ReadBack }) {
   const aircraft = aircraftName(snapshot);
 
   if (!bindingOk(snapshot, FLAPS.handle)) {
-    return (
+    return bindingMissing(snapshot, FLAPS.handle) ? (
       <AvionicsUnit label="FLAPS">
         <BodyText muted>{unitUnavailable('Flaps', aircraft)}</BodyText>
       </AvionicsUnit>
-    );
+    ) : null;
   }
   const optional = (name: string) =>
     bindingOk(snapshot, name) ? numberAt(valueOf(snapshot, name), 0) : null;
@@ -66,8 +71,8 @@ export function FlapsUnit({ readBack }: { readBack: ReadBack }) {
   const pending = readBack.pendingExpected('flaps') !== null;
   const stale = link.valuesCurrent ? null : styles.stale;
   const missing = [
-    ...(bindingOk(snapshot, FLAPS.up) ? [] : ['FLAPS UP']),
-    ...(bindingOk(snapshot, FLAPS.down) ? [] : ['FLAPS DOWN']),
+    ...(bindingMissing(snapshot, FLAPS.up) ? ['FLAPS UP'] : []),
+    ...(bindingMissing(snapshot, FLAPS.down) ? ['FLAPS DOWN'] : []),
   ];
 
   const key = (direction: 'up' | 'down') => {
