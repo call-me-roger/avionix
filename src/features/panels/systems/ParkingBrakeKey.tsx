@@ -8,7 +8,7 @@ import { ControlButton } from '@/features/panels/primitives/ControlButton';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
 import { aircraftName, bindingOk, valueOf } from '@/features/panels/systems/availability';
-import { BodyText } from '@/theme/primitives';
+import { UnitLines } from '@/features/panels/systems/SwitchGroup';
 
 const KEY = 'parkingBrake';
 
@@ -20,17 +20,18 @@ export function parkingBrakeShown(snapshot: SessionSnapshot): boolean {
 
 /**
  * The parking brake (spec §4.2): X-Plane has only a toggle command for it, so the key writes 1 or
- * 0 to the ratio, which is idempotent. Its light bar is X-Plane's ratio.
+ * 0 to the ratio, which is idempotent. Its light bar is X-Plane's ratio. A read-only ratio draws
+ * it disabled, named in the unit's §4.1 line like any other control (R7).
  */
 export function ParkingBrakeKey({ readBack }: { readBack: ReadBack }) {
   const { snapshot, write } = usePanel();
   if (!parkingBrakeShown(snapshot)) {
     return null;
   }
+  const writable = bindingOk(snapshot, PARKING_BRAKE.ratio);
   const set = switchOn(valueOf(snapshot, PARKING_BRAKE.ratio), 0);
   const aircraft = aircraftName(snapshot);
   const spoken = set === null ? 'unknown' : set ? 'set' : 'released';
-  const message = readBack.messageFor(KEY);
 
   return (
     <>
@@ -40,11 +41,9 @@ export function ParkingBrakeKey({ readBack }: { readBack: ReadBack }) {
         annunciation={set === true ? 'engaged' : 'off'}
         featureId={FEATURE_PARKING_BRAKE}
         target={PARKING_BRAKE.ratio}
-        invalid={
-          !bindingOk(snapshot, PARKING_BRAKE.ratio) ||
-          set === null ||
-          readBack.pendingExpected(KEY) !== null
-        }
+        // Read-only: the unit's line below says so; the feature's own reason would say it twice.
+        quiet={!writable}
+        invalid={!writable || set === null || readBack.pendingExpected(KEY) !== null}
         onPress={() => {
           if (set === null) {
             return;
@@ -61,7 +60,7 @@ export function ParkingBrakeKey({ readBack }: { readBack: ReadBack }) {
           });
         }}
       />
-      {message === null ? null : <BodyText tone="danger">{message}</BodyText>}
+      <UnitLines missing={writable ? [] : ['PARK BRAKE']} readBack={readBack} keys={[KEY]} />
     </>
   );
 }

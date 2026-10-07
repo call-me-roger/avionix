@@ -2,13 +2,14 @@ import React from 'react';
 import { View } from 'react-native';
 
 import { GEAR } from '@/domain/systems/controls';
-import { gearNotTaken, missingControls, unitUnavailable } from '@/domain/systems/messages';
+import { FIXED_GEAR, gearNotTaken, unitUnavailable } from '@/domain/systems/messages';
 import { type GearLamp, gearLamps, gearSummary, numberAt } from '@/domain/systems/readouts';
 import { AvionicsUnit } from '@/features/panels/primitives/AvionicsUnit';
 import { ControlButton } from '@/features/panels/primitives/ControlButton';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
 import { aircraftName, bindingOk, valueOf } from '@/features/panels/systems/availability';
+import { UnitLines } from '@/features/panels/systems/SwitchGroup';
 import { BodyText } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
@@ -78,7 +79,7 @@ export function GearUnit({ readBack }: { readBack: ReadBack }) {
   if (retractable === 0) {
     return (
       <AvionicsUnit label="GEAR">
-        <BodyText muted>Fixed landing gear</BodyText>
+        <BodyText muted>{FIXED_GEAR}</BodyText>
       </AvionicsUnit>
     );
   }
@@ -119,7 +120,6 @@ export function GearUnit({ readBack }: { readBack: ReadBack }) {
     );
   };
 
-  const message = readBack.messageFor('gear');
   return (
     <AvionicsUnit label="GEAR">
       {lamps === null ? null : <GearLamps lamps={lamps} label={gearSummary(lamps, handleDown)} />}
@@ -127,10 +127,7 @@ export function GearUnit({ readBack }: { readBack: ReadBack }) {
         {key(false)}
         {key(true)}
       </View>
-      {missing.length === 0 ? null : (
-        <BodyText muted>{missingControls(aircraft, missing)}</BodyText>
-      )}
-      {message === null ? null : <BodyText tone="danger">{message}</BodyText>}
+      <UnitLines missing={missing} readBack={readBack} keys={['gear']} />
     </AvionicsUnit>
   );
 }

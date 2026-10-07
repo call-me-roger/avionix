@@ -7,11 +7,12 @@ import { switchOn } from '@/domain/systems/readouts';
 import { ControlButton } from '@/features/panels/primitives/ControlButton';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
-import { aircraftName, presence, valueOf } from '@/features/panels/systems/availability';
-
-function capitalise(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
+import {
+  aircraftName,
+  presence,
+  sentenceCase,
+  valueOf,
+} from '@/features/panels/systems/availability';
 
 /**
  * A two-position switch (spec §4.2, §4.6): the light bar shows what X-Plane reports, and a press
@@ -42,7 +43,7 @@ export function SwitchKey({
     <View testID={`switch-${spec.key}`} style={style}>
       <ControlButton
         label={spec.legend}
-        accessibilityLabel={`${capitalise(spec.name)}, ${spoken}`}
+        accessibilityLabel={`${sentenceCase(spec.name)}, ${spoken}`}
         annunciation={on === true ? 'engaged' : 'off'}
         featureId={spec.featureId}
         target={target}

@@ -800,6 +800,51 @@ describe('F-24 systems in the toy aircraft', () => {
     }
   }, 10_000);
 
+  it('cranks but never starts an engine with the magnetos off, and restores the key', async () => {
+    const server = await MockXPlaneServer.start();
+    try {
+      server.setDataRefValue(ENGINES.key, new Array<number>(16).fill(0));
+      const { socket, next } = await openSocket(`ws://${server.host}:${server.port}/api/v3`);
+      const id = server.commandIdByName(starterCommand(1));
+      let reqId = 1;
+      const send = async (isActive: boolean): Promise<void> => {
+        const thisReq = reqId;
+        reqId += 1;
+        const reply = next((m) => isRecord(m) && m.req_id === thisReq);
+        socket.send(
+          JSON.stringify({
+            req_id: thisReq,
+            type: 'command_set_is_active',
+            params: {
+              commands: [
+                isActive ? { id, is_active: true, duration: 0.5 } : { id, is_active: false },
+              ],
+            },
+          }),
+        );
+        await reply;
+      };
+
+      await send(true);
+      for (let elapsed = 0; elapsed < 2500; elapsed += 200) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        await send(true);
+      }
+      expect(arrayValue(server, ENGINES.key)[0]).toBe(4);
+      expect(arrayValue(server, ENGINES.starter)[0]).toBe(1);
+      expect(arrayValue(server, ENGINES.running)[0]).toBe(0);
+
+      await send(false);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(arrayValue(server, ENGINES.starter)[0]).toBe(0);
+      expect(arrayValue(server, ENGINES.key)[0]).toBe(0);
+      expect(arrayValue(server, ENGINES.running)[0]).toBe(0);
+      socket.close();
+    } finally {
+      await server.stop();
+    }
+  }, 10_000);
+
   it('does nothing for an ignored command, press or hold, while still recording it', async () => {
     const server = await MockXPlaneServer.start();
     try {

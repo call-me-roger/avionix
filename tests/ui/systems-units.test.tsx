@@ -34,7 +34,7 @@ import {
   magnetoPositions,
   starterCommand,
 } from '@/domain/systems/controls';
-import { ENGINES_NOT_SHOWN } from '@/domain/systems/messages';
+import { ENGINES_NOT_SHOWN, FIXED_GEAR } from '@/domain/systems/messages';
 import type { PanelScopeActions } from '@/features/panels/primitives/PanelContext';
 import { PanelScope } from '@/features/panels/primitives/PanelFrame';
 import { type ReadBack, useReadBack } from '@/features/panels/primitives/useReadBack';
@@ -236,7 +236,7 @@ describe('gear', () => {
 
   it('shows fixed gear without a lever', async () => {
     await render(tree(FlightSection, snapshot({ values: { [GEAR.retractable]: 0 } })));
-    expect(screen.getByText('Fixed landing gear')).toBeTruthy();
+    expect(screen.getByText(FIXED_GEAR)).toBeTruthy();
     expect(queryButton('GEAR UP')).toBeNull();
     expect(queryButton('GEAR DOWN')).toBeNull();
   });
@@ -302,6 +302,40 @@ describe('trim', () => {
     expect(activate).not.toHaveBeenCalled();
   });
 
+  it('releases a held trim key that stops resolving mid-hold, without a link sentence', async () => {
+    const { rerender } = await render(tree(FlightSection, snapshot()));
+    await fireEvent(button('Pitch trim nose up'), 'pressIn');
+    await advance(300);
+    await rerender(
+      tree(FlightSection, snapshot({ bindings: { [PITCH.increase.command]: 'missing' } })),
+    );
+    expect(hold).toHaveBeenLastCalledWith(FEATURE_TRIM, PITCH.increase.command, 'release');
+    expect(screen.queryByText(/released:/)).toBeNull();
+  });
+
+  it('releases a held starter when the engine-start feature is being re-checked', async () => {
+    const { rerender } = await render(tree(EngineSection, snapshot()));
+    await fireEvent.press(button('Starter 1'));
+    await fireEvent(button('HOLD TO START'), 'pressIn');
+    await advance(300);
+    const rechecking = snapshot();
+    await rerender(
+      tree(EngineSection, {
+        ...rechecking,
+        compatibility: {
+          ...rechecking.compatibility,
+          features: rechecking.compatibility.features.map((feature) =>
+            feature.id === FEATURE_ENGINE_START
+              ? { ...feature, status: 'unknown' as const }
+              : feature,
+          ),
+        },
+      }),
+    );
+    expect(hold).toHaveBeenLastCalledWith(FEATURE_ENGINE_START, starterCommand(1), 'release');
+    expect(screen.queryByText(/released:/)).toBeNull();
+  });
+
   it('reads the trim in percent with its direction', async () => {
     await render(tree(FlightSection, snapshot({ values: { [PITCH.position]: 0.12 } })));
     expect(screen.getByText('12 % nose up')).toBeTruthy();
@@ -334,6 +368,25 @@ describe('trim', () => {
       ),
     );
     expect(screen.queryByText("The Cessna 172 didn't set takeoff trim.")).toBeNull();
+  });
+
+  it('clears an earlier set failure when pressed again already at the takeoff value', async () => {
+    const failed = "The Cessna 172 didn't set takeoff trim.";
+    const { rerender } = await render(tree(FlightSection, snapshot()));
+    await fireEvent.press(button('Set takeoff trim'));
+    await rerender(
+      tree(FlightSection, snapshot({ operations: accepted(PITCH.set.command) }), NOW + 3000),
+    );
+    expect(screen.getByText(failed)).toBeTruthy();
+
+    const atTakeoff = snapshot({
+      values: { [PITCH.position]: 0.1 },
+      operations: accepted(PITCH.set.command),
+    });
+    await rerender(tree(FlightSection, atTakeoff, NOW + 4000));
+    expect(screen.getByText(failed)).toBeTruthy();
+    await fireEvent.press(button('Set takeoff trim'));
+    expect(screen.queryByText(failed)).toBeNull();
   });
 });
 
@@ -484,6 +537,8 @@ describe('parking brake', () => {
       tree(FlightSection, snapshot({ bindings: { [PARKING_BRAKE.ratio]: 'readOnly' } })),
     );
     expect(button('Parking brake, set')).toBeDisabled();
+    expect(screen.getByText('Not available on the Cessna 172: PARK BRAKE.')).toBeTruthy();
+    expect(screen.getAllByText(/not available|isn't available/i)).toHaveLength(1);
   });
 });
 

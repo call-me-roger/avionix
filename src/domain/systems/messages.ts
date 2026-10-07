@@ -79,3 +79,6 @@ export function unitUnavailable(unit: string, aircraft: string | null): string {
 }
 
 export const ENGINES_NOT_SHOWN = "Engines 5 and up aren't shown.";
+
+/** The GEAR unit's only line on an aircraft whose gear does not retract. */
+export const FIXED_GEAR = 'Fixed landing gear';

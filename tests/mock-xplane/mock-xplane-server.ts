@@ -786,8 +786,11 @@ export class MockXPlaneServer {
 
   private readonly ignoredWrites = new Set<string>();
   private readonly ignoredCommands = new Set<string>();
-  /** F-24: command id → when its starter began cranking, real time, while its hold is live. */
-  private readonly starterCranking = new Map<number, number>();
+  /**
+   * F-24: command id → when its starter began cranking (real time) and the ignition key position
+   * it found then, while its hold is live.
+   */
+  private readonly starterCranking = new Map<number, { since: number; key: number }>();
   private lastTickAt = Date.now();
 
   private readonly apiVersions: string[];
@@ -1519,9 +1522,10 @@ export class MockXPlaneServer {
    * F-24: advances the toy aircraft by the real time elapsed since the last tick. Gear deployment
    * and flap position chase their handles at 0.5/s; every held, unlapsed, unignored trim command
    * moves its axis at 0.1/s (clamped −1..1); a held, unignored starter sets the ignition key to 4
-   * and `starter_hit` to 1, and after 2 s of cranking with the fuel selector not OFF sets
-   * `ENGN_running` to 1. Releasing (or lapsing) a starter hold restores `starter_hit` to 0 and the
-   * ignition key to 3 (BOTH). Expired leases are removed here.
+   * and `starter_hit` to 1, and after 2 s of cranking with the magnetos on (the key it found at the
+   * hold's start, 1 or more) and the fuel selector not OFF sets `ENGN_running` to 1. Releasing (or
+   * lapsing) a starter hold restores `starter_hit` to 0 and the ignition key to where it was.
+   * Expired leases are removed here.
    */
   private tick(): void {
     const now = Date.now();
@@ -1598,6 +1602,10 @@ export class MockXPlaneServer {
 
     const selector = this.getDataRefByName(FUEL_SELECTOR.state)?.value;
     const selectorOff = selector === 0;
+    const keyAt = (index: number): number => {
+      const key = this.getDataRefByName(ENGINES.key)?.value;
+      return Array.isArray(key) ? (key[index] ?? 0) : 0;
+    };
     for (const engine of ENGINE_NUMBERS) {
       const name = starterCommand(engine);
       const id = [...this.commands.values()].find((c) => c.name === name)?.id;
@@ -1605,18 +1613,19 @@ export class MockXPlaneServer {
         continue;
       }
       const index = engine - 1;
+      const cranking = this.starterCranking.get(id);
       if (isHeld(name)) {
-        const crankStart = this.starterCranking.get(id) ?? now;
-        this.starterCranking.set(id, crankStart);
+        const crank = cranking ?? { since: now, key: keyAt(index) };
+        this.starterCranking.set(id, crank);
         this.setSwitchElement(ENGINES.key, index, 4);
         this.setSwitchElement(ENGINES.starter, index, 1);
-        if (now - crankStart >= 2000 && !selectorOff) {
+        if (now - crank.since >= 2000 && crank.key >= 1 && !selectorOff) {
           this.setSwitchElement(ENGINES.running, index, 1);
         }
-      } else if (this.starterCranking.has(id)) {
+      } else if (cranking !== undefined) {
         this.starterCranking.delete(id);
         this.setSwitchElement(ENGINES.starter, index, 0);
-        this.setSwitchElement(ENGINES.key, index, 3);
+        this.setSwitchElement(ENGINES.key, index, cranking.key);
       }
     }
   }

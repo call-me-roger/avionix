@@ -18,7 +18,13 @@ import { LightBar } from '@/features/panels/primitives/LightBar';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import { useHoldControl } from '@/features/panels/primitives/useHoldControl';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
-import { aircraftName, bindingOk, presence, valueOf } from '@/features/panels/systems/availability';
+import {
+  aircraftName,
+  bindingOk,
+  featureUsable,
+  presence,
+  valueOf,
+} from '@/features/panels/systems/availability';
 import { SelectorKeys, selectorMissing } from '@/features/panels/systems/SelectorKeys';
 import { UnitLines } from '@/features/panels/systems/SwitchGroup';
 import { SwitchKey } from '@/features/panels/systems/SwitchKey';
@@ -67,6 +73,7 @@ export function EngineColumn({
     featureId: FEATURE_ENGINE_START,
     command: starterCommand(n),
     capMs: STARTER_HOLD_CAP_MS,
+    enabled: starter.enabled && featureUsable(snapshot, FEATURE_ENGINE_START),
     name: `starter ${n}`,
     value: numberAt(valueOf(snapshot, ENGINES.starter), n - 1),
     cappedMessage: holdCapped(

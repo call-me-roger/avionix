@@ -2,13 +2,14 @@ import React from 'react';
 import { Text, View } from 'react-native';
 
 import { FLAPS } from '@/domain/systems/controls';
-import { flapsNotTaken, missingControls, unitUnavailable } from '@/domain/systems/messages';
+import { flapsNotTaken, unitUnavailable } from '@/domain/systems/messages';
 import { flapReadout, flapsMoved, numberAt } from '@/domain/systems/readouts';
 import { AvionicsUnit } from '@/features/panels/primitives/AvionicsUnit';
 import { ControlButton } from '@/features/panels/primitives/ControlButton';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
 import { aircraftName, bindingOk, valueOf } from '@/features/panels/systems/availability';
+import { UnitLines } from '@/features/panels/systems/SwitchGroup';
 import { BodyText } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
@@ -97,7 +98,6 @@ export function FlapsUnit({ readBack }: { readBack: ReadBack }) {
     );
   };
 
-  const message = readBack.messageFor('flaps');
   return (
     <AvionicsUnit label="FLAPS">
       <View style={styles.row}>
@@ -113,10 +113,7 @@ export function FlapsUnit({ readBack }: { readBack: ReadBack }) {
         {key('up')}
         {key('down')}
       </View>
-      {missing.length === 0 ? null : (
-        <BodyText muted>{missingControls(aircraft, missing)}</BodyText>
-      )}
-      {message === null ? null : <BodyText tone="danger">{message}</BodyText>}
+      <UnitLines missing={missing} readBack={readBack} keys={['flaps']} />
     </AvionicsUnit>
   );
 }

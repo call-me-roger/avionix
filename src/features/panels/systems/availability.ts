@@ -1,9 +1,16 @@
+import { featureOf } from '@/application/compatibility';
 import type { SessionSnapshot } from '@/application/session-snapshot';
+import { controlAvailability } from '@/domain/panels/control-availability';
 import type { DataRefValue } from '@/domain/simulator/types';
 
 /** The name resolved on this aircraft, writable when it is a DataRef the feature writes. */
 export function bindingOk(snapshot: SessionSnapshot, name: string): boolean {
   return snapshot.compatibility.bindings[name]?.status === 'ok';
+}
+
+/** The profile feature acts now (R8): what ControlButton checks, for a hold key's own lease. */
+export function featureUsable(snapshot: SessionSnapshot, featureId: string): boolean {
+  return controlAvailability(featureOf(snapshot.compatibility, featureId)).usable;
 }
 
 export interface Presence {
@@ -31,7 +38,11 @@ export function valueOf(snapshot: SessionSnapshot, name: string): DataRefValue |
   return snapshot.telemetry[name]?.value;
 }
 
-/** "EXTERIOR LIGHTS" → "Exterior lights", for `unitUnavailable`. */
+/**
+ * The systems features' one capitaliser: "EXTERIOR LIGHTS" → "Exterior lights" for
+ * `unitUnavailable`, "pitch trim" → "Pitch trim" for spoken labels. Every name it is given is lower
+ * case, or a legend in capitals.
+ */
 export function sentenceCase(label: string): string {
   const lower = label.toLowerCase();
   return lower.charAt(0).toUpperCase() + lower.slice(1);

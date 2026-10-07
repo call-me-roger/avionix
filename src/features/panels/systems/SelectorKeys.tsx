@@ -8,7 +8,12 @@ import { numberAt } from '@/domain/systems/readouts';
 import { ControlButton } from '@/features/panels/primitives/ControlButton';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
-import { aircraftName, bindingOk, valueOf } from '@/features/panels/systems/availability';
+import {
+  aircraftName,
+  bindingOk,
+  sentenceCase,
+  valueOf,
+} from '@/features/panels/systems/availability';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 import { avionicsText } from '@/theme/typography';
@@ -61,14 +66,13 @@ export function SelectorKeys({
 }) {
   const { snapshot, activate } = usePanel();
   const styles = useThemedStyles(makeStyles);
-  const stateOk = bindingOk(snapshot, state);
-  if (!stateOk) {
+  if (!bindingOk(snapshot, state)) {
     return null;
   }
   const current = numberAt(valueOf(snapshot, state), index);
   const pending = readBack.pendingExpected(keyPrefix) !== null;
   const aircraft = aircraftName(snapshot);
-  const spokenWhat = what.charAt(0).toUpperCase() + what.slice(1);
+  const spokenWhat = sentenceCase(what);
 
   return (
     <View>
@@ -84,7 +88,7 @@ export function SelectorKeys({
             selected={current === position.value}
             confirm={position.confirm}
             style={styles.key}
-            invalid={!bindingOk(snapshot, position.command) || !stateOk || pending}
+            invalid={!bindingOk(snapshot, position.command) || pending}
             onPress={() => {
               void activate(featureId, position.command);
               readBack.watch({

@@ -7,7 +7,12 @@ import { brightnessPercent, numberAt } from '@/domain/systems/readouts';
 import { ControlButton } from '@/features/panels/primitives/ControlButton';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
-import { aircraftName, bindingOk, valueOf } from '@/features/panels/systems/availability';
+import {
+  aircraftName,
+  bindingOk,
+  sentenceCase,
+  valueOf,
+} from '@/features/panels/systems/availability';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
 import { avionicsText, numeric } from '@/theme/typography';
@@ -30,10 +35,6 @@ const makeStyles = (theme: Theme) => ({
   stale: { color: theme.avionics.legendDim },
 });
 
-function capitalise(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
 /**
  * A brightness rheostat (spec §4.6): X-Plane's percentage and its own "a bit" commands. Adopted is
  * any change from the value at the press. Not drawn without a state (S3).
@@ -48,7 +49,7 @@ export function DimmerRow({ spec, readBack }: { spec: DimmerSpec; readBack: Read
   const percent = brightnessPercent(value);
   const pending = readBack.pendingExpected(spec.key) !== null;
   const aircraft = aircraftName(snapshot);
-  const name = capitalise(spec.name);
+  const name = sentenceCase(spec.name);
 
   const key = (direction: 'down' | 'up') => {
     const command = direction === 'down' ? spec.down : spec.up;
