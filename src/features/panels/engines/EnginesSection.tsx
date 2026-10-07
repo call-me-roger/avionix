@@ -1,0 +1,125 @@
+import React, { useEffect } from 'react';
+import { Pressable, Text, useWindowDimensions } from 'react-native';
+
+import { GAUGES } from '@/domain/engines/catalogue';
+import { egtSamples, leanAvailable } from '@/domain/engines/lean';
+import {
+  ENGINES_NOT_SHOWN,
+  engineUnsupported,
+  enginesUnidentified,
+  gaugesMissing,
+  noEngines,
+  unitsUnknown,
+} from '@/domain/engines/messages';
+import { aircraftKey } from '@/domain/instruments/presentation';
+import { EngineTable } from '@/features/panels/engines/EngineTable';
+import { useLean } from '@/features/panels/engines/EnginesPreferenceProvider';
+import { useEnginesModel } from '@/features/panels/engines/useEnginesModel';
+import { AVIONICS_UNIT_PADDING, AvionicsUnit } from '@/features/panels/primitives/AvionicsUnit';
+import { LightBar } from '@/features/panels/primitives/LightBar';
+import { usePanel } from '@/features/panels/primitives/PanelContext';
+import { aircraftName } from '@/features/panels/systems/availability';
+import { BodyText } from '@/theme/primitives';
+import { useTheme, useThemedStyles } from '@/theme/theme-context';
+import type { Theme } from '@/theme/tokens';
+import { avionicsText } from '@/theme/typography';
+
+const makeStyles = (theme: Theme) => ({
+  key: {
+    backgroundColor: theme.avionics.keyFace,
+    borderWidth: 1,
+    borderColor: theme.avionics.bezelEdge,
+    borderRadius: 6,
+    minHeight: theme.touch.minTarget,
+    minWidth: theme.touch.minTarget,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: 6,
+    paddingBottom: 8,
+    gap: 6,
+    marginLeft: 'auto' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  legend: {
+    ...avionicsText(theme, true),
+    fontSize: theme.typography.legendSize,
+    color: theme.avionics.legend,
+  },
+});
+
+/** LEAN (spec §4.6): a local display mode, so a plain key, not a ControlButton; it writes nothing. */
+function LeanKey({ on, onPress }: { on: boolean; onPress: () => void }) {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <Pressable
+      testID="engines-lean"
+      accessibilityRole="switch"
+      accessibilityLabel="Lean assist"
+      accessibilityState={{ checked: on }}
+      onPress={onPress}
+      style={styles.key}
+    >
+      <LightBar state={on ? 'engaged' : 'off'} />
+      <Text style={styles.legend}>LEAN</Text>
+    </Pressable>
+  );
+}
+
+/**
+ * The ENGINES page (spec §4.2–§4.6): the dials and the gauge table, or the one sentence that says
+ * why there are none, then the lines naming what the aircraft does not publish. While lean assist
+ * is on, each piston engine's peak EGT advances from an effect as values arrive; the peaks belong
+ * to one aircraft, and another aircraft's EGT is never compared with them (Review Focus 4).
+ */
+export function EnginesSection() {
+  const theme = useTheme();
+  const window = useWindowDimensions();
+  const { snapshot, link } = usePanel();
+  const { model } = useEnginesModel();
+  const [lean, store] = useLean();
+  const aircraft = aircraftKey(snapshot.compatibility.identity);
+  const available = leanAvailable(model);
+
+  useEffect(() => {
+    if (lean.on) {
+      store.advance(aircraft, egtSamples(model));
+    }
+  }, [lean.on, store, aircraft, model]);
+
+  const peaks = lean.on && available ? (lean.aircraft === aircraft ? lean.peaks : {}) : null;
+  const name = aircraftName(snapshot);
+  const width = window.width - 2 * theme.spacing.lg - 2 * AVIONICS_UNIT_PADDING;
+
+  return (
+    <AvionicsUnit
+      testID="engines-section"
+      label="ENGINES"
+      labelAccessory={
+        available ? <LeanKey on={lean.on} onPress={() => store.toggle(aircraft)} /> : undefined
+      }
+    >
+      {model.status === 'unidentified' ? <BodyText>{enginesUnidentified(name)}</BodyText> : null}
+      {model.status === 'none' ? <BodyText>{noEngines(name)}</BodyText> : null}
+      {model.status === 'ready' ? (
+        <EngineTable model={model} peaks={peaks} stale={!link.valuesCurrent} width={width} />
+      ) : null}
+      {model.unsupported.map((engine) => (
+        <BodyText key={engine} muted>
+          {engineUnsupported(engine)}
+        </BodyText>
+      ))}
+      {model.hidden > 0 ? <BodyText muted>{ENGINES_NOT_SHOWN}</BodyText> : null}
+      {model.missing.length > 0 ? (
+        <BodyText muted>{gaugesMissing(name, model.missing)}</BodyText>
+      ) : null}
+      {model.unknownUnits.length > 0 ? (
+        <BodyText muted>
+          {unitsUnknown(
+            name,
+            model.unknownUnits.map((id) => GAUGES[id].spoken),
+          )}
+        </BodyText>
+      ) : null}
+    </AvionicsUnit>
+  );
+}
