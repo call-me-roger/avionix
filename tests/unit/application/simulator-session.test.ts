@@ -243,11 +243,11 @@ const SYSTEMS_FAKE_DATAREFS: Record<string, FakeDataRef> = (() => {
   for (const spec of ANTI_ICE) {
     refs[spec.state] = { id: next(), valueType: 'int' };
   }
-  refs[BATTERY.state] = { id: next(), valueType: 'int' };
+  refs[BATTERY.state] = { id: next(), valueType: 'int_array' };
   refs[AVIONICS_MASTER.state] = { id: next(), valueType: 'int' };
   refs[generatorSwitch(1).state] = { id: next(), valueType: 'int_array' };
   for (const dimmer of DIMMERS) {
-    refs[dimmer.state] = { id: next(), valueType: 'float' };
+    refs[dimmer.state] = { id: next(), valueType: 'float_array' };
   }
   refs[GEAR.handle] = { id: next(), valueType: 'int', isWritable: true };
   refs[GEAR.deployment] = { id: next(), valueType: 'float_array' };

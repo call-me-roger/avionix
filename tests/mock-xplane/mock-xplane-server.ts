@@ -135,16 +135,35 @@ function cduCommands(startId: number): MockCommand[] {
   return commands;
 }
 
+/** Laminar's array, padded to its real length (DataRefs.txt) with zeros past the chosen values. */
+function padded(values: readonly number[], length: number): number[] {
+  return [...values, ...new Array(length - values.length).fill(0)];
+}
+
+/** `DIMMERS` by key, so the panel and instrument dimmers can take their own array lengths. */
+function dimmerByKey(key: string): (typeof DIMMERS)[number] {
+  const dimmer = DIMMERS.find((candidate) => candidate.key === key);
+  if (dimmer === undefined) {
+    throw new Error(`no dimmer named ${key} in the systems catalogue`);
+  }
+  return dimmer;
+}
+
 /**
  * F-24's systems DataRefs: every switch's and selector's state, gear, flaps, trim and the engines.
  * `ENGINES.type` is `sim/aircraft/prop/acf_en_type`, already present among the instrument DataRefs
- * above, so it is not declared again here.
+ * above, so it is not declared again here. Array lengths are Laminar's own (DataRefs.txt): 8
+ * batteries and generators, 32 instrument dimmer zones but only 4 panel ones, and 16 engines for
+ * the per-engine fuel pump, ignition key, starter and running state. Everything else named here is
+ * scalar in DataRefs.txt.
  */
 function systemsDataRefs(startId: number): MockDataRef[] {
   const refs: MockDataRef[] = [];
   let nextId = startId;
   const push = (name: string, valueType: DataRefValueType, value: DataRefValue, writable = false) =>
     refs.push({ id: nextId++, name, valueType, value, ...(writable ? { writable: true } : {}) });
+  const panelLights = dimmerByKey('panelLights');
+  const instrumentLights = dimmerByKey('instrumentLights');
 
   for (const light of EXTERIOR_LIGHTS) {
     push(light.state, 'int', 0);
@@ -152,12 +171,11 @@ function systemsDataRefs(startId: number): MockDataRef[] {
   for (const spec of ANTI_ICE) {
     push(spec.state, 'int', 0);
   }
-  push(BATTERY.state, 'int', 1);
+  push(BATTERY.state, 'int_array', padded([1], 8));
   push(AVIONICS_MASTER.state, 'int', 1);
-  push(generatorSwitch(1).state, 'int_array', [1, 1, 1, 1]);
-  for (const dimmer of DIMMERS) {
-    push(dimmer.state, 'float', 0.8);
-  }
+  push(generatorSwitch(1).state, 'int_array', padded([1, 1, 1, 1], 8));
+  push(panelLights.state, 'float_array', padded([0.8], 4));
+  push(instrumentLights.state, 'float_array', padded([0.8], 32));
   push(GEAR.handle, 'int', 1, true);
   push(GEAR.deployment, 'float_array', [1, 1, 1, 0, 0, 0, 0, 0, 0, 0]);
   push(GEAR.retractable, 'int', 1);
@@ -172,11 +190,11 @@ function systemsDataRefs(startId: number): MockDataRef[] {
   push(FUEL_SELECTOR.state, 'int', 4);
   push(FUEL_SELECTOR.hasSelector, 'int', 1);
   push(FUEL_SELECTOR.hasBoth, 'int', 1);
-  push(fuelPumpSwitch(1).state, 'int_array', [1, 1, 1, 1]);
+  push(fuelPumpSwitch(1).state, 'int_array', padded([1, 1, 1, 1], 16));
   push(ENGINES.count, 'int', 1);
-  push(ENGINES.key, 'int_array', [3, 0, 0, 0]);
-  push(ENGINES.starter, 'int_array', [0, 0, 0, 0]);
-  push(ENGINES.running, 'int_array', [1, 0, 0, 0]);
+  push(ENGINES.key, 'int_array', padded([3, 0, 0, 0], 16));
+  push(ENGINES.starter, 'int_array', padded([0, 0, 0, 0], 16));
+  push(ENGINES.running, 'int_array', padded([1, 0, 0, 0], 16));
   return refs;
 }
 
