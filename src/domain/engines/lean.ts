@@ -1,5 +1,6 @@
 import type { EnginesModel, GaugeReading } from '@/domain/engines/engine-page';
-import { convertTemperatureDelta, signedWhole } from '@/domain/engines/units';
+import { convertTemperatureDelta } from '@/domain/engines/units';
+import { groupedWhole } from '@/domain/units/numbers';
 import type { UnitPreferences } from '@/domain/units/units';
 
 /** Engine number → the highest EGT seen since LEAN went on, in the EGT's source unit. */
@@ -59,7 +60,7 @@ export function leanDelta(
     return { text: '0', spoken: `Engine ${egt.engine} at peak EGT` };
   }
   return {
-    text: signedWhole(rounded),
+    text: groupedWhole(rounded),
     spoken: `Engine ${egt.engine} ${Math.abs(rounded)} degrees ${rounded < 0 ? 'below' : 'above'} peak EGT`,
   };
 }

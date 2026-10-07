@@ -1,13 +1,12 @@
 import type { GaugeId, GaugeSpec } from '@/domain/engines/catalogue';
 import type { EngineReader } from '@/domain/engines/engine-page';
+import { fixed, groupedWhole } from '@/domain/units/numbers';
 import { type TemperatureUnit, type UnitPreferences, convertFuel } from '@/domain/units/units';
 
 /** Exact: 1 N·m = 0.737562 ft-lb (to six figures). */
 export const NM_TO_FT_LB = 0.737562;
 export const RAD_S_TO_RPM = 60 / (2 * Math.PI);
 const SECONDS_PER_HOUR = 3600;
-
-export const MINUS = '−';
 
 /**
  * A raw value in the unit the aircraft's markings use and the panel computes in: torque in ft-lb
@@ -83,24 +82,6 @@ export function convertTemperatureDelta(
   return from === 'C' ? (delta * 9) / 5 : (delta * 5) / 9;
 }
 
-/** Rounded to whole, thousands grouped without Intl (its availability differs between Hermes builds). */
-export function groupedWhole(value: number): string {
-  const rounded = Math.round(value);
-  const digits = String(Math.abs(rounded)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return rounded < 0 ? `${MINUS}${digits}` : digits;
-}
-
-/** Whole, with U+2212 for negatives and no sign for zero. */
-export function signedWhole(value: number): string {
-  return groupedWhole(value === 0 ? 0 : value);
-}
-
-/** `digits` decimals, U+2212 for negatives (and no sign when it rounds to zero). */
-export function fixed(value: number, digits: number): string {
-  const text = Math.abs(value).toFixed(digits);
-  return value < 0 && Number(text) !== 0 ? `${MINUS}${text}` : text;
-}
-
 function displayTemperature(
   value: number,
   units: UnitPreferences,
@@ -138,7 +119,7 @@ export function formatGauge(
     case 'itt':
     case 'oilT': {
       const shown = displayTemperature(value, units, source);
-      return shown === null ? '—' : signedWhole(shown);
+      return shown === null ? '—' : groupedWhole(shown);
     }
     case 'ff': {
       const perHour = convertFuel(value, units.fuel);
@@ -146,7 +127,7 @@ export function formatGauge(
       return Math.round(perHour * 10) / 10 < 100 ? fixed(perHour, 1) : groupedWhole(perHour);
     }
     case 'oilP':
-      return signedWhole(value);
+      return groupedWhole(value);
   }
 }
 

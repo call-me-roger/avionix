@@ -1,6 +1,7 @@
 import { FUEL, GAUGES, TANK_SLOTS } from '@/domain/engines/catalogue';
 import type { EngineReader } from '@/domain/engines/engine-page';
-import { formatGauge, groupedWhole } from '@/domain/engines/units';
+import { formatGauge } from '@/domain/engines/units';
+import { groupedWhole } from '@/domain/units/numbers';
 import { KG_PER_LB, type UnitPreferences, convertFuel } from '@/domain/units/units';
 
 export interface Readout {

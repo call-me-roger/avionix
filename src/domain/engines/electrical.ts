@@ -1,6 +1,6 @@
 import { ELECTRICAL, MAX_BATTERIES, MAX_BUSES } from '@/domain/engines/catalogue';
 import type { EngineReader } from '@/domain/engines/engine-page';
-import { fixed, signedWhole } from '@/domain/engines/units';
+import { fixed, groupedWhole } from '@/domain/units/numbers';
 import { MAX_ENGINES } from '@/domain/systems/controls';
 
 export interface PowerRow {
@@ -60,7 +60,7 @@ function powerRows(
     let ampsText: string | null = null;
     if (hasAmps) {
       const value = reader.number(amps, index);
-      ampsText = value === null ? NO_VALUE : signedWhole(value);
+      ampsText = value === null ? NO_VALUE : groupedWhole(value);
       const rounded = value === null ? 0 : Math.round(value);
       parts.push(
         value === null
