@@ -167,6 +167,8 @@ Record results at the bottom.
 | 138 | Compare a small (label) glyph and a large (data) glyph in the same column, on iOS and on Android | Both sit on the same baseline; neither looks raised or sunken against the other | |
 | 139 | With TalkBack on, press a key that X-Plane refuses | The failure message is read once, not twice | |
 | 140 | Open the CDU panel, then switch to another panel | The flight data strip is hidden on the CDU panel and reappears on the other panel | |
+| 141 | With the CDU live on the default 737, load the Cessna 172 (or an add-on such as Zibo's 737) without leaving the CDU panel | The CDU switches to the No FMS sentence naming the new aircraft; the 737's last screen is never shown as live for the new aircraft (watch the first second after the switch) | |
+| 142 | With the CDU live and the screen changing (e.g. the PROG page in flight), scroll the keys and type steadily on an older phone | Scrolling and key presses stay smooth; the keyboard does not stutter as the screen updates (about 10 updates a second) | |
 
 Rows 44 and 45 verify the keep-awake hold, and row 53 the safe areas: behaviour no automated test
 can observe.
