@@ -140,6 +140,23 @@ describe('the ENGINES page (spec §4.2–§4.6)', () => {
     await render(tree(snapshot(withEngines(C172_VALUES, 2, [1, 5]))));
     expect(screen.getByLabelText('manifold pressure, not used on engine 2')).toBeTruthy();
   });
+
+  it('sizes the dials from the measured width, not the window (R-01 review)', async () => {
+    await render(tree(snapshot(withEngines(C172_VALUES, 2, [9, 9]))));
+    await fireEvent(screen.getByTestId('engine-table'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 400 } },
+    });
+    expect(StyleSheet.flatten(screen.getByTestId('dial-face-1').props.style).width).toBe(146);
+    expect(StyleSheet.flatten(screen.getByTestId('dial-face-2').props.style).width).toBe(146);
+  });
+
+  it('caps a single dial at MAX_DIAL_SIZE even on a wide measured width', async () => {
+    await render(tree(snapshot()));
+    await fireEvent(screen.getByTestId('engine-table'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 600, height: 400 } },
+    });
+    expect(StyleSheet.flatten(screen.getByTestId('dial-face-1').props.style).width).toBe(180);
+  });
 });
 
 describe('lean assist (spec §4.6)', () => {
@@ -179,5 +196,29 @@ describe('lean assist (spec §4.6)', () => {
     );
     expect(screen.getByLabelText('Engine 1 at peak EGT')).toBeTruthy();
     expect(screen.queryByLabelText(/below peak EGT/)).toBeNull();
+  });
+
+  it('keeps the LEAN key when it is on but no longer available, with no ΔPEAK row', async () => {
+    const storage = createMemorySettingsStorage();
+    const view = await render(tree(snapshot(), storage));
+    await fireEvent.press(screen.getByLabelText('Lean assist'));
+    expect(screen.getByText('ΔPEAK °C')).toBeTruthy();
+
+    // The aircraft is now a jet: no piston engine, so lean assist is no longer available.
+    await view.rerender(tree(snapshot(withEngines(C172_VALUES, 1, [7])), storage));
+    const key = screen.getByLabelText('Lean assist');
+    expect(key.props.accessibilityState).toMatchObject({ checked: true });
+    expect(screen.queryByTestId('engine-row-lean')).toBeNull();
+
+    // Still lets the pilot turn it off; once off and still unavailable, the key goes away too.
+    await fireEvent.press(key);
+    expect(screen.queryByLabelText('Lean assist')).toBeNull();
+  });
+
+  it('gives the unused ΔPEAK cell of a non-piston engine an accessible label', async () => {
+    const storage = createMemorySettingsStorage();
+    await render(tree(snapshot(withEngines(C172_VALUES, 2, [1, 5])), storage));
+    await fireEvent.press(screen.getByLabelText('Lean assist'));
+    expect(screen.getByLabelText('difference from peak EGT, not used on engine 2')).toBeTruthy();
   });
 });

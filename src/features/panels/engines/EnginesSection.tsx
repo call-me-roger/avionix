@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { Pressable, Text, useWindowDimensions } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 
 import { GAUGES } from '@/domain/engines/catalogue';
 import { egtSamples, leanAvailable } from '@/domain/engines/lean';
@@ -79,6 +79,10 @@ export function EnginesSection() {
   const [lean, store] = useLean();
   const aircraft = aircraftKey(snapshot.compatibility.identity);
   const available = leanAvailable(model);
+  // Until the first layout pass, assume the window minus the unit's own padding; tests never run a
+  // layout pass. The window alone overstates it in landscape, where the switcher rail (and safe-area
+  // insets) sit beside the panel, so dials sized from it can overflow (R-01 review).
+  const [measured, setMeasured] = useState<number | null>(null);
 
   useEffect(() => {
     if (lean.on) {
@@ -88,20 +92,28 @@ export function EnginesSection() {
 
   const peaks = lean.on && available ? (lean.aircraft === aircraft ? lean.peaks : {}) : null;
   const name = aircraftName(snapshot);
-  const width = window.width - 2 * theme.spacing.lg - 2 * AVIONICS_UNIT_PADDING;
+  const fallbackWidth = window.width - 2 * theme.spacing.lg - 2 * AVIONICS_UNIT_PADDING;
+  const width = measured ?? fallbackWidth;
 
   return (
     <AvionicsUnit
       testID="engines-section"
       label="ENGINES"
       labelAccessory={
-        available ? <LeanKey on={lean.on} onPress={() => store.toggle(aircraft)} /> : undefined
+        available || lean.on ? (
+          <LeanKey on={lean.on} onPress={() => store.toggle(aircraft)} />
+        ) : undefined
       }
     >
       {model.status === 'unidentified' ? <BodyText>{enginesUnidentified(name)}</BodyText> : null}
       {model.status === 'none' ? <BodyText>{noEngines(name)}</BodyText> : null}
       {model.status === 'ready' ? (
-        <EngineTable model={model} peaks={peaks} stale={!link.valuesCurrent} width={width} />
+        <View
+          testID="engine-table"
+          onLayout={(event) => setMeasured(event.nativeEvent.layout.width)}
+        >
+          <EngineTable model={model} peaks={peaks} stale={!link.valuesCurrent} width={width} />
+        </View>
       ) : null}
       {model.unsupported.map((engine) => (
         <BodyText key={engine} muted>

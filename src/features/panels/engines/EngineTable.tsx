@@ -19,7 +19,12 @@ const MIN_DIAL = 64;
 
 const makeStyles = (theme: Theme) => ({
   root: { gap: GAP },
-  dials: { flexDirection: 'row' as const, justifyContent: 'space-around' as const, gap: GAP },
+  dials: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    justifyContent: 'space-around' as const,
+    gap: GAP,
+  },
   row: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: GAP },
   label: {
     ...avionicsText(theme, true),
@@ -101,7 +106,14 @@ function LeanRow({
       {model.columns.map((column) => {
         const egt = column.cells.egt;
         if (column.kind !== 'piston' || egt === undefined) {
-          return <View key={column.engine} style={styles.cell} />;
+          return (
+            <View
+              key={column.engine}
+              style={styles.cell}
+              accessible
+              accessibilityLabel={`difference from peak EGT, not used on engine ${column.engine}`}
+            />
+          );
         }
         const delta = leanDelta(egt, peaks[column.engine], units);
         return (
