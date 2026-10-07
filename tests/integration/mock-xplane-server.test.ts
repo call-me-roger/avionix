@@ -1,3 +1,4 @@
+import { MICS, MONITORS, TRANSMIT } from '@/domain/audio/catalogue';
 import { GAUGES } from '@/domain/engines/catalogue';
 import {
   BATTERY,
@@ -562,7 +563,9 @@ describe('F-24 systems in the toy aircraft', () => {
     expect(refs).toHaveLength(35);
     expect(Math.min(...refs.map((ref) => ref.id))).toBe(1161);
 
-    const commands = DEFAULT_MOCK_COMMANDS.filter((command) => command.id >= 2164);
+    const commands = DEFAULT_MOCK_COMMANDS.filter(
+      (command) => command.id >= 2164 && command.id < 2300,
+    );
     expect(commands).toHaveLength(83);
     expect(Math.min(...commands.map((command) => command.id))).toBe(2164);
   });
@@ -881,7 +884,7 @@ describe('F-24 systems in the toy aircraft', () => {
 
 describe('F-12 engines in the toy aircraft', () => {
   it('registers the engines names at the ids from 1300, well clear of the systems range', () => {
-    const refs = DEFAULT_MOCK_DATAREFS.filter((ref) => ref.id >= 1300);
+    const refs = DEFAULT_MOCK_DATAREFS.filter((ref) => ref.id >= 1300 && ref.id < 1500);
     expect(refs).toHaveLength(91);
     expect(Math.min(...refs.map((ref) => ref.id))).toBe(1300);
   });
@@ -904,5 +907,26 @@ describe('F-12 engines in the toy aircraft', () => {
     } finally {
       await server.stop();
     }
+  });
+});
+
+describe('F-23 audio in the toy aircraft', () => {
+  it('registers the audio names at the ids from 1500, well clear of the engines range', () => {
+    const refs = DEFAULT_MOCK_DATAREFS.filter((ref) => ref.id >= 1500);
+    expect(refs).toHaveLength(9);
+    expect(Math.min(...refs.map((ref) => ref.id))).toBe(1500);
+
+    const commands = DEFAULT_MOCK_COMMANDS.filter((command) => command.id >= 2300);
+    expect(commands).toHaveLength(16);
+    expect(Math.min(...commands.map((command) => command.id))).toBe(2300);
+  });
+
+  it('starts with the toy aircraft transmitting and listening on COM1', () => {
+    const selection = DEFAULT_MOCK_DATAREFS.find((ref) => ref.name === TRANSMIT.selection);
+    expect(selection?.value).toBe(MICS[0]!.value);
+    const com1 = DEFAULT_MOCK_DATAREFS.find((ref) => ref.name === MONITORS[0]!.state);
+    expect(com1?.value).toBe(1);
+    const nav1 = DEFAULT_MOCK_DATAREFS.find((ref) => ref.name === MONITORS[2]!.state);
+    expect(nav1?.value).toBe(0);
   });
 });

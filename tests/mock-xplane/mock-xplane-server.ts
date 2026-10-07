@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net';
 
 import { WebSocket as WsSocket, WebSocketServer } from 'ws';
 
+import { MICS, MONITORS, TRANSMIT } from '@/domain/audio/catalogue';
 import {
   CDU_KEYS,
   CDU_LINE_COUNT,
@@ -360,6 +361,41 @@ function enginesDataRefs(startId: number): MockDataRef[] {
   // Laminar's generator array has eight entries, the same length as the battery arrays.
   push(ELECTRICAL.generatorAmps, 'float_array', padded([0], MAX_BATTERIES));
   return refs;
+}
+
+/**
+ * F-23's audio DataRefs: the MIC selection (COM1, Laminar's 6), auto-listen on, and the seven
+ * receivers' listen flags (COM1 on, everything else off).
+ */
+function audioDataRefs(startId: number): MockDataRef[] {
+  const refs: MockDataRef[] = [];
+  let nextId = startId;
+  const push = (name: string, valueType: DataRefValueType, value: DataRefValue) =>
+    refs.push({ id: nextId++, name, valueType, value });
+
+  push(TRANSMIT.selection, 'int', 6);
+  push(TRANSMIT.autoListen, 'int', 1);
+  for (const spec of MONITORS) {
+    push(spec.state, 'int', spec.key === 'com1' ? 1 : 0);
+  }
+  return refs;
+}
+
+/** F-23's 16 audio commands: both MICs, then each receiver's explicit on and off. */
+function audioCommands(startId: number): MockCommand[] {
+  const commands: MockCommand[] = [];
+  let nextId = startId;
+  const push = (name: string, description: string) =>
+    commands.push({ id: nextId++, name, description });
+
+  for (const mic of MICS) {
+    push(mic.command, `Transmit on ${mic.legend}.`);
+  }
+  for (const spec of MONITORS) {
+    push(spec.on, `${spec.legend} listen on.`);
+    push(spec.off, `${spec.legend} listen off.`);
+  }
+  return commands;
 }
 
 export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
@@ -802,6 +838,9 @@ export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
   // F-12: the engines catalogue's gauges, markings, fuel and electrical DataRefs, well clear of
   // the systems catalogue's range above.
   ...enginesDataRefs(1300),
+  // F-23: the audio catalogue's MIC selection, auto-listen and seven listen flags, well clear of
+  // the engines catalogue's range above.
+  ...audioDataRefs(1500),
 ];
 
 export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [
@@ -832,6 +871,8 @@ export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [
   ...cduCommands(2024),
   // F-24: the systems catalogue's 83 commands, ids after the CDU's.
   ...systemsCommands(2164),
+  // F-23: the audio catalogue's 16 commands, ids after the systems catalogue's.
+  ...audioCommands(2300),
 ];
 
 interface JsonError {
