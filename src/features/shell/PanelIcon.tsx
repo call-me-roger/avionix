@@ -98,6 +98,21 @@ function renderGlyph(id: string, color: string): React.ReactNode {
           <Line x1={12} y1={10} x2={12} y2={18} stroke={color} strokeWidth={2} />
         </>
       );
+    case 'map':
+      return (
+        <>
+          {/* A folded map: three panels, the folds at x = 9 and x = 15. */}
+          <Polygon
+            points="3,6 9,4 15,6 21,4 21,18 15,20 9,18 3,20"
+            stroke={color}
+            strokeWidth={2}
+            strokeLinejoin="round"
+            fill="none"
+          />
+          <Line x1={9} y1={4} x2={9} y2={18} stroke={color} strokeWidth={2} />
+          <Line x1={15} y1={6} x2={15} y2={20} stroke={color} strokeWidth={2} />
+        </>
+      );
     case 'systems':
       return (
         <>

@@ -61,6 +61,7 @@ describe('panel registry', () => {
       'radios',
       'autopilot',
       'navigation',
+      'map',
       'systems',
       'engines',
       'cdu',
@@ -120,12 +121,12 @@ describe('PanelFrame fillsFrame', () => {
     expect(screen.getByText('Body')).toBeTruthy();
   });
 
-  it('is set by the CDU alone', () => {
+  it('is set by the Map and the CDU alone', () => {
     expect(
       PANELS.filter(({ descriptor }) => descriptor.fillsFrame === true).map(
         ({ descriptor }) => descriptor.id,
       ),
-    ).toEqual(['cdu']);
+    ).toEqual(['map', 'cdu']);
   });
 });
 

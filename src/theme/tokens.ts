@@ -60,6 +60,18 @@ export interface CduColors {
   amber: string;
 }
 
+/** F-13 moving map. Light and dark share one dark map, like the instruments; night stays ≤ 0.30. */
+export interface MapColors {
+  water: string;
+  land: string;
+  border: string;
+  runway: string;
+  label: string;
+  ring: string;
+  ownship: string;
+  stale: string;
+}
+
 export interface FontFamilies {
   avionics?: string;
   avionicsBold?: string;
@@ -100,6 +112,7 @@ export interface Theme {
   instrument: InstrumentColors;
   avionics: AvionicsColors;
   cdu: CduColors;
+  map: MapColors;
   spacing: { xs: number; sm: number; md: number; lg: number; xl: number };
   radius: { sm: number; md: number };
   typography: {
@@ -194,6 +207,29 @@ const nightCdu: CduColors = {
   amber: '#b58440',
 };
 
+const dayMap: MapColors = {
+  water: '#0b2a45',
+  land: '#2b2f26',
+  border: '#8a8f99',
+  runway: '#e6edf3',
+  label: '#c9d1d9',
+  ring: '#7fb2e0',
+  ownship: '#ffd200',
+  stale: '#9aa4b2',
+};
+
+const nightMap: MapColors = {
+  water: '#06121e',
+  // #141209 darkened within its hue: as given the label on it is 4.43:1.
+  land: '#110f08',
+  border: '#4a3e2c',
+  runway: '#a88a60',
+  label: '#917752',
+  ring: '#4f6e88',
+  ownship: '#a8862a',
+  stale: '#6a5a44',
+};
+
 const dayInstrument: InstrumentColors = {
   face: '#000000',
   tape: '#2b2f36',
@@ -235,6 +271,7 @@ export const lightTheme: Theme = {
   instrument: dayInstrument,
   avionics: dayAvionics,
   cdu: dayCdu,
+  map: dayMap,
   spacing,
   radius,
   typography,
@@ -261,6 +298,7 @@ export const darkTheme: Theme = {
   instrument: dayInstrument,
   avionics: dayAvionics,
   cdu: dayCdu,
+  map: dayMap,
   spacing,
   radius,
   typography,
@@ -310,6 +348,7 @@ export const nightTheme: Theme = {
   },
   avionics: nightAvionics,
   cdu: nightCdu,
+  map: nightMap,
   spacing,
   radius,
   typography,
