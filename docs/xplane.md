@@ -522,3 +522,43 @@ Total: 91 new names, probed at connect like every other binding (row 171 of the 
 
 Unsettled until the device rows: the marking units for temperatures (165), the unit flags (166),
 the tank side threshold and the tank capacity unit, lb or kg (167).
+
+## Audio panel (F-23)
+
+Verified against `DataRefs.txt`, `Commands.txt` and the live 12.4.3 database. Every DataRef is
+`int`, writable, current since X-Plane 9–11.35.
+
+| Purpose | DataRef | Type |
+|---|---|---|
+| Transmit selection | `sim/cockpit2/radios/actuators/audio_com_selection` | int, 6 COM1, 7 COM2, anything else none |
+| COM auto-listen | `sim/cockpit2/radios/actuators/audio_selection_com_auto` | int, 0 or 1: the transmit COM is heard |
+| Listen COM1 | `sim/cockpit2/radios/actuators/audio_selection_com1` | int, 0 or 1 |
+| Listen COM2 | `sim/cockpit2/radios/actuators/audio_selection_com2` | int, 0 or 1 |
+| Listen NAV1 | `sim/cockpit2/radios/actuators/audio_selection_nav1` | int, 0 or 1 |
+| Listen NAV2 | `sim/cockpit2/radios/actuators/audio_selection_nav2` | int, 0 or 1 |
+| Listen ADF | `sim/cockpit2/radios/actuators/audio_selection_adf1` | int, 0 or 1 |
+| Listen DME | `sim/cockpit2/radios/actuators/audio_dme_enabled` | int, 0 or 1 (the dedicated DME receiver) |
+| Marker audio | `sim/cockpit2/radios/actuators/audio_marker_enabled` | int, 0 or 1 |
+| Marker lamps | `sim/cockpit2/radios/indicators/{outer,middle,inner}_marker_lit` | int, 0 or 1 (already read by Navigation, F-30) |
+
+| Command | Effect |
+|---|---|
+| `sim/audio_panel/transmit_audio_com1` | Transmit on COM1 |
+| `sim/audio_panel/transmit_audio_com2` | Transmit on COM2 |
+| `sim/audio_panel/monitor_audio_com1_on` / `_off` | Listen to COM1 on / off |
+| `sim/audio_panel/monitor_audio_com2_on` / `_off` | Listen to COM2 on / off |
+| `sim/audio_panel/monitor_audio_nav1_on` / `_off` | Listen to NAV1 on / off |
+| `sim/audio_panel/monitor_audio_nav2_on` / `_off` | Listen to NAV2 on / off |
+| `sim/audio_panel/monitor_audio_adf1_on` / `_off` | Listen to the ADF on / off |
+| `sim/audio_panel/monitor_audio_dme_on` / `_off` | Listen to the DME on / off |
+| `sim/audio_panel/monitor_audio_mkr_on` / `_off` | Marker audio on / off |
+
+A MIC command does two things at once: it selects that COM for transmit, and it also selects that
+COM's listener and mutes the other COM — documented by a plugin author, not by Laminar, and
+verified on device in row 175 of the smoke test. Not used: the `_man` transmit commands (an "old
+panel" behaviour the aircraft's own panel does not have), the toggle commands (the panel always
+sends the explicit on/off command, as F-24 does), `audio_nav_selection` (a legacy single selector),
+ADF2/NAV3/NAV4/DME1/DME2, the copilot set, and the `audio_volume_*` floats (volume is out of
+scope).
+
+Total: 9 new DataRefs, 16 new commands, probed at connect like every other binding.

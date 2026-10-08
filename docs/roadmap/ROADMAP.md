@@ -91,7 +91,7 @@ aircraft-agnostic.
 |---|---|---|---|
 | F-05 | Demo mode | Avoids "worthless without a simulator" reviews; lets stores and friends try the app | [F-05](features/F-05-demo-mode.md) |
 | F-12 | Engine and systems monitoring | Standard in panel builders; second screen for engine gauges is a common use | [spec](../superpowers/specs/2026-10-07-engine-monitoring-design.md) |
-| F-23 | Audio panel | Completes the radio stack | [F-23](features/F-23-audio-panel.md) |
+| F-23 | Audio panel | Completes the radio stack | [spec](../superpowers/specs/2026-10-07-audio-panel-design.md) |
 | F-24 | Aircraft systems controls | Lights, gear, flaps, trim: the button-box use case of Touch Portal and Stream Deck | [spec](../superpowers/specs/2026-10-06-systems-controls-design.md) |
 | F-30 | HSI, CDI and navigation indicators | Needed to use the NAV radios for real | [F-30](features/F-30-hsi-cdi-indicators.md) |
 | F-32 | CDU remote for the default X-Plane FMS | The most requested remote panel; the default FMS is fully supported by the API | [spec](../superpowers/specs/2026-10-06-default-fms-cdu-design.md) |

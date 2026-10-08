@@ -7,6 +7,7 @@ import {
   writeBindingOf,
 } from '@/domain/aircraft/profile';
 import { BUNDLED_PROFILES } from '@/domain/aircraft/profiles/catalog';
+import { AUDIO_FEATURES } from '@/domain/audio/catalogue';
 import {
   ELECTRICAL,
   ENGINE_CONFIG,
@@ -123,6 +124,22 @@ function enginesNames(): string[] {
   return [
     ...new Set(
       ENGINES_FEATURES.flatMap(
+        (id) => findFeature(GENERIC_PROFILE, id)?.bindings.map((binding) => binding.name) ?? [],
+      ),
+    ),
+  ].filter((name) => !reused.has(name));
+}
+
+/** F-23's names, each once, without the three marker lamps nav-aids already binds. */
+function audioNames(): string[] {
+  const reused = new Set<string>([
+    GENERIC_DATAREFS.outerMarker,
+    GENERIC_DATAREFS.middleMarker,
+    GENERIC_DATAREFS.innerMarker,
+  ]);
+  return [
+    ...new Set(
+      AUDIO_FEATURES.flatMap(
         (id) => findFeature(GENERIC_PROFILE, id)?.bindings.map((binding) => binding.name) ?? [],
       ),
     ),
@@ -273,6 +290,7 @@ describe('profileBindings', () => {
       ...cduKeysNames(2),
       ...systemsNames(),
       ...enginesNames(),
+      ...audioNames(),
     ]);
   });
 });
@@ -301,7 +319,7 @@ describe('the generic profile', () => {
     expect(GENERIC_PROFILE.version).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('declares the Stage 1 features, then the F-30, F-32, F-24 and F-12 features', () => {
+  it('declares the Stage 1 features, then the F-30, F-32, F-24, F-12 and F-23 features', () => {
     expect(GENERIC_PROFILE.features.map((feature) => feature.id)).toEqual([
       FEATURE_CONNECTION_HEALTH,
       FEATURE_FLIGHT_TELEMETRY,
@@ -340,6 +358,7 @@ describe('the generic profile', () => {
       cduKeysFeatureId(2),
       ...SYSTEMS_FEATURES,
       ...ENGINES_FEATURES,
+      ...AUDIO_FEATURES,
     ]);
   });
 
@@ -387,15 +406,18 @@ describe('the generic profile', () => {
       ENGINE_CONFIG.count,
       GENERIC_DATAREFS.engineType,
       GENERIC_DATAREFS.fuelTotal,
+      GENERIC_DATAREFS.outerMarker,
+      GENERIC_DATAREFS.middleMarker,
+      GENERIC_DATAREFS.innerMarker,
     ]);
   });
 
   it('bumps the profile version for the new bindings', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.8.0');
+    expect(GENERIC_PROFILE.version).toBe('1.9.0');
   });
 
   it('declares the flight instruments, every one optional, and the altimeter setting', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.8.0');
+    expect(GENERIC_PROFILE.version).toBe('1.9.0');
     const instruments = findFeature(GENERIC_PROFILE, FEATURE_FLIGHT_INSTRUMENTS);
     expect(instruments?.label).toBe('Flight instruments');
     expect(instruments?.bindings.map((binding) => binding.name)).toEqual([
@@ -640,7 +662,7 @@ describe('the generic profile’s navigation features (F-30)', () => {
 
 describe('CDU features (F-32)', () => {
   it('bumps the profile version for the CDU bindings', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.8.0');
+    expect(GENERIC_PROFILE.version).toBe('1.9.0');
   });
 
   it.each([1, 2] as const)(

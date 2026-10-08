@@ -8,7 +8,12 @@ import { AvionicsUnit } from '@/features/panels/primitives/AvionicsUnit';
 import { ControlButton } from '@/features/panels/primitives/ControlButton';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
-import { aircraftName, bindingOk, valueOf } from '@/features/panels/systems/availability';
+import {
+  aircraftName,
+  bindingMissing,
+  bindingOk,
+  valueOf,
+} from '@/features/panels/systems/availability';
 import { UnitLines } from '@/features/panels/systems/SwitchGroup';
 import { BodyText } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
@@ -67,10 +72,12 @@ export function GearUnit({ readBack }: { readBack: ReadBack }) {
   const aircraft = aircraftName(snapshot);
 
   if (!bindingOk(snapshot, GEAR.handle)) {
-    return (
+    return bindingMissing(snapshot, GEAR.handle) ? (
       <AvionicsUnit label="GEAR">
         <BodyText muted>{unitUnavailable('Landing gear', aircraft)}</BodyText>
       </AvionicsUnit>
+    ) : (
+      <AvionicsUnit label="GEAR">{null}</AvionicsUnit>
     );
   }
   const retractable = bindingOk(snapshot, GEAR.retractable)
@@ -91,8 +98,8 @@ export function GearUnit({ readBack }: { readBack: ReadBack }) {
     : null;
   const pending = readBack.pendingExpected('gear') !== null;
   const missing = [
-    ...(bindingOk(snapshot, GEAR.up) ? [] : ['GEAR UP']),
-    ...(bindingOk(snapshot, GEAR.down) ? [] : ['GEAR DOWN']),
+    ...(bindingMissing(snapshot, GEAR.up) ? ['GEAR UP'] : []),
+    ...(bindingMissing(snapshot, GEAR.down) ? ['GEAR DOWN'] : []),
   ];
 
   const key = (down: boolean) => {

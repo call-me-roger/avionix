@@ -15,6 +15,7 @@ import {
   GENERIC_DATAREFS,
   GENERIC_PROFILE,
 } from '@/domain/aircraft/profiles/generic';
+import { MICS, MONITORS, TRANSMIT } from '@/domain/audio/catalogue';
 import {
   CDU_KEYS,
   CDU_LINE_COUNT,
@@ -221,6 +222,23 @@ const NAV_FAKE_DATAREFS: Record<string, FakeDataRef> = {
 };
 
 /**
+ * F-23's audio bindings, absent from `DEFAULT_FAKE_DATAREFS` for the same reason as the other
+ * feature datarefs above. The marker lamps the marker feature shares with nav-aids are already in
+ * `DEFAULT_FAKE_DATAREFS`.
+ */
+const AUDIO_FAKE_DATAREFS: Record<string, FakeDataRef> = (() => {
+  const refs: Record<string, FakeDataRef> = {};
+  let nextId = 500;
+  const next = () => nextId++;
+  refs[TRANSMIT.selection] = { id: next(), valueType: 'int' };
+  refs[TRANSMIT.autoListen] = { id: next(), valueType: 'int' };
+  for (const spec of MONITORS) {
+    refs[spec.state] = { id: next(), valueType: 'int' };
+  }
+  return refs;
+})();
+
+/**
  * F-32's CDU bindings (all four features, both units), absent from `DEFAULT_FAKE_DATAREFS` for the
  * same reason as the other feature datarefs above.
  */
@@ -347,11 +365,18 @@ const SYSTEMS_FAKE_COMMAND_NAMES: readonly string[] = [
   ]),
 ];
 
+/** The audio commands (F-23): both MICs, and every receiver's explicit on and off. */
+const AUDIO_FAKE_COMMAND_NAMES: readonly string[] = [
+  ...MICS.map((mic) => mic.command),
+  ...MONITORS.flatMap((spec) => [spec.on, spec.off]),
+];
+
 /** Every command name `FakeClient.findCommand` recognises by default: a fully-equipped aircraft. */
 const ALL_FAKE_COMMAND_NAMES = new Set<string>([
   ...(Object.values(GENERIC_COMMANDS) as string[]),
   ...([1, 2] as const).flatMap((unit: CduUnit) => CDU_KEYS.map((key) => cduCommand(unit, key.id))),
   ...SYSTEMS_FAKE_COMMAND_NAMES,
+  ...AUDIO_FAKE_COMMAND_NAMES,
 ]);
 
 class FakeClient implements SimulatorClient {
@@ -2104,6 +2129,7 @@ describe('aircraft compatibility', () => {
       ...CDU_FAKE_DATAREFS,
       ...SYSTEMS_FAKE_DATAREFS,
       ...ENGINES_FAKE_DATAREFS,
+      ...AUDIO_FAKE_DATAREFS,
     };
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);
@@ -2416,8 +2442,9 @@ describe('aircraft changes', () => {
     // One re-check pass probes every command binding in the profile: headingUp, the five radio
     // and transponder commands added in 1.3.0, the fifteen autopilot commands added in 1.4.0, the
     // HSI direct-to command added in 1.5.0, the 140 CDU key commands (70 per unit) added in
-    // 1.6.0, and the 83 systems commands added in 1.7.0.
-    expect(client.findCommand.mock.calls.length).toBe(before + 245);
+    // 1.6.0, the 83 systems commands added in 1.7.0, and the 16 audio commands (two MICs, plus
+    // on/off for each of the seven receivers) added in 1.9.0.
+    expect(client.findCommand.mock.calls.length).toBe(before + 261);
   });
 
   it('ignores an update that repeats the identification already on record', async () => {

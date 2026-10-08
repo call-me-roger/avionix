@@ -9,6 +9,7 @@ import {
   GENERIC_COMMANDS as C,
   GENERIC_DATAREFS as D,
 } from '@/domain/aircraft/profiles/generic';
+import { AUDIO_FEATURES, type ComNumber } from '@/domain/audio/catalogue';
 import { EVERYWHERE, type PanelDescriptor } from '@/domain/panels/panel';
 import { formatCom, formatNav } from '@/domain/radios/channels';
 import type { EntryKind } from '@/domain/radios/entry';
@@ -19,6 +20,8 @@ export interface RadioSpec {
   key: RadioKey;
   label: string;
   kind: 'com' | 'nav';
+  /** Set on the COM radios: the number X-Plane's transmit selection names (F-23's MIC lamp). */
+  com?: ComNumber;
   featureId: string;
   active: string;
   standby: string;
@@ -34,6 +37,7 @@ export const RADIOS: readonly RadioSpec[] = [
     key: 'com1',
     label: 'COM1',
     kind: 'com',
+    com: 1,
     featureId: FEATURE_COM1,
     active: D.com1Active,
     standby: D.com1Standby,
@@ -43,6 +47,7 @@ export const RADIOS: readonly RadioSpec[] = [
     key: 'com2',
     label: 'COM2',
     kind: 'com',
+    com: 2,
     featureId: FEATURE_COM2,
     active: D.com2Active,
     standby: D.com2Standby,
@@ -128,6 +133,7 @@ export const RADIOS_PANEL: PanelDescriptor = {
     FEATURE_TRANSPONDER_CODE,
     FEATURE_TRANSPONDER_MODE,
     FEATURE_TRANSPONDER_IDENT,
+    ...AUDIO_FEATURES,
   ],
   supports: EVERYWHERE,
 };

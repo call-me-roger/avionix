@@ -11,12 +11,13 @@ import { ControlButton, OperationNotice } from '@/features/panels/primitives/Con
 import { DisplayWindow } from '@/features/panels/primitives/DisplayWindow';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
+import { transmittingCom } from '@/features/panels/radios/audio-reader';
 import { type RadioSpec, formatFrequency } from '@/features/panels/radios/radios';
 import { useUnits } from '@/features/units/UnitsProvider';
 import { BodyText } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
 import type { Theme } from '@/theme/tokens';
-import { numeric } from '@/theme/typography';
+import { avionicsText, numeric } from '@/theme/typography';
 
 /** Below this content width, the active/swap/standby line stacks vertically (a narrow phone). */
 const NARROW_ROW_WIDTH = 360;
@@ -38,6 +39,13 @@ const makeStyles = (theme: Theme) => ({
     color: theme.avionics.selected,
   },
   stale: { color: theme.avionics.legendDim },
+  mic: {
+    ...avionicsText(theme, true),
+    fontSize: theme.typography.captionSize,
+    color: theme.avionics.engaged,
+    letterSpacing: 1,
+  },
+  micStale: { color: theme.avionics.legendDim },
 });
 
 function courseText(course: number): string {
@@ -71,6 +79,18 @@ export function RadioRow({
     setNarrow(event.nativeEvent.layout.width < NARROW_ROW_WIDTH);
   };
   const noFlight = snapshot.state === 'connected' && snapshot.health.activity === 'noFlight';
+  // The G1000 draws the transmitting COM in green; this stack names it (spec §4.6).
+  const transmitting =
+    radio.com !== undefined && !noFlight && transmittingCom(snapshot) === radio.com;
+  const micLamp = transmitting ? (
+    <Text
+      style={[styles.mic, link.valuesCurrent ? null : styles.micStale]}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      MIC
+    </Text>
+  ) : null;
   const read = (name: string | undefined) =>
     noFlight || name === undefined ? null : firstNumber(snapshot.telemetry[name]?.value);
   const active = read(radio.active);
@@ -114,12 +134,12 @@ export function RadioRow({
   };
 
   return (
-    <AvionicsUnit label={radio.label} testID={`radio-row-${radio.key}`}>
+    <AvionicsUnit label={radio.label} labelAccessory={micLamp} testID={`radio-row-${radio.key}`}>
       <View style={[styles.row, narrow ? styles.rowNarrow : null]} onLayout={onLayout}>
         <View
           style={styles.flex1}
           accessible
-          accessibilityLabel={`${radio.label}: active ${text(active)}, standby ${text(standby)}${notLive ? ', not live' : ''}`}
+          accessibilityLabel={`${radio.label}${transmitting ? ', transmitting' : ''}: active ${text(active)}, standby ${text(standby)}${notLive ? ', not live' : ''}`}
         >
           <DisplayWindow
             text={text(active)}

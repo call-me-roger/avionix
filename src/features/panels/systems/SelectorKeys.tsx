@@ -10,6 +10,7 @@ import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
 import {
   aircraftName,
+  bindingMissing,
   bindingOk,
   sentenceCase,
   valueOf,
@@ -34,9 +35,10 @@ export function selectorMissing(
   state: string,
   positions: readonly SelectorPosition[],
 ): SelectorPosition[] {
-  return bindingOk(snapshot, state)
-    ? positions.filter((position) => !bindingOk(snapshot, position.command))
-    : [...positions];
+  if (bindingMissing(snapshot, state)) {
+    return [...positions];
+  }
+  return positions.filter((position) => bindingMissing(snapshot, position.command));
 }
 
 /**

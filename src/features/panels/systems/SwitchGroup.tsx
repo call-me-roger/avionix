@@ -6,7 +6,12 @@ import { missingControls, unitUnavailable } from '@/domain/systems/messages';
 import { AvionicsUnit } from '@/features/panels/primitives/AvionicsUnit';
 import { usePanel } from '@/features/panels/primitives/PanelContext';
 import type { ReadBack } from '@/features/panels/primitives/useReadBack';
-import { aircraftName, presence, sentenceCase } from '@/features/panels/systems/availability';
+import {
+  aircraftName,
+  bindingMissing,
+  presence,
+  sentenceCase,
+} from '@/features/panels/systems/availability';
 import { SwitchKey } from '@/features/panels/systems/SwitchKey';
 import { BodyText } from '@/theme/primitives';
 import { useThemedStyles } from '@/theme/theme-context';
@@ -70,13 +75,16 @@ export function SwitchGroup({
   }));
   const drawn = states.filter((state) => state.shown);
   if (drawn.length === 0) {
-    return (
+    return specs.every((spec) => bindingMissing(snapshot, spec.state)) ? (
       <AvionicsUnit label={label}>
         <BodyText muted>{unitUnavailable(sentenceCase(label), aircraftName(snapshot))}</BodyText>
       </AvionicsUnit>
+    ) : (
+      // Names still being checked: the bare label, so the page does not shift when they resolve.
+      <AvionicsUnit label={label}>{null}</AvionicsUnit>
     );
   }
-  const missing = states.filter((state) => !state.enabled).map((state) => state.spec.legend);
+  const missing = states.filter((state) => state.missing).map((state) => state.spec.legend);
   return (
     <AvionicsUnit label={label}>
       <View style={styles.row}>

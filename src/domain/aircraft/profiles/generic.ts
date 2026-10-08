@@ -1,5 +1,15 @@
 import type { AircraftProfile, BindingSpec, FeatureSpec } from '@/domain/aircraft/profile';
 import {
+  FEATURE_AUDIO_MARKER,
+  FEATURE_AUDIO_MONITOR,
+  FEATURE_AUDIO_TRANSMIT,
+  MARKER_LAMPS,
+  MICS,
+  MONITORS,
+  type MonitorSpec,
+  TRANSMIT,
+} from '@/domain/audio/catalogue';
+import {
   CDU_KEYS,
   CDU_LINE_COUNT,
   cduCommand,
@@ -474,6 +484,42 @@ const ENGINES_FEATURE_SPECS: readonly FeatureSpec[] = [
   },
 ];
 
+function listenBindings(spec: MonitorSpec): BindingSpec[] {
+  return [
+    dataRef(spec.state, `Listening to ${spec.name}`),
+    command(spec.on, `Start listening to ${spec.name}`),
+    command(spec.off, `Stop listening to ${spec.name}`),
+  ];
+}
+
+/** F-23: commands only, read back on the flags; the lamps are deliberately shared with nav-aids. */
+const AUDIO_FEATURE_SPECS: readonly FeatureSpec[] = [
+  {
+    id: FEATURE_AUDIO_TRANSMIT,
+    label: 'Microphone selection',
+    bindings: [
+      dataRef(TRANSMIT.selection, 'Microphone (transmit) selection'),
+      dataRef(TRANSMIT.autoListen, 'Listening follows the microphone'),
+      ...MICS.map((mic) => command(mic.command, `Transmit on COM${mic.com}`)),
+    ],
+  },
+  {
+    id: FEATURE_AUDIO_MONITOR,
+    label: 'Audio monitoring',
+    bindings: MONITORS.filter((spec) => spec.featureId === FEATURE_AUDIO_MONITOR).flatMap(
+      listenBindings,
+    ),
+  },
+  {
+    id: FEATURE_AUDIO_MARKER,
+    label: 'Marker audio',
+    bindings: [
+      ...MONITORS.filter((spec) => spec.featureId === FEATURE_AUDIO_MARKER).flatMap(listenBindings),
+      ...MARKER_LAMPS.map((lamp) => dataRef(lamp.state, `Marker lamp (${lamp.marker})`)),
+    ],
+  },
+];
+
 const D = GENERIC_DATAREFS;
 const C = GENERIC_COMMANDS;
 
@@ -559,12 +605,15 @@ function modeFeature(
  * features (F-24) bind every name optionally, so a missing name costs only the control it backs
  * (each control checks its own bindings, spec §4.1); the parking brake's one written DataRef is
  * required. The four engine features (F-12) are read-only and bind every name optionally, so a
- * missing name costs only the gauges it feeds.
+ * missing name costs only the gauges it feeds. The three audio features (F-23) bind every name
+ * optionally too — the microphone, the six receivers and the marker audio each their own feature —
+ * so a missing name costs only that key, and the marker lamps are read from the same three
+ * DataRefs `nav-aids` already binds.
  */
 export const GENERIC_PROFILE: AircraftProfile = {
   id: 'avionix.generic',
   name: 'Generic X-Plane aircraft',
-  version: '1.8.0',
+  version: '1.9.0',
   match: { kind: 'generic' },
   features: [
     {
@@ -1109,5 +1158,6 @@ export const GENERIC_PROFILE: AircraftProfile = {
     cduKeysFeature(2),
     ...SYSTEMS_FEATURE_SPECS,
     ...ENGINES_FEATURE_SPECS,
+    ...AUDIO_FEATURE_SPECS,
   ],
 };

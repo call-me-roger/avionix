@@ -16,28 +16,30 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
 - Resolve DataRefs and commands by name (ids are session-specific and never stored).
 - Panels reachable from a switcher (a bottom bar in portrait, a side rail in landscape) alongside
   Setup: Instruments (below), Radios (COM1, COM2, NAV1 and NAV2 with keypad standby entry and swap,
-  plus the transponder's squawk code, mode and IDENT), Autopilot (AP, FD and autothrottle
-  engagement; HDG, NAV, APR, ALT, VS and FLC shown off, armed or engaged; heading, altitude,
-  vertical speed and airspeed in knots or Mach set with steppers or the keypad, each change checked
-  against what X-Plane reports), Navigation (a Garmin-style HSI standing on the heading alone, with
-  course, lateral and glideslope deviation in dots, TO/FROM, bearing pointers, DME and marker
-  beacons; a NAV control unit to pick the source, set the course by keypad or stepper, and centre it
-  with CTR, all in NAV green or GPS magenta, never colour alone), Systems (battery, avionics master
-  and generators; the fuel selector and pumps; magnetos and starter; exterior and interior lights;
-  flaps, trim, landing gear and parking brake; pitot heat and the anti-ice switches — every control
-  reads X-Plane's own state and sends explicit on/off commands, never a toggle; trim and the
-  starters are held rather than pressed, with a lease X-Plane itself lets lapse if the phone goes
-  silent; four pages on a phone, two scrolling columns on a tablet), Engines (each engine's dial
-  and gauges for its type with the aircraft's own colour bands, lean assist, fuel per tank with
-  flow, used and endurance, buses and batteries; read-only), CDU (a faithful mirror of the
-  default FMS's 16-line screen, line select keys down each side, a Boeing-style keyboard, CDU 1 and
-  CDU 2, a physical keyboard on the web build) and Flight data (ground speed, true airspeed, track,
-  wind, OAT/TAT, fuel remaining, sim zulu and local time, paused/replay, the GPS destination) round
-  out the switcher. A compact strip with ground speed, wind, fuel and sim zulu docks under the
-  status bar on every panel but Setup, Flight data and the CDU (which already fill the screen with
-  their own numbers), and opens Flight data when tapped; a Setup toggle turns it off. The WebSocket
-  subscribes only the visible panel's DataRefs (plus the strip's, while shown), identification and
-  connection health, and follows a panel switch within one update cycle.
+  the transponder's squawk code, mode and IDENT, and an AUDIO unit with exclusive MIC transmit
+  selection, independent COM/NAV/ADF/DME/marker monitoring and the O/M/I marker lamps), Autopilot
+  (AP, FD and autothrottle engagement; HDG, NAV, APR, ALT, VS and FLC shown off, armed or engaged;
+  heading, altitude, vertical speed and airspeed in knots or Mach set with steppers or the keypad,
+  each change checked against what X-Plane reports), Navigation (a Garmin-style HSI standing on the
+  heading alone, with course, lateral and glideslope deviation in dots, TO/FROM, bearing pointers,
+  DME and marker beacons; a NAV control unit to pick the source, set the course by keypad or
+  stepper, and centre it with CTR, all in NAV green or GPS magenta, never colour alone), Systems
+  (battery, avionics master and generators; the fuel selector and pumps; magnetos and starter;
+  exterior and interior lights; flaps, trim, landing gear and parking brake; pitot heat and the
+  anti-ice switches — every control reads X-Plane's own state and sends explicit on/off commands,
+  never a toggle; trim and the starters are held rather than pressed, with a lease X-Plane itself
+  lets lapse if the phone goes silent; four pages on a phone, two scrolling columns on a tablet),
+  Engines (each engine's dial and gauges for its type with the aircraft's own colour bands, lean
+  assist, fuel per tank with flow, used and endurance, buses and batteries; read-only), CDU (a
+  faithful mirror of the default FMS's 16-line screen, line select keys down each side, a
+  Boeing-style keyboard, CDU 1 and CDU 2, a physical keyboard on the web build) and Flight data
+  (ground speed, true airspeed, track, wind, OAT/TAT, fuel remaining, sim zulu and local time,
+  paused/replay, the GPS destination) round out the switcher. A compact strip with ground speed,
+  wind, fuel and sim zulu docks under the status bar on every panel but Setup, Flight data and the
+  CDU (which already fill the screen with their own numbers), and opens Flight data when tapped; a
+  Setup toggle turns it off. The WebSocket subscribes only the visible panel's DataRefs (plus the
+  strip's, while shown), identification and connection health, and follows a panel switch within
+  one update cycle.
 - A **cockpit look and feel**: dark bezels, glass display windows, the B612 and B612 Mono fonts
   (Airbus's own cockpit-legibility research, open licence) for every live number, and cockpit colour
   meanings throughout (green engaged, white armed, cyan selected, amber caution, red warning).
