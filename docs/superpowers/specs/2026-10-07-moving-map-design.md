@@ -78,8 +78,8 @@ flight data strip stays docked above it as on every other panel.
   | 160 | ≥ 6,000 ft | none |
 
 - **Tiles:** both datasets are cut at build time into 5° cells (polygons clipped per cell, so fills
-  stay correct; runways by midpoint, airports by reference point) and committed as JSON under
-  `src/domain/map/data/`. `scripts/build-map-data.mjs` regenerates them from the public sources
+  stay correct; airports by reference point, each runway in its airport's cell) and committed as JSON under
+  `assets/map/` (outside Prettier and the TypeScript program, loaded on first use). `scripts/build-map-data.mjs` regenerates them from the public sources
   and stamps the source dates into the files.
 - **Credit line** under the map: "Outlines: Natural Earth. Runways: OurAirports. Not for
   navigation." Neither source requires attribution; it is said because the data is a snapshot.
@@ -117,8 +117,8 @@ flight data strip stays docked above it as on every other panel.
 - **Range:** − and + buttons with the current range between them, remembered. The ranges are 2,
   5, 10, 20, 40, 80 and 160, in the pilot's distance unit (nm or km, from the shared units
   setting). The default is 10.
-  - The outer ring's radius is the range. It fits the shorter distance from the symbol to the
-    map's edge, ×0.9.
+  - The outer ring's radius is the range. It is 0.9 of the shorter of: half the map's width, and
+    the distance from the symbol to the map's top edge (in north-up, half the height).
   - A second ring is drawn at half the range. Both rings are labelled ("10 NM", "5 NM").
   - A north arrow is shown in track-up.
 - **Pan:** dragging the map moves its centre to a geographic point and stops auto-centring. A
