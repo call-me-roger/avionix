@@ -171,7 +171,7 @@ Unchecked names draw nothing and say nothing.
 ### 4.8 Accessibility
 
 The map is one accessible image with a sentence: "Map, track up, 10 nautical mile range, position
-N 47 27.12, W 122 18.53, track 087." The stale state adds "last known position". Controls are
+N 47 27.12, W 122 18.53, true track 087." The stale state adds "last known position". Controls are
 standard 48 dp buttons and chips. The map's colours are theme tokens with a night variant (no
 colour brighter than a relative luminance of 0.30).
 

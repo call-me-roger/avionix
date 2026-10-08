@@ -223,6 +223,7 @@ Record results at the bottom.
 | 189 | Fly across the antimeridian (Fiji to Tonga, or along the Kamchatka coast) | The symbol and the outlines track correctly; no line is drawn across the map | |
 | 190 | Taxi below 3 kt, turning the nosewheel | The symbol follows the aircraft's heading, not a jittering ground track | |
 | 191 | On the smallest phone, landscape orientation, open the Map panel | The map sits at full height on the left and the 280 dp side column on the right is usable: the chips, range stepper and readout are all reachable and legible, with no clipping | |
+| 192 | On the smallest phone (an iPhone SE, say) in portrait, open the Map panel, then drag the map so Centre appears | The controls, the map and the readout are all usable without scrolling past the map; the map is still a usable size and does not shrink when Centre appears. Record the map height seen | |
 
 Rows 44 and 45 verify the keep-awake hold, and row 53 the safe areas: behaviour no automated test
 can observe.

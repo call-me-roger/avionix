@@ -583,3 +583,7 @@ activated.
 `hpath + beta = psi` (true heading) for a nonzero sideslip. `magnetic_variation` is not read: the
 map draws in true north throughout, so there is no magnetic value to convert and no sign convention
 to get wrong.
+
+Near the poles the map is less exact: it projects equirectangularly around its anchor, so at a wide
+range the east–west scale drifts across the map as the latitude changes (the rings stay true at the
+anchor's latitude).

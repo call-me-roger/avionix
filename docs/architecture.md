@@ -391,28 +391,41 @@ quantises each coordinate (0.001° for outlines, 0.00001° — about 1 m — for
 JSON files under `assets/map/`, each stamped with its source.
 `src/infrastructure/map/bundled-map-data.ts` loads them with a lazy `require`, not an `import`, so
 the data stays outside the TypeScript program (a multi-megabyte literal type would slow every
-build) and costs nothing until the Map panel is opened; `src/domain/map/map-data.ts` decodes and
+build). On native it costs nothing until the Map panel is opened; on the web build Metro inlines
+both JSON files into the bundle (about 1.6 MB raw, 640 KB gzipped) and only their evaluation is
+deferred. `src/domain/map/map-data.ts` decodes and
 caches one cell at a time, and `cellsAround` finds every cell a given radius touches, wrapping
 across the antimeridian.
 
 The Map panel sits in the switcher after Navigation. `MapPanel` measures its own frame and chooses
-one of two layouts: a frame at least as wide as it is tall puts the map on the left at full height,
-with a 280 dp scrolling side column on the right holding the orientation chips and range stepper,
-the "Track not available" sentence, the readout and the credit line; a taller-than-wide frame stacks
-controls, map, readout and credit instead. Either way the pan responder (`useMapPan`'s handlers)
+one of two layouts: a frame at least as wide as it is tall, with room for a map of at least 240 dp
+beside the column, puts the map on the left at full height, with a 280 dp scrolling side column on
+the right holding the orientation chips and range stepper, the "Track not available" sentence
+(shown only when true track and true heading are both definitively missing, `directionMissing`),
+the readout and the credit line; any other frame stacks controls, map, readout and credit instead.
+The Centre button's slot is always laid out, invisible and inert until the map is panned, so its
+appearance mid-drag never wraps the controls onto a new row and shrinks the map. Either way the pan responder (`useMapPan`'s handlers)
 lives only on the map view itself, never on the side column or the stacked controls, so a drag to
 pan the map never fights the side column's own scrolling.
 
 Drawing uses a local equirectangular projection around an **anchor** point, in nautical miles
-(`src/domain/map/projection.ts`). `MapPanel` rebuilds the layers — the clipped outlines and the
-runways for the current range's density (`density.ts`) — only when the anchor moves, which spec
+(`src/domain/map/projection.ts`). Its east–west scale is exact only at the anchor's latitude, so
+near the poles, where the cosine changes fastest, a wide range drifts visibly across the map.
+`MapPanel` rebuilds the layers — the clipped outlines and the runways for the current range's
+density (`density.ts`) — only when the anchor moves, which spec
 §4.3 limits to a quarter-range drift of the map's centre, a change of range, unit or density, or a
 view that now reaches farther than the cells built for it (turning to track-up can do this). Every
 other telemetry tick leaves the layers alone and only changes one SVG group transform
 (`groupTransform` in `view.ts`): translate to the screen anchor, rotate, scale, then translate by
 the centre's offset from the anchor. A tick never walks or rebuilds a path. Airport identifiers are
 capped at `MAX_LABELS` (60, `map-layers.ts`), nearest the anchor first, so a dense area at a wide
-range never draws more text than it can keep legible.
+range never draws more text than it can keep legible. Runways and identifiers farther from the
+anchor than the cells' reach (the view's radius plus a quarter range) are left out too: at 2 nm
+over New York the reach cells hold 267 runways, of which 4 are drawn. Each outline is projected
+continuously, every point's longitude offset following on from the previous point's, so a ring
+straddling the meridian opposite the anchor (every column is drawn near a pole) never jumps across
+the map; the build script needs no antimeridian handling because Natural Earth is already split at
+±180°.
 
 The map reads its five DataRefs through the same three-answer shape as the other panels
 (`MapReader`: resolved, definitively missing, or not checked yet). Only latitude or longitude
