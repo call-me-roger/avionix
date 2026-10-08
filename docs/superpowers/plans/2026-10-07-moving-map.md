@@ -2733,9 +2733,9 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Write the failing tests**
 
-`tests/ui/map-controls.test.tsx` reuses the snapshot builder. Export `mapSnapshot` and `tree` from
-a shared spot: move them into `tests/helpers/map.ts` (with a `now` parameter on `tree`), and import
-them in both UI test files.
+`tests/ui/map-controls.test.tsx` uses `mapSnapshot`, `mapTree` and `symbolX` from
+`tests/helpers/map.tsx` (Task 4). `mapTree` always mounts `MapPreferenceProvider`, so persistence
+is real; the provider loads asynchronously and `findAllByText` waits for it.
 
 ```tsx
 import { fireEvent, render, screen } from '@testing-library/react-native';
