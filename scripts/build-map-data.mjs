@@ -4,6 +4,8 @@
 // <source-dir> holds ne_50m_land.geojson, ne_50m_lakes.geojson,
 // ne_50m_admin_0_boundary_lines_land.geojson, airports.csv and runways.csv; --download fetches
 // them first. Both sources are public domain (docs/roadmap/research/moving-map.md).
+// Natural Earth's geometry is already split at ±180°, so each ring is clipped to its cells as
+// is, with no antimeridian handling here.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

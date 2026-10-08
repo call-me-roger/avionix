@@ -6,14 +6,24 @@ module.exports = defineConfig([
   expoConfig,
   eslintPluginPrettierRecommended,
   {
-    // scripts/*.mjs run under plain Node (Buffer, process, top-level await); the expo config's
-    // globals are for the app and test code, not build scripts, so lint them separately or not
-    // at all rather than papering over it with eslint-disable comments.
-    ignores: ['dist/*', 'node_modules/*', '.expo/*', 'coverage/*', 'scripts/*.mjs'],
+    ignores: ['dist/*', 'node_modules/*', '.expo/*', 'coverage/*'],
   },
   {
     rules: {
       'no-console': ['error', { allow: ['warn', 'error'] }],
+    },
+  },
+  {
+    // The build scripts run under plain Node as ES modules (top-level await), not in the app.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      sourceType: 'module',
+      globals: {
+        process: 'readonly',
+        Buffer: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+      },
     },
   },
   {
