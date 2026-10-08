@@ -21,6 +21,7 @@ import {
   GAUGE_IDS,
   MARKING_NAMES,
 } from '@/domain/engines/catalogue';
+import { FEATURE_MOVING_MAP, MAP_DATAREFS } from '@/domain/map/catalogue';
 import {
   FEATURE_ALTIMETER_SETTING,
   FEATURE_AIRSPEED_SELECT,
@@ -291,6 +292,11 @@ describe('profileBindings', () => {
       ...systemsNames(),
       ...enginesNames(),
       ...audioNames(),
+      MAP_DATAREFS.latitude,
+      MAP_DATAREFS.longitude,
+      MAP_DATAREFS.elevation,
+      MAP_DATAREFS.trueHeading,
+      MAP_DATAREFS.trueTrack,
     ]);
   });
 });
@@ -319,7 +325,7 @@ describe('the generic profile', () => {
     expect(GENERIC_PROFILE.version).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('declares the Stage 1 features, then the F-30, F-32, F-24, F-12 and F-23 features', () => {
+  it('declares the Stage 1 features, then the F-30, F-32, F-24, F-12, F-23 and F-13 features', () => {
     expect(GENERIC_PROFILE.features.map((feature) => feature.id)).toEqual([
       FEATURE_CONNECTION_HEALTH,
       FEATURE_FLIGHT_TELEMETRY,
@@ -359,6 +365,7 @@ describe('the generic profile', () => {
       ...SYSTEMS_FEATURES,
       ...ENGINES_FEATURES,
       ...AUDIO_FEATURES,
+      FEATURE_MOVING_MAP,
     ]);
   });
 
@@ -409,15 +416,17 @@ describe('the generic profile', () => {
       GENERIC_DATAREFS.outerMarker,
       GENERIC_DATAREFS.middleMarker,
       GENERIC_DATAREFS.innerMarker,
+      GENERIC_DATAREFS.groundTrack,
+      GENERIC_DATAREFS.groundSpeed,
     ]);
   });
 
   it('bumps the profile version for the new bindings', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.9.0');
+    expect(GENERIC_PROFILE.version).toBe('1.10.0');
   });
 
   it('declares the flight instruments, every one optional, and the altimeter setting', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.9.0');
+    expect(GENERIC_PROFILE.version).toBe('1.10.0');
     const instruments = findFeature(GENERIC_PROFILE, FEATURE_FLIGHT_INSTRUMENTS);
     expect(instruments?.label).toBe('Flight instruments');
     expect(instruments?.bindings.map((binding) => binding.name)).toEqual([
@@ -662,7 +671,7 @@ describe('the generic profile’s navigation features (F-30)', () => {
 
 describe('CDU features (F-32)', () => {
   it('bumps the profile version for the CDU bindings', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.9.0');
+    expect(GENERIC_PROFILE.version).toBe('1.10.0');
   });
 
   it.each([1, 2] as const)(

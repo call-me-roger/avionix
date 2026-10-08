@@ -911,8 +911,9 @@ describe('F-12 engines in the toy aircraft', () => {
 });
 
 describe('F-23 audio in the toy aircraft', () => {
+  // Bounded above 1600 now that the F-13 moving-map DataRefs occupy ids from there.
   it('registers the audio names at the ids from 1500, well clear of the engines range', () => {
-    const refs = DEFAULT_MOCK_DATAREFS.filter((ref) => ref.id >= 1500);
+    const refs = DEFAULT_MOCK_DATAREFS.filter((ref) => ref.id >= 1500 && ref.id < 1600);
     expect(refs).toHaveLength(9);
     expect(Math.min(...refs.map((ref) => ref.id))).toBe(1500);
 
@@ -928,5 +929,13 @@ describe('F-23 audio in the toy aircraft', () => {
     expect(com1?.value).toBe(1);
     const nav1 = DEFAULT_MOCK_DATAREFS.find((ref) => ref.name === MONITORS[2]!.state);
     expect(nav1?.value).toBe(0);
+  });
+});
+
+describe('F-13 moving map in the toy aircraft', () => {
+  it('registers the position names at the ids from 1600, well clear of the audio range', () => {
+    const refs = DEFAULT_MOCK_DATAREFS.filter((ref) => ref.id >= 1600);
+    expect(refs).toHaveLength(5);
+    expect(Math.min(...refs.map((ref) => ref.id))).toBe(1600);
   });
 });
