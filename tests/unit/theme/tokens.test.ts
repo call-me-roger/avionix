@@ -252,4 +252,31 @@ describe('theme tokens', () => {
       expect(contrastRatio(theme.map.label, theme.map.land)).toBeGreaterThanOrEqual(4.5);
     }
   });
+
+  it("keeps the map's small text legible on land and water, and the rings visible, in every mode", () => {
+    for (const theme of ALL_THEMES) {
+      const { map } = theme;
+      // "LAST KNOWN" is 11 px text that may sit on either; coastal identifiers sit on water.
+      expect({ mode: theme.mode, ratio: contrastRatio(map.stale, map.land) >= 4.5 }).toEqual({
+        mode: theme.mode,
+        ratio: true,
+      });
+      expect({ mode: theme.mode, ratio: contrastRatio(map.stale, map.water) >= 4.5 }).toEqual({
+        mode: theme.mode,
+        ratio: true,
+      });
+      expect({ mode: theme.mode, ratio: contrastRatio(map.label, map.water) >= 4.5 }).toEqual({
+        mode: theme.mode,
+        ratio: true,
+      });
+      expect({ mode: theme.mode, ratio: contrastRatio(map.ring, map.land) >= 3 }).toEqual({
+        mode: theme.mode,
+        ratio: true,
+      });
+    }
+  });
+
+  it('keeps land and water apart at night, as there is no coastline stroke', () => {
+    expect(contrastRatio(nightTheme.map.land, nightTheme.map.water)).toBeGreaterThanOrEqual(1.1);
+  });
 });

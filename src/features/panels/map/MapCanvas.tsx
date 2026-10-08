@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo } from 'react';
 import Svg, { Circle, G, Line, Path, Polygon, Rect, Text as SvgText } from 'react-native-svg';
 
 import type { Direction } from '@/domain/map/direction';
@@ -23,7 +23,7 @@ const BaseLayers = memo(function BaseLayers({
   const { map } = useTheme();
   return (
     <>
-      <Path d={layers.land} fill={map.land} fillRule="evenodd" />
+      <Path testID="map-land" d={layers.land} fill={map.land} fillRule="evenodd" />
       <Path d={layers.lakes} fill={map.water} fillRule="evenodd" />
       <Path
         d={layers.borders}
@@ -79,19 +79,16 @@ export function MapCanvas({
   const { map } = useTheme();
   const own = toScreen(view, { x: ownship.x - centre.x, y: ownship.y - centre.y });
   const symbolAngle = direction.degrees === null ? 0 : direction.degrees + view.rotation;
-  const labels = useMemo(
-    () =>
-      layers.labels.map((label) => ({
-        ...label,
-        screen: toScreen(view, { x: label.at.x - centre.x, y: label.at.y - centre.y }),
-      })),
-    [layers.labels, view, centre],
-  );
+  // At most MAX_LABELS points per tick: cheaper than a memo whose inputs change every tick.
+  const labels = layers.labels.map((label) => ({
+    ...label,
+    screen: toScreen(view, { x: label.at.x - centre.x, y: label.at.y - centre.y }),
+  }));
   const ink = live ? map.ownship : map.stale;
   return (
     <Svg testID="map-canvas" width={width} height={height}>
       <Rect x={0} y={0} width={width} height={height} fill={map.water} />
-      <G transform={groupTransform(view, centre)}>
+      <G testID="map-layers" transform={groupTransform(view, centre)}>
         <BaseLayers layers={layers} pxPerNm={view.pxPerNm} />
       </G>
       {labels.map((label) => (

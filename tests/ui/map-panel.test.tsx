@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
-import { createMemorySettingsStorage } from '@/application/settings-store';
+import { type SettingsStorage, createMemorySettingsStorage } from '@/application/settings-store';
 import { GENERIC_DATAREFS as D } from '@/domain/aircraft/profiles/generic';
 import { MAP_DATAREFS as M } from '@/domain/map/catalogue';
 
@@ -24,11 +24,18 @@ const has = (text: string) =>
 
 const rotationOf = (testID: string) => transformOf(screen.getByTestId(testID, HIDDEN));
 
+/** The aircraft polygon's fill as the native view gets it: null when drawn hollow. */
+const symbolFill = (): unknown => {
+  const shape = screen.getByTestId('map-ownship', HIDDEN).children[0];
+  return typeof shape === 'object' ? shape.props.fill : undefined;
+};
+
 describe('Map panel', () => {
   it('draws the symbol at the centre, turned to the true track, in north-up', async () => {
     await render(tree(mapSnapshot()));
     expect(screen.getByTestId('map-ownship', HIDDEN)).toBeTruthy();
     expect(rotationOf('map-ownship')).toContain('rotate(90)');
+    expect(symbolFill()).not.toBeNull();
     const ring = screen.getByTestId('map-ring-outer', HIDDEN);
     expect(symbolX(rotationOf('map-ownship'))).toBeCloseTo(Number(ring.props.cx), 3);
     expect(has('10 nm')).toBe(true);
@@ -71,7 +78,23 @@ describe('Map panel', () => {
     await render(tree(mapSnapshot({ stale: true })));
     expect(screen.getByTestId('map-ownship-stale', HIDDEN)).toBeTruthy();
     expect(has('LAST KNOWN')).toBe(true);
+    expect(symbolFill()).toBeNull();
     expect(screen.getByTestId('panel-notice')).toBeTruthy();
+    expect(
+      screen.getByLabelText(
+        'Map, north up, 10 nautical mile range, position N 47 26.94, W 122 18.56, track 090, last known position',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('says nothing while the map has no room yet', async () => {
+    await render(tree(mapSnapshot()));
+    await fireEvent(screen.getByTestId('map-area'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 0, height: 0 } },
+    });
+    expect(screen.queryByTestId('map-canvas', HIDDEN)).toBeNull();
+    expect(screen.queryByTestId('map-message')).toBeNull();
+    expect(screen.queryByText('Waiting for position.')).toBeNull();
   });
 
   it('waits without a symbol while the position has not arrived', async () => {
@@ -117,5 +140,52 @@ describe('Map panel', () => {
     expect(
       screen.getByText('Outlines: Natural Earth. Runways: OurAirports. Not for navigation.'),
     ).toBeTruthy();
+  });
+});
+
+describe('Map panel paths (spec §4.3)', () => {
+  const landPath = () => String(screen.getByTestId('map-land', HIDDEN).props.d);
+  const runwayCount = () => screen.getAllByTestId('map-runway', HIDDEN).length;
+  const layerMatrix = () => JSON.stringify(screen.getByTestId('map-layers', HIDDEN).props.matrix);
+  const outerLabel = () => svgText(screen.getByTestId('map-ring-outer-label', HIDDEN));
+
+  it('moves only the group transform on a tick within a quarter of the range', async () => {
+    const storage = createMemorySettingsStorage();
+    const { rerender } = await render(tree(mapSnapshot(), { storage }));
+    const before = { land: landPath(), runways: runwayCount(), matrix: layerMatrix() };
+    expect(before.land.length).toBeGreaterThan(0);
+    // One minute of latitude north: 1 nm, under the 2.5 nm a 10 nm range re-anchors at.
+    await rerender(tree(mapSnapshot({ values: { [M.latitude]: 47.449 + 1 / 60 } }), { storage }));
+    expect(landPath()).toBe(before.land);
+    expect(runwayCount()).toBe(before.runways);
+    expect(layerMatrix()).not.toBe(before.matrix);
+  });
+
+  it('rebuilds the paths when the range changes', async () => {
+    const memory = createMemorySettingsStorage();
+    await memory.setItem('avionix.map', JSON.stringify({ orientation: 'north', range: 80 }));
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // The remembered range arrives only once released, so the same map changes range in place.
+    const storage: SettingsStorage = {
+      getItem: async (key) => {
+        if (key === 'avionix.map') {
+          await gate;
+        }
+        return memory.getItem(key);
+      },
+      setItem: (key, value) => memory.setItem(key, value),
+    };
+    await render(tree(mapSnapshot(), { storage }));
+    expect(outerLabel()).toBe('10 nm');
+    const before = { land: landPath(), runways: runwayCount() };
+    await act(async () => {
+      release();
+    });
+    await waitFor(() => expect(outerLabel()).toBe('80 nm'));
+    expect(landPath()).not.toBe(before.land);
+    expect(runwayCount()).not.toBe(before.runways);
   });
 });

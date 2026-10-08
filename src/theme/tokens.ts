@@ -218,16 +218,20 @@ const dayMap: MapColors = {
   stale: '#9aa4b2',
 };
 
+/**
+ * Night map: land lifted off the water (1.12:1, as there is no coastline stroke), and every text
+ * colour, the 11 px "LAST KNOWN" tag included, at 4.5:1 or more on both land and water.
+ */
 const nightMap: MapColors = {
   water: '#06121e',
-  // #141209 darkened within its hue: as given the label on it is 4.43:1.
-  land: '#110f08',
+  land: '#221d10',
   border: '#4a3e2c',
   runway: '#a88a60',
-  label: '#917752',
-  ring: '#4f6e88',
+  label: '#a5895e',
+  ring: '#5a7d9a',
   ownship: '#a8862a',
-  stale: '#6a5a44',
+  // #8c7a5e raised within its hue: as given it is 4.04:1 on land.
+  stale: '#978466',
 };
 
 const dayInstrument: InstrumentColors = {

@@ -202,7 +202,8 @@ function MapContent({ model, noFlight }: { model: MapModel; noFlight: boolean })
         />
       </View>
     );
-  } else if (!noFlight) {
+  } else if (centre === null && !noFlight) {
+    // With a position but no room yet (a 0×0 layout), the area stays empty: nothing is awaited.
     body = <BodyText testID="map-message">{WAITING_FOR_POSITION}</BodyText>;
   }
 
