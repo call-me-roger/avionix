@@ -34,6 +34,7 @@ import {
   MARKING_LABELS,
   markingName,
 } from '@/domain/engines/catalogue';
+import { FEATURE_MOVING_MAP, MAP_DATAREFS } from '@/domain/map/catalogue';
 import {
   ANTI_ICE,
   AVIONICS_MASTER,
@@ -520,6 +521,23 @@ const AUDIO_FEATURE_SPECS: readonly FeatureSpec[] = [
   },
 ];
 
+/** F-13: read only; position required, everything else optional; track and speed shared with flight-data. */
+const MAP_FEATURE_SPECS: readonly FeatureSpec[] = [
+  {
+    id: FEATURE_MOVING_MAP,
+    label: 'Moving map',
+    bindings: [
+      { kind: 'dataref', name: MAP_DATAREFS.latitude, required: true, purpose: 'Latitude' },
+      { kind: 'dataref', name: MAP_DATAREFS.longitude, required: true, purpose: 'Longitude' },
+      dataRef(MAP_DATAREFS.elevation, 'GPS altitude'),
+      dataRef(MAP_DATAREFS.trueHeading, 'True heading'),
+      dataRef(MAP_DATAREFS.trueTrack, 'True track'),
+      dataRef(GENERIC_DATAREFS.groundTrack, 'Magnetic track'),
+      dataRef(GENERIC_DATAREFS.groundSpeed, 'Ground speed'),
+    ],
+  },
+];
+
 const D = GENERIC_DATAREFS;
 const C = GENERIC_COMMANDS;
 
@@ -608,12 +626,14 @@ function modeFeature(
  * missing name costs only the gauges it feeds. The three audio features (F-23) bind every name
  * optionally too — the microphone, the six receivers and the marker audio each their own feature —
  * so a missing name costs only that key, and the marker lamps are read from the same three
- * DataRefs `nav-aids` already binds.
+ * DataRefs `nav-aids` already binds. The moving map (F-13) requires only latitude and longitude;
+ * its other five names are optional, and the magnetic track and ground speed are the same
+ * DataRefs `flight-data` binds.
  */
 export const GENERIC_PROFILE: AircraftProfile = {
   id: 'avionix.generic',
   name: 'Generic X-Plane aircraft',
-  version: '1.9.0',
+  version: '1.10.0',
   match: { kind: 'generic' },
   features: [
     {
@@ -1159,5 +1179,6 @@ export const GENERIC_PROFILE: AircraftProfile = {
     ...SYSTEMS_FEATURE_SPECS,
     ...ENGINES_FEATURE_SPECS,
     ...AUDIO_FEATURE_SPECS,
+    ...MAP_FEATURE_SPECS,
   ],
 };

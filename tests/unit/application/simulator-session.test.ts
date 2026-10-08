@@ -35,6 +35,7 @@ import {
   MARKING_NAMES,
 } from '@/domain/engines/catalogue';
 import { AvionixError } from '@/domain/errors/avionix-error';
+import { MAP_DATAREFS } from '@/domain/map/catalogue';
 import type { SimulatorClient, SocketCloseInfo } from '@/domain/simulator/simulator-client';
 import {
   ANTI_ICE,
@@ -237,6 +238,19 @@ const AUDIO_FAKE_DATAREFS: Record<string, FakeDataRef> = (() => {
   }
   return refs;
 })();
+
+/**
+ * F-13's moving-map bindings, absent from `DEFAULT_FAKE_DATAREFS` for the same reason as the other
+ * feature datarefs above. The magnetic track and ground speed it shares with flight-data are
+ * already in `FLIGHT_DATA_FAKE_DATAREFS`.
+ */
+const MAP_FAKE_DATAREFS: Record<string, FakeDataRef> = {
+  [MAP_DATAREFS.latitude]: { id: 600, valueType: 'double' },
+  [MAP_DATAREFS.longitude]: { id: 601, valueType: 'double' },
+  [MAP_DATAREFS.elevation]: { id: 602, valueType: 'double' },
+  [MAP_DATAREFS.trueHeading]: { id: 603, valueType: 'float' },
+  [MAP_DATAREFS.trueTrack]: { id: 604, valueType: 'float' },
+};
 
 /**
  * F-32's CDU bindings (all four features, both units), absent from `DEFAULT_FAKE_DATAREFS` for the
@@ -2130,6 +2144,7 @@ describe('aircraft compatibility', () => {
       ...SYSTEMS_FAKE_DATAREFS,
       ...ENGINES_FAKE_DATAREFS,
       ...AUDIO_FAKE_DATAREFS,
+      ...MAP_FAKE_DATAREFS,
     };
     const { session, snapshot } = setup({ clients: [client] });
     await session.connect('192.168.1.100', 8086);

@@ -5,7 +5,7 @@
 | ID | `F-13` |
 | Stage | `3` |
 | Category | Monitoring |
-| Status | Proposed |
+| Status | Done |
 | Depends on | `F-11` |
 | Competitor prevalence | Matrix count 3 of 12 representative products (`research/competitors.md`). Wider set: 12 of 28 products researched show a moving map (ForeFlight, Garmin Pilot, SkyDemon, Navigraph Charts, Little Navmap, FltPlan Go, AviTab, X-Plane Control Pad, SimControlX, FS-FlightControl, XPlaneMonitor, Flight Deck ONE) |
 
@@ -15,6 +15,8 @@ A map page places the ownship symbol at the simulated latitude and longitude, po
 current track, and keeps it centred as the flight progresses. The pilot can switch between
 heading-up and north-up, change the range, and read the values driving the symbol. This is the page
 a second device suits best: it wants a whole screen and is glanced at rather than operated.
+
+Delivered by `docs/superpowers/specs/2026-10-07-moving-map-design.md`.
 
 ## Why now
 

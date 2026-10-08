@@ -103,7 +103,7 @@ describe('the audio catalogue', () => {
 
 describe('profile 1.9.0', () => {
   it('declares the three audio features, every binding optional and none written', () => {
-    expect(GENERIC_PROFILE.version).toBe('1.9.0');
+    expect(GENERIC_PROFILE.version).toBe('1.10.0');
     expect(AUDIO_FEATURES).toEqual([
       FEATURE_AUDIO_TRANSMIT,
       FEATURE_AUDIO_MONITOR,

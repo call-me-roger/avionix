@@ -398,6 +398,27 @@ function audioCommands(startId: number): MockCommand[] {
   return commands;
 }
 
+/** F-13: Seattle–Tacoma, pointing south (spec §6). */
+function mapDataRefs(startId: number): MockDataRef[] {
+  return [
+    { id: startId, name: 'sim/flightmodel/position/latitude', valueType: 'double', value: 47.449 },
+    {
+      id: startId + 1,
+      name: 'sim/flightmodel/position/longitude',
+      valueType: 'double',
+      value: -122.3093,
+    },
+    {
+      id: startId + 2,
+      name: 'sim/flightmodel/position/elevation',
+      valueType: 'double',
+      value: 132,
+    },
+    { id: startId + 3, name: 'sim/flightmodel/position/true_psi', valueType: 'float', value: 180 },
+    { id: startId + 4, name: 'sim/flightmodel/position/hpath', valueType: 'float', value: 181 },
+  ];
+}
+
 export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
   { id: 1001, name: 'sim/time/total_running_time_sec', valueType: 'float', value: 12.5 },
   { id: 1008, name: 'sim/time/paused', valueType: 'float', value: 0 },
@@ -841,6 +862,8 @@ export const DEFAULT_MOCK_DATAREFS: MockDataRef[] = [
   // F-23: the audio catalogue's MIC selection, auto-listen and seven listen flags, well clear of
   // the engines catalogue's range above.
   ...audioDataRefs(1500),
+  // F-13: the moving map's position, GPS altitude, true heading and true track.
+  ...mapDataRefs(1600),
 ];
 
 export const DEFAULT_MOCK_COMMANDS: MockCommand[] = [

@@ -60,6 +60,18 @@ export interface CduColors {
   amber: string;
 }
 
+/** F-13 moving map. Light and dark share one dark map, like the instruments; night stays ≤ 0.30. */
+export interface MapColors {
+  water: string;
+  land: string;
+  border: string;
+  runway: string;
+  label: string;
+  ring: string;
+  ownship: string;
+  stale: string;
+}
+
 export interface FontFamilies {
   avionics?: string;
   avionicsBold?: string;
@@ -100,6 +112,7 @@ export interface Theme {
   instrument: InstrumentColors;
   avionics: AvionicsColors;
   cdu: CduColors;
+  map: MapColors;
   spacing: { xs: number; sm: number; md: number; lg: number; xl: number };
   radius: { sm: number; md: number };
   typography: {
@@ -194,6 +207,33 @@ const nightCdu: CduColors = {
   amber: '#b58440',
 };
 
+const dayMap: MapColors = {
+  water: '#0b2a45',
+  land: '#2b2f26',
+  border: '#8a8f99',
+  runway: '#e6edf3',
+  label: '#c9d1d9',
+  ring: '#7fb2e0',
+  ownship: '#ffd200',
+  stale: '#9aa4b2',
+};
+
+/**
+ * Night map: land lifted off the water (1.12:1, as there is no coastline stroke), and every text
+ * colour, the 11 px "LAST KNOWN" tag included, at 4.5:1 or more on both land and water.
+ */
+const nightMap: MapColors = {
+  water: '#06121e',
+  land: '#221d10',
+  border: '#4a3e2c',
+  runway: '#a88a60',
+  label: '#a5895e',
+  ring: '#5a7d9a',
+  ownship: '#a8862a',
+  // #8c7a5e raised within its hue: as given it is 4.04:1 on land.
+  stale: '#978466',
+};
+
 const dayInstrument: InstrumentColors = {
   face: '#000000',
   tape: '#2b2f36',
@@ -235,6 +275,7 @@ export const lightTheme: Theme = {
   instrument: dayInstrument,
   avionics: dayAvionics,
   cdu: dayCdu,
+  map: dayMap,
   spacing,
   radius,
   typography,
@@ -261,6 +302,7 @@ export const darkTheme: Theme = {
   instrument: dayInstrument,
   avionics: dayAvionics,
   cdu: dayCdu,
+  map: dayMap,
   spacing,
   radius,
   typography,
@@ -310,6 +352,7 @@ export const nightTheme: Theme = {
   },
   avionics: nightAvionics,
   cdu: nightCdu,
+  map: nightMap,
   spacing,
   radius,
   typography,

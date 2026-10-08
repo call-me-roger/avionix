@@ -9,6 +9,7 @@ import {
   INSTRUMENTS_PANEL,
   InstrumentsPanel,
 } from '@/features/panels/instruments/InstrumentsPanel';
+import { MAP_PANEL, MapPanel } from '@/features/panels/map/MapPanel';
 import { NAVIGATION_PANEL, NavigationPanel } from '@/features/panels/navigation/NavigationPanel';
 import { RADIOS_PANEL, RadiosPanel } from '@/features/panels/radios/RadiosPanel';
 import { SystemsPanel } from '@/features/panels/systems/SystemsPanel';
@@ -25,6 +26,7 @@ export const PANELS: readonly RegisteredPanel[] = [
   { descriptor: RADIOS_PANEL, Component: RadiosPanel },
   { descriptor: AUTOPILOT_PANEL, Component: AutopilotPanel },
   { descriptor: NAVIGATION_PANEL, Component: NavigationPanel },
+  { descriptor: MAP_PANEL, Component: MapPanel },
   { descriptor: SYSTEMS_PANEL, Component: SystemsPanel },
   { descriptor: ENGINES_PANEL, Component: EnginesPanel },
   { descriptor: CDU_PANEL, Component: CduPanel },

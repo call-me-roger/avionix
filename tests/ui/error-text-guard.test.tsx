@@ -26,6 +26,7 @@ import { ThemeProvider } from '@/theme/theme-context';
 import { AUDIO_VALUES, audioCompatibility, audioTelemetry } from '../helpers/audio';
 import { toyScreenTelemetry } from '../helpers/cdu';
 import { C172_VALUES, enginesCompatibility, enginesTelemetry } from '../helpers/engines';
+import { MAP_VALUES, mapCompatibility, mapTelemetry } from '../helpers/map';
 import { SYSTEMS_VALUES, systemsCompatibility, systemsTelemetry } from '../helpers/systems';
 
 const mockShareText = jest.fn(async (_text: string, _title: string) => undefined);
@@ -141,6 +142,7 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
               const systems = descriptor.id === 'systems';
               const engines = descriptor.id === 'engines';
               const radios = descriptor.id === 'radios';
+              const map = descriptor.id === 'map';
               return (
                 <PanelFrame
                   key={descriptor.id}
@@ -155,15 +157,19 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
                         ? enginesTelemetry(C172_VALUES, 9_000)
                         : radios
                           ? audioTelemetry(AUDIO_VALUES, 9_000)
-                          : // The CDU's live glass and keys, not its waiting state: a screen on both units.
-                            { ...toyScreenTelemetry(1, 9_000), ...toyScreenTelemetry(2, 9_000) },
+                          : map
+                            ? mapTelemetry(MAP_VALUES, 9_000)
+                            : // The CDU's live glass and keys, not its waiting state: a screen on both units.
+                              { ...toyScreenTelemetry(1, 9_000), ...toyScreenTelemetry(2, 9_000) },
                     ...(systems
                       ? { compatibility: systemsCompatibility(snapshotFor(code).compatibility) }
                       : engines
                         ? { compatibility: enginesCompatibility(snapshotFor(code).compatibility) }
                         : radios
                           ? { compatibility: audioCompatibility(snapshotFor(code).compatibility) }
-                          : null),
+                          : map
+                            ? { compatibility: mapCompatibility(snapshotFor(code).compatibility) }
+                            : null),
                   }}
                   now={10_000}
                   actions={{
@@ -193,6 +199,9 @@ describe.each(ALL_CODES)('%s never reaches the screen raw', (code) => {
     expect(screen.getByLabelText('Engine 1 RPM 2,350')).toBeTruthy();
     // Radios' AUDIO unit is covered live too: drawn from its own telemetry, not S6's waiting state.
     expect(screen.getByLabelText('Listen to COM2, off')).toBeTruthy();
+    // The Map panel is covered live too: drawn from its own telemetry, so the DataRef-name sweep
+    // below also checks the range stepper, the chips and the readout, not an "unchecked" blank.
+    expect(screen.getByTestId('map-range-up')).toBeTruthy();
     expect(screen.queryByText(new RegExp('http://'))).toBeNull();
     expect(screen.queryByText(/HTTP 403/)).toBeNull();
     expect(screen.queryByText(/avx_secret/)).toBeNull();

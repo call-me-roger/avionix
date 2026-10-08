@@ -231,4 +231,52 @@ describe('theme tokens', () => {
   it('shares one CDU palette between light and dark, as a real panel is dark in daylight', () => {
     expect(darkTheme.cdu).toBe(lightTheme.cdu);
   });
+
+  it('defines the same map keys in every mode with hex values', () => {
+    const keys = Object.keys(lightTheme.map).sort();
+    for (const theme of [lightTheme, darkTheme, nightTheme]) {
+      expect(Object.keys(theme.map).sort()).toEqual(keys);
+      for (const value of Object.values(theme.map)) {
+        expect(value).toMatch(/^#[0-9a-f]{6}$/);
+      }
+    }
+  });
+
+  it('keeps every map colour dark at night and the symbol legible on land and water', () => {
+    for (const value of Object.values(nightTheme.map)) {
+      expect(relativeLuminance(value)).toBeLessThanOrEqual(0.3);
+    }
+    for (const theme of [lightTheme, nightTheme]) {
+      expect(contrastRatio(theme.map.ownship, theme.map.land)).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(theme.map.ownship, theme.map.water)).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(theme.map.label, theme.map.land)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("keeps the map's small text legible on land and water, and the rings visible, in every mode", () => {
+    for (const theme of ALL_THEMES) {
+      const { map } = theme;
+      // "LAST KNOWN" is 11 px text that may sit on either; coastal identifiers sit on water.
+      expect({ mode: theme.mode, ratio: contrastRatio(map.stale, map.land) >= 4.5 }).toEqual({
+        mode: theme.mode,
+        ratio: true,
+      });
+      expect({ mode: theme.mode, ratio: contrastRatio(map.stale, map.water) >= 4.5 }).toEqual({
+        mode: theme.mode,
+        ratio: true,
+      });
+      expect({ mode: theme.mode, ratio: contrastRatio(map.label, map.water) >= 4.5 }).toEqual({
+        mode: theme.mode,
+        ratio: true,
+      });
+      expect({ mode: theme.mode, ratio: contrastRatio(map.ring, map.land) >= 3 }).toEqual({
+        mode: theme.mode,
+        ratio: true,
+      });
+    }
+  });
+
+  it('keeps land and water apart at night, as there is no coastline stroke', () => {
+    expect(contrastRatio(nightTheme.map.land, nightTheme.map.water)).toBeGreaterThanOrEqual(1.1);
+  });
 });

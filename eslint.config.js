@@ -14,6 +14,19 @@ module.exports = defineConfig([
     },
   },
   {
+    // The build scripts run under plain Node as ES modules (top-level await), not in the app.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      sourceType: 'module',
+      globals: {
+        process: 'readonly',
+        Buffer: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+      },
+    },
+  },
+  {
     files: ['**/*.ts', '**/*.tsx'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',

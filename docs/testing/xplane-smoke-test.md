@@ -210,6 +210,21 @@ Record results at the bottom.
 | 181 | Pull Wi-Fi, then reconnect | Keys go inert and bars dim; after reconnect the panel shows X-Plane's state, nothing replayed | |
 | 182 | Open Engines, then switch to Radios and immediately tap a MIC key | The MIC keys accept no press until X-Plane's selection is shown; the other COM's listening is unchanged | |
 
+### F-13 Moving map
+
+| # | Step | Expected | Pass? |
+|---|---|---|---|
+| 183 | Fly a circuit at a known airfield, opening the Map panel | On touchdown the symbol sits over the runway | |
+| 184 | Track-up: fly a 360° turn | The map turns smoothly at the simulator's 10 Hz update steps; the symbol stays upright and at its fixed point on screen | |
+| 185 | Fly over a VOR at 10 nm from it (an airport with a DME, or a stand-alone VOR/DME); compare the map's outer ring with the HSI's NAV DME | The ring's drawn distance agrees with the DME reading within 0.5 nm | |
+| 186 | Pull Wi-Fi | The symbol turns hollow in the stale colour with a "LAST KNOWN" tag; the panel frame's notice gives the age of the last update | |
+| 187 | Drag the map to pan it, then wait 30 s without touching it | The Centre button disappears and the map returns to the ownship on its own, with no further input | |
+| 188 | On a phone, set the range to 40 nm and pan continuously for several seconds | No stutter worse than the 10 Hz telemetry rate; the frame rate holds up while dragging | |
+| 189 | Fly across the antimeridian (Fiji to Tonga, or along the Kamchatka coast) | The symbol and the outlines track correctly; no line is drawn across the map | |
+| 190 | Taxi below 3 kt, turning the nosewheel | The symbol follows the aircraft's heading, not a jittering ground track | |
+| 191 | On the smallest phone, landscape orientation, open the Map panel | The map sits at full height on the left and the 280 dp side column on the right is usable: the chips, range stepper and readout are all reachable and legible, with no clipping | |
+| 192 | On the smallest phone (an iPhone SE, say) in portrait, open the Map panel, then drag the map so Centre appears | The controls, the map and the readout are all usable without scrolling past the map; the map is still a usable size and does not shrink when Centre appears. Record the map height seen | |
+
 Rows 44 and 45 verify the keep-awake hold, and row 53 the safe areas: behaviour no automated test
 can observe.
 
