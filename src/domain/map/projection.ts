@@ -13,9 +13,14 @@ export interface PlanePoint {
 
 /** Local equirectangular (spec §4.3), Δlon wrapped so the antimeridian is seamless. */
 export function project(anchor: LatLon, point: LatLon): PlanePoint {
+  return projectOffset(anchor, point.lat, wrapLongitude(point.lon - anchor.lon));
+}
+
+/** As `project`, for a longitude offset from the anchor the caller has already chosen. */
+export function projectOffset(anchor: LatLon, lat: number, dLon: number): PlanePoint {
   return {
-    x: wrapLongitude(point.lon - anchor.lon) * NM_PER_DEG * Math.cos(anchor.lat * RAD),
-    y: -(point.lat - anchor.lat) * NM_PER_DEG,
+    x: dLon * NM_PER_DEG * Math.cos(anchor.lat * RAD),
+    y: -(lat - anchor.lat) * NM_PER_DEG,
   };
 }
 

@@ -138,6 +138,12 @@ export function symbolX(transform: string): number {
   return match === null ? Number.NaN : Number(match[1]);
 }
 
+/** The symbol's screen y, read from its `translate(x y)`. */
+export function symbolY(transform: string): number {
+  const match = /translate\([-\d.e]+ ([-\d.e]+)/.exec(transform);
+  return match === null ? Number.NaN : Number(match[1]);
+}
+
 interface SvgNode {
   props: Record<string, unknown>;
   children: readonly unknown[];

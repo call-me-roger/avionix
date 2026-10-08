@@ -19,6 +19,8 @@ export interface MapModel {
   trueTrack: number | null;
   groundSpeedKt: number | null;
   magneticTrack: number | null;
+  /** Both true track and true heading definitively missing, not merely pending or unchecked. */
+  directionMissing: boolean;
 }
 
 const NOTHING: Omit<MapModel, 'status'> = {
@@ -28,6 +30,7 @@ const NOTHING: Omit<MapModel, 'status'> = {
   trueTrack: null,
   groundSpeedKt: null,
   magneticTrack: null,
+  directionMissing: false,
 };
 
 /** Spec §4.7: only a definitive miss of the position makes the map unavailable. */
@@ -53,5 +56,6 @@ export function mapModel(reader: MapReader): MapModel {
     trueTrack: optional(M.trueTrack),
     groundSpeedKt: optional(D.groundSpeed),
     magneticTrack: optional(D.groundTrack),
+    directionMissing: reader.missing(M.trueTrack) && reader.missing(M.trueHeading),
   };
 }

@@ -56,6 +56,21 @@ describe('Map panel', () => {
     expect(screen.getByText('Track not available.')).toBeTruthy();
   });
 
+  it('draws a circle without the sentence while track and heading are only pending', async () => {
+    await render(tree(mapSnapshot({ absent: [M.trueTrack, M.trueHeading] })));
+    expect(screen.getByTestId('map-ownship-circle', HIDDEN)).toBeTruthy();
+    expect(screen.queryByText('Track not available.')).toBeNull();
+  });
+
+  it('speaks the true heading when standing still', async () => {
+    await render(tree(mapSnapshot({ values: { [D.groundSpeed]: 0 } })));
+    expect(
+      screen.getByLabelText(
+        'Map, north up, 10 nautical mile range, position N 47 26.94, W 122 18.56, true heading 085',
+      ),
+    ).toBeTruthy();
+  });
+
   it('shows the readout as the strip formats it', async () => {
     await render(tree(mapSnapshot()));
     expect(screen.getByLabelText('Position: N47°26.94′ W122°18.56′')).toBeTruthy();
@@ -82,7 +97,7 @@ describe('Map panel', () => {
     expect(screen.getByTestId('panel-notice')).toBeTruthy();
     expect(
       screen.getByLabelText(
-        'Map, north up, 10 nautical mile range, position N 47 26.94, W 122 18.56, track 090, last known position',
+        'Map, north up, 10 nautical mile range, position N 47 26.94, W 122 18.56, true track 090, last known position',
       ),
     ).toBeTruthy();
   });
@@ -134,7 +149,7 @@ describe('Map panel', () => {
     await render(tree(mapSnapshot()));
     expect(
       screen.getByLabelText(
-        'Map, north up, 10 nautical mile range, position N 47 26.94, W 122 18.56, track 090',
+        'Map, north up, 10 nautical mile range, position N 47 26.94, W 122 18.56, true track 090',
       ),
     ).toBeTruthy();
     expect(

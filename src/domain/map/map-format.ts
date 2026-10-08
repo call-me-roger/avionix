@@ -38,3 +38,10 @@ export function formatGpsAltitude(metres: number): string {
 export function rangeLabel(range: number, unit: DistanceUnit): string {
   return `${range} ${UNIT_LABEL.distance[unit]}`;
 }
+
+/** The unit as a screen reader should say it: "nm" could be read as nanometres. */
+export const SPOKEN_UNIT: Record<DistanceUnit, string> = { nm: 'nautical mile', km: 'kilometre' };
+
+export function spokenRange(range: number, unit: DistanceUnit): string {
+  return `${range} ${SPOKEN_UNIT[unit]}${range === 1 ? '' : 's'}`;
+}

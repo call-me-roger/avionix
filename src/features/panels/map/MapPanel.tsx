@@ -6,7 +6,7 @@ import { FEATURE_MOVING_MAP, MAP_RANGES, type MapOrientation } from '@/domain/ma
 import { densityFor } from '@/domain/map/density';
 import { type Direction, chooseDirection } from '@/domain/map/direction';
 import { type LatLon, cellsAround } from '@/domain/map/map-data';
-import { rangeLabel, spokenPosition } from '@/domain/map/map-format';
+import { SPOKEN_UNIT, rangeLabel, spokenPosition } from '@/domain/map/map-format';
 import { type MapModel, mapModel } from '@/domain/map/map-model';
 import {
   MAP_CREDIT,
@@ -17,7 +17,6 @@ import {
 import { project, rangeInNm } from '@/domain/map/projection';
 import { mapView, needsReanchor } from '@/domain/map/view';
 import { EVERYWHERE, type PanelDescriptor } from '@/domain/panels/panel';
-import type { DistanceUnit } from '@/domain/units/units';
 import { MapCanvas } from '@/features/panels/map/MapCanvas';
 import { MapControls } from '@/features/panels/map/MapControls';
 import { MapReadout } from '@/features/panels/map/MapReadout';
@@ -71,8 +70,15 @@ interface Anchor {
 
 /** The landscape side column: wide enough for the controls on two rows and the readout. */
 const SIDE_COLUMN_WIDTH = 280;
+/** Beside the side column the map keeps at least this width, or the layout stacks instead. */
+const MIN_SIDE_BY_SIDE_MAP_WIDTH = 240;
 
-const UNIT_WORD: Record<DistanceUnit, string> = { nm: 'nautical mile', km: 'kilometre' };
+/** A frame at least as wide as tall, with room for a usable map beside the side column. */
+function isWide(size: { width: number; height: number }, gap: number): boolean {
+  return (
+    size.width >= size.height && size.width - SIDE_COLUMN_WIDTH - gap >= MIN_SIDE_BY_SIDE_MAP_WIDTH
+  );
+}
 
 /** Spec §4.8: the map is one image with one sentence. */
 function describeMap(
@@ -91,7 +97,8 @@ function describeMap(
     parts.push(`position ${spokenPosition(model.position.lat, model.position.lon)}`);
   }
   if (direction.degrees !== null) {
-    parts.push(`${direction.source} ${headingText(direction.degrees)}`);
+    // The readout below shows the magnetic track; the map turns by the true one, so say so.
+    parts.push(`true ${direction.source} ${headingText(direction.degrees)}`);
   }
   if (!live) {
     parts.push('last known position');
@@ -106,12 +113,12 @@ function MapContent({ model, noFlight }: { model: MapModel; noFlight: boolean })
   const [preference, setPreference] = useMapPreference();
   const window = useWindowDimensions();
 
-  // 0. The arrangement: a frame at least as wide as it is tall puts the map left and a scrolling
-  // side column right; otherwise the controls stack above the map. Until the first layout pass,
-  // the window decides.
+  // 0. The arrangement: a frame at least as wide as it is tall, with room for a 240 dp map beside
+  // the column, puts the map left and a scrolling side column right; otherwise the controls stack
+  // above the map. Until the first layout pass, the window decides.
   const [frame, setFrame] = useState<{ width: number; height: number } | null>(null);
-  const wide = frame !== null ? frame.width >= frame.height : window.width >= window.height;
   const gap = theme.touch.spacing;
+  const wide = isWide(frame ?? window, gap);
 
   // 1. The map area. Until the first layout pass, assume the frame's padding (and the side
   // column, when wide) and half the window's height; tests never run a layout pass.
@@ -180,10 +187,13 @@ function MapContent({ model, noFlight }: { model: MapModel; noFlight: boolean })
     if (anchor === null) {
       return null;
     }
-    const keys = cellsAround(anchor.at, anchor.visibleRadiusNm + anchor.rangeNm / 4);
+    // The view's reach plus the quarter range the centre may drift before the anchor moves.
+    const reachNm = anchor.visibleRadiusNm + anchor.rangeNm / 4;
+    const keys = cellsAround(anchor.at, reachNm);
     const data = bundledMapData();
     const cells = keys.map((key) => data.cell(key));
-    return buildLayers(cells, keys, anchor.at, densityFor(anchor.rangeIndex), anchor.pxPerNm);
+    const density = densityFor(anchor.rangeIndex);
+    return buildLayers(cells, keys, anchor.at, density, anchor.pxPerNm, reachNm);
   }, [anchor]);
 
   // 7. The map, or what stands in for it.
@@ -198,7 +208,7 @@ function MapContent({ model, noFlight }: { model: MapModel; noFlight: boolean })
         accessibilityLabel={describeMap(
           preference.orientation,
           preference.range,
-          UNIT_WORD[units.distance],
+          SPOKEN_UNIT[units.distance],
           model,
           direction,
           link.valuesCurrent,
@@ -241,7 +251,7 @@ function MapContent({ model, noFlight }: { model: MapModel; noFlight: boolean })
   );
   const below = (
     <>
-      {drawn && direction.source === 'none' ? (
+      {drawn && direction.source === 'none' && model.directionMissing ? (
         <BodyText muted>{TRACK_NOT_AVAILABLE}</BodyText>
       ) : null}
       <MapReadout />

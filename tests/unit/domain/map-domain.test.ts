@@ -12,8 +12,10 @@ import { chooseDirection } from '@/domain/map/direction';
 import {
   formatGpsAltitude,
   formatPosition,
+  SPOKEN_UNIT,
   rangeLabel,
   spokenPosition,
+  spokenRange,
 } from '@/domain/map/map-format';
 import { type MapReader, mapModel } from '@/domain/map/map-model';
 import { MAP_CREDIT, mapUnavailable } from '@/domain/map/messages';
@@ -67,6 +69,22 @@ describe('projection', () => {
     const back = unproject(sea, project(sea, point));
     expect(back.lat).toBeCloseTo(point.lat, 9);
     expect(back.lon).toBeCloseTo(point.lon, 9);
+  });
+
+  it('round-trips at high latitude', () => {
+    const north = { lat: 80, lon: 15 };
+    const point = { lat: 80.4, lon: 17.3 };
+    const back = unproject(north, project(north, point));
+    expect(back.lat).toBeCloseTo(point.lat, 9);
+    expect(back.lon).toBeCloseTo(point.lon, 9);
+  });
+
+  it('shrinks a degree of longitude with the cosine of the latitude', () => {
+    const north = { lat: 80, lon: 15 };
+    const east = project(north, { lat: 80, lon: 16 });
+    expect(east.x).toBeCloseTo(60 * Math.cos((80 * Math.PI) / 180), 6);
+    expect(east.x).toBeCloseTo(10.42, 2);
+    expect(east.y).toBeCloseTo(0, 9);
   });
 
   it('measures great-circle distance', () => {
@@ -158,6 +176,13 @@ describe('formatting', () => {
     expect(rangeLabel(10, 'nm')).toBe('10 nm');
     expect(rangeLabel(5, 'km')).toBe('5 km');
   });
+
+  it('speaks a range in whole words, never an abbreviation a screen reader could misread', () => {
+    expect(SPOKEN_UNIT).toEqual({ nm: 'nautical mile', km: 'kilometre' });
+    expect(spokenRange(10, 'nm')).toBe('10 nautical miles');
+    expect(spokenRange(2, 'km')).toBe('2 kilometres');
+    expect(spokenRange(1, 'nm')).toBe('1 nautical mile');
+  });
 });
 
 function reader(
@@ -192,6 +217,7 @@ describe('mapModel', () => {
       trueTrack: 181,
       groundSpeedKt: 140,
       magneticTrack: 165,
+      directionMissing: false,
     });
   });
 
@@ -213,6 +239,24 @@ describe('mapModel', () => {
     expect(model.trueTrack).toBeNull();
     expect(model.elevationM).toBeNull();
     expect(model.trueHeading).toBe(180);
+  });
+
+  it('knows the direction is missing only when track and heading are both missing', () => {
+    const both = { [M.trueTrack]: 'missing', [M.trueHeading]: 'missing' } as const;
+    expect(mapModel(reader(full, both)).directionMissing).toBe(true);
+    expect(mapModel(reader(full, { [M.trueTrack]: 'missing' })).directionMissing).toBe(false);
+    const pending = Object.fromEntries(
+      Object.entries(full).filter(([name]) => name !== M.trueTrack && name !== M.trueHeading),
+    );
+    const waiting = mapModel(reader(pending));
+    expect(waiting.trueTrack).toBeNull();
+    expect(waiting.trueHeading).toBeNull();
+    expect(waiting.directionMissing).toBe(false);
+    const unchecked = { [M.trueTrack]: 'unchecked', [M.trueHeading]: 'unchecked' } as const;
+    expect(mapModel(reader(full, unchecked)).directionMissing).toBe(false);
+    expect(mapModel(reader(full, { ...both, [M.trueHeading]: 'unchecked' })).directionMissing).toBe(
+      false,
+    );
   });
 });
 

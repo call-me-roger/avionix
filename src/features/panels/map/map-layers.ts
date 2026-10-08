@@ -1,6 +1,6 @@
 import type { Density } from '@/domain/map/density';
-import type { LatLon, MapCell } from '@/domain/map/map-data';
-import { type PlanePoint, project } from '@/domain/map/projection';
+import { type LatLon, type MapCell, wrapLongitude } from '@/domain/map/map-data';
+import { type PlanePoint, project, projectOffset } from '@/domain/map/projection';
 
 const FEET_PER_NM = 6076.12;
 /** A runway is never thinner than this on screen (spec §4.2). */
@@ -34,11 +34,21 @@ function n(value: number): string {
   return String(Math.round(value * 1000) / 1000);
 }
 
+/**
+ * Each ring stays continuous: a point's longitude offset follows on from the previous point's, so
+ * a ring straddling anchor.lon ± 180° (every column is drawn near a pole) never jumps across the
+ * map. The data is already split at ±180°, so only that far seam needs it.
+ */
 function path(rings: readonly LatLon[][], anchor: LatLon, close: boolean): string {
   let d = '';
   for (const ring of rings) {
+    let dLon = 0;
     ring.forEach((point, i) => {
-      const p = project(anchor, point);
+      dLon =
+        i === 0
+          ? wrapLongitude(point.lon - anchor.lon)
+          : dLon + wrapLongitude(point.lon - ring[i - 1]!.lon);
+      const p = projectOffset(anchor, point.lat, dLon);
       d += `${i === 0 ? 'M' : 'L'}${n(p.x)} ${n(p.y)}`;
     });
     if (close && ring.length > 0) {
@@ -48,13 +58,27 @@ function path(rings: readonly LatLon[][], anchor: LatLon, close: boolean): strin
   return d;
 }
 
-/** Cells → path strings in anchor-plane NM, built only when the anchor or density changes. */
+/** How near the segment from `a` to `b` comes to the anchor (the plane's origin), in NM. */
+function nearestNm(a: PlanePoint, b: PlanePoint): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length2 = dx * dx + dy * dy;
+  const t = length2 === 0 ? 0 : Math.max(0, Math.min(1, -(a.x * dx + a.y * dy) / length2));
+  return Math.hypot(a.x + t * dx, a.y + t * dy);
+}
+
+/**
+ * Cells → path strings in anchor-plane NM, built only when the anchor or density changes. Runways
+ * and identifiers farther than `reachNm` from the anchor are left out: the reach cells hold far
+ * more of them than the view can show.
+ */
 export function buildLayers(
   cells: readonly MapCell[],
   cellKeys: readonly string[],
   anchor: LatLon,
   density: Density,
   pxPerNm: number,
+  reachNm: number,
 ): MapLayers {
   const runways: RunwayLine[] = [];
   const labels: AirportLabel[] = [];
@@ -65,22 +89,24 @@ export function buildLayers(
       if (airport === undefined || airport.longestFt < density.minAirportFt) {
         return;
       }
+      const from = project(anchor, runway.ends[0]);
+      const to = project(anchor, runway.ends[1]);
+      if (nearestNm(from, to) > reachNm) {
+        return;
+      }
       runways.push({
         key: `${cellKeys[c]}/${r}`,
-        from: project(anchor, runway.ends[0]),
-        to: project(anchor, runway.ends[1]),
+        from,
+        to,
         width: Math.max(minWidth, runway.widthFt / FEET_PER_NM),
       });
     });
     if (density.minLabelFt !== null) {
       const minLabelFt = density.minLabelFt;
       cell.airports.forEach((airport, a) => {
-        if (airport.longestFt >= minLabelFt) {
-          labels.push({
-            key: `${cellKeys[c]}/${a}`,
-            ident: airport.ident,
-            at: project(anchor, airport.position),
-          });
+        const at = project(anchor, airport.position);
+        if (airport.longestFt >= minLabelFt && Math.hypot(at.x, at.y) <= reachNm) {
+          labels.push({ key: `${cellKeys[c]}/${a}`, ident: airport.ident, at });
         }
       });
     }

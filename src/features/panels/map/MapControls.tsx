@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { MAP_RANGES, type MapOrientation, type MapRange } from '@/domain/map/catalogue';
-import { rangeLabel } from '@/domain/map/map-format';
+import { rangeLabel, spokenRange } from '@/domain/map/map-format';
 import type { DistanceUnit } from '@/domain/units/units';
 import { ActionButton } from '@/theme/ActionButton';
 import { type RadioChipOption, RadioChips } from '@/theme/RadioChips';
@@ -34,6 +34,7 @@ const makeStyles = (theme: Theme) => ({
     justifyContent: 'center' as const,
   },
   stepDisabled: { opacity: 0.45 },
+  hidden: { opacity: 0 },
   stepText: {
     color: theme.colors.text,
     fontSize: theme.typography.titleSize,
@@ -78,6 +79,7 @@ export function MapControls({
     }
   };
   const label = rangeLabel(range, unit);
+  const spoken = spokenRange(range, unit);
   return (
     <View testID="map-controls" style={styles.row}>
       <View style={styles.chips}>
@@ -92,7 +94,7 @@ export function MapControls({
         <Pressable
           testID="map-range-down"
           accessibilityRole="button"
-          accessibilityLabel={`Zoom in, range ${label}`}
+          accessibilityLabel={`Zoom in, range ${spoken}`}
           accessibilityState={{ disabled: atMin }}
           disabled={atMin}
           onPress={() => step(-1)}
@@ -104,7 +106,7 @@ export function MapControls({
         <Pressable
           testID="map-range-up"
           accessibilityRole="button"
-          accessibilityLabel={`Zoom out, range ${label}`}
+          accessibilityLabel={`Zoom out, range ${spoken}`}
           accessibilityState={{ disabled: atMax }}
           disabled={atMax}
           onPress={() => step(1)}
@@ -113,9 +115,23 @@ export function MapControls({
           <Text style={styles.stepText}>+</Text>
         </Pressable>
       </View>
-      {panned ? (
-        <ActionButton testID="map-centre" title="Centre" variant="secondary" onPress={onCentre} />
-      ) : null}
+      {/* The slot is always laid out, so the button appearing mid-drag never wraps the row onto
+          a new line and shrinks the map under the finger; unpanned it is invisible and inert. */}
+      <View
+        testID="map-centre-slot"
+        style={panned ? null : styles.hidden}
+        pointerEvents={panned ? 'auto' : 'none'}
+        accessibilityElementsHidden={!panned}
+        importantForAccessibility={panned ? 'auto' : 'no-hide-descendants'}
+      >
+        <ActionButton
+          testID={panned ? 'map-centre' : undefined}
+          title="Centre"
+          variant="secondary"
+          disabled={!panned}
+          onPress={onCentre}
+        />
+      </View>
     </View>
   );
 }
