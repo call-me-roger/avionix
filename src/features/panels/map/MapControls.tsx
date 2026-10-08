@@ -123,6 +123,8 @@ export function MapControls({
         pointerEvents={panned ? 'auto' : 'none'}
         accessibilityElementsHidden={!panned}
         importantForAccessibility={panned ? 'auto' : 'no-hide-descendants'}
+        // react-native-web maps only aria-hidden; the two props above are native-only.
+        aria-hidden={!panned}
       >
         <ActionButton
           testID={panned ? 'map-centre' : undefined}
