@@ -395,6 +395,14 @@ build) and costs nothing until the Map panel is opened; `src/domain/map/map-data
 caches one cell at a time, and `cellsAround` finds every cell a given radius touches, wrapping
 across the antimeridian.
 
+The Map panel sits in the switcher after Navigation. `MapPanel` measures its own frame and chooses
+one of two layouts: a frame at least as wide as it is tall puts the map on the left at full height,
+with a 280 dp scrolling side column on the right holding the orientation chips and range stepper,
+the "Track not available" sentence, the readout and the credit line; a taller-than-wide frame stacks
+controls, map, readout and credit instead. Either way the pan responder (`useMapPan`'s handlers)
+lives only on the map view itself, never on the side column or the stacked controls, so a drag to
+pan the map never fights the side column's own scrolling.
+
 Drawing uses a local equirectangular projection around an **anchor** point, in nautical miles
 (`src/domain/map/projection.ts`). `MapPanel` rebuilds the layers — the clipped outlines and the
 runways for the current range's density (`density.ts`) — only when the anchor moves, which spec
@@ -402,7 +410,9 @@ runways for the current range's density (`density.ts`) — only when the anchor 
 view that now reaches farther than the cells built for it (turning to track-up can do this). Every
 other telemetry tick leaves the layers alone and only changes one SVG group transform
 (`groupTransform` in `view.ts`): translate to the screen anchor, rotate, scale, then translate by
-the centre's offset from the anchor. A tick never walks or rebuilds a path.
+the centre's offset from the anchor. A tick never walks or rebuilds a path. Airport identifiers are
+capped at `MAX_LABELS` (60, `map-layers.ts`), nearest the anchor first, so a dense area at a wide
+range never draws more text than it can keep legible.
 
 The map reads its five DataRefs through the same three-answer shape as the other panels
 (`MapReader`: resolved, definitively missing, or not checked yet). Only latitude or longitude
@@ -419,6 +429,11 @@ moves the centre to a geographic point and shows a Centre button; 30 s without a
 a press of Centre, hands the centre back to the ownship. Orientation, range and pan are all local
 controls — `MapControls` never writes a DataRef or activates a command — so they keep working even
 while the link is down and the symbol is drawn hollow at its last known position (§4.6).
+
+The night theme's map colours keep every value at a relative luminance of 0.30 or less, but land and
+water are kept apart by a contrast ratio of at least 1.1 so the coastline reads without a stroke, and
+the stale "LAST KNOWN" tag keeps 4.5:1 against both land and water. `tests/unit/theme/tokens.test.ts`
+pins all three so a future palette change cannot quietly make the night map unreadable.
 
 ## Autopilot
 

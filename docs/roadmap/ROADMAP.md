@@ -104,7 +104,7 @@ then F-05 last so the demo covers every panel. Rationale in
 
 | ID | Feature | Why now | File |
 |---|---|---|---|
-| F-13 | Moving map with ownship | The EFB category's core; needs internet tiles but no navdata | [spec](../superpowers/specs/2026-10-07-moving-map-design.md) |
+| F-13 | Moving map with ownship | The EFB category's core; ships its own offline outline map and runways, so it needs neither internet nor navdata | [spec](../superpowers/specs/2026-10-07-moving-map-design.md) |
 | F-31 | Flight plan progress view | Read-only progress from the default FMS | [F-31](features/F-31-flight-plan-progress.md) |
 | F-40 | TCAS traffic display | Surveillance scope; TCAS datarefs are documented | [F-40](features/F-40-tcas-traffic.md) |
 | F-06 | Custom controls and profiles | Power-user demand seen in Touch Portal, Stream Deck and Air Manager | [F-06](features/F-06-custom-controls.md) |

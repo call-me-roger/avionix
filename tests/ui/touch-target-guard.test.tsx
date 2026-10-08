@@ -539,12 +539,10 @@ describe('touch targets on the Map panel with map telemetry', () => {
     await screen.findByTestId('panel-map');
     expect(screen.getByTestId('map-range-up')).toBeTruthy();
     expect(screen.getByRole('radio', { name: 'Track up' })).toBeTruthy();
-    const touch = screen.queryByTestId('map-touch');
-    if (touch !== null) {
-      await fireEvent(touch, 'responderGrant', { nativeEvent: { pageX: 100, pageY: 100 } });
-      await fireEvent(touch, 'responderMove', { nativeEvent: { pageX: 140, pageY: 100 } });
-      await fireEvent(touch, 'responderRelease', { nativeEvent: { pageX: 140, pageY: 100 } });
-    }
+    const touch = screen.getByTestId('map-touch');
+    await fireEvent(touch, 'responderGrant', { nativeEvent: { pageX: 100, pageY: 100 } });
+    await fireEvent(touch, 'responderMove', { nativeEvent: { pageX: 140, pageY: 100 } });
+    await fireEvent(touch, 'responderRelease', { nativeEvent: { pageX: 140, pageY: 100 } });
     expect(screen.queryByTestId('map-centre')).not.toBeNull();
     const targets = panelTargets();
     expect(targets.length).toBeGreaterThan(0);
