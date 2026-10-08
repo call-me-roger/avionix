@@ -6,7 +6,10 @@ module.exports = defineConfig([
   expoConfig,
   eslintPluginPrettierRecommended,
   {
-    ignores: ['dist/*', 'node_modules/*', '.expo/*', 'coverage/*'],
+    // scripts/*.mjs run under plain Node (Buffer, process, top-level await); the expo config's
+    // globals are for the app and test code, not build scripts, so lint them separately or not
+    // at all rather than papering over it with eslint-disable comments.
+    ignores: ['dist/*', 'node_modules/*', '.expo/*', 'coverage/*', 'scripts/*.mjs'],
   },
   {
     rules: {
