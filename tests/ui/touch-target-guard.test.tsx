@@ -18,6 +18,7 @@ import { ThemeProvider } from '@/theme/theme-context';
 
 import { AUDIO_VALUES, audioCompatibility, audioTelemetry } from '../helpers/audio';
 import { toyScreenTelemetry } from '../helpers/cdu';
+import { MAP_VALUES, mapCompatibility, mapTelemetry } from '../helpers/map';
 import { SYSTEMS_VALUES, systemsCompatibility, systemsTelemetry } from '../helpers/systems';
 import {
   C172_VALUES,
@@ -499,6 +500,52 @@ describe('touch targets on the Radios panel with audio telemetry', () => {
     await render(tree(services));
     await screen.findByTestId('panel-radios');
     expect(screen.getByLabelText('Listen to COM2, off')).toBeTruthy();
+    const targets = panelTargets();
+    expect(targets.length).toBeGreaterThan(0);
+    for (const target of targets) {
+      const style = StyleSheet.flatten(target.props.style) ?? {};
+      const label = String(target.props.accessibilityLabel ?? target.props.testID ?? 'unlabelled');
+      expect({ label, minHeight: Number(style.minHeight ?? style.height ?? 0) >= 48 }).toEqual({
+        label,
+        minHeight: true,
+      });
+      expect({ label, minWidth: Number(style.minWidth ?? style.width ?? 0) >= 48 }).toEqual({
+        label,
+        minWidth: true,
+      });
+    }
+  });
+});
+
+/**
+ * The sweep above renders Map with no position telemetry, so `mapModel` reports "unchecked" and
+ * the panel draws nothing at all. This case gives it MAP_VALUES and compatibility through the
+ * real deriver, so the orientation chips and the range stepper are drawn and measured; a drag also
+ * brings up the Centre button.
+ */
+describe('touch targets on the Map panel with map telemetry', () => {
+  it('every control, the orientation chips and range stepper included, is at least 48 dp', async () => {
+    mockLayout = { deviceClass: 'phone', orientation: 'portrait' };
+    const live = liveSnapshot();
+    const { services } = makeServices(
+      {
+        ...live,
+        compatibility: mapCompatibility(live.compatibility),
+        telemetry: mapTelemetry(MAP_VALUES, NOW),
+      },
+      await seeded('map'),
+    );
+    await render(tree(services));
+    await screen.findByTestId('panel-map');
+    expect(screen.getByTestId('map-range-up')).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'Track up' })).toBeTruthy();
+    const touch = screen.queryByTestId('map-touch');
+    if (touch !== null) {
+      await fireEvent(touch, 'responderGrant', { nativeEvent: { pageX: 100, pageY: 100 } });
+      await fireEvent(touch, 'responderMove', { nativeEvent: { pageX: 140, pageY: 100 } });
+      await fireEvent(touch, 'responderRelease', { nativeEvent: { pageX: 140, pageY: 100 } });
+    }
+    expect(screen.queryByTestId('map-centre')).not.toBeNull();
     const targets = panelTargets();
     expect(targets.length).toBeGreaterThan(0);
     for (const target of targets) {

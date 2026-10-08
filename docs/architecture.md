@@ -383,6 +383,43 @@ is live. `bindingMissing` (`src/features/panels/systems/availability.ts`) is the
 Systems and Audio call for that three-answer rule, so a unit with nothing drawn and nothing
 definitively missing stays silent instead of printing a sentence too early.
 
+## Moving map
+
+The base map (F-13) is a committed snapshot, not a download: `scripts/build-map-data.mjs` cuts
+Natural Earth's 1:50m land, lakes and border lines and every OurAirports runway into 5° cells,
+quantises each coordinate (0.001° for outlines, 0.00001° — about 1 m — for runways) and writes two
+JSON files under `assets/map/`, each stamped with its source.
+`src/infrastructure/map/bundled-map-data.ts` loads them with a lazy `require`, not an `import`, so
+the data stays outside the TypeScript program (a multi-megabyte literal type would slow every
+build) and costs nothing until the Map panel is opened; `src/domain/map/map-data.ts` decodes and
+caches one cell at a time, and `cellsAround` finds every cell a given radius touches, wrapping
+across the antimeridian.
+
+Drawing uses a local equirectangular projection around an **anchor** point, in nautical miles
+(`src/domain/map/projection.ts`). `MapPanel` rebuilds the layers — the clipped outlines and the
+runways for the current range's density (`density.ts`) — only when the anchor moves, which spec
+§4.3 limits to a quarter-range drift of the map's centre, a change of range, unit or density, or a
+view that now reaches farther than the cells built for it (turning to track-up can do this). Every
+other telemetry tick leaves the layers alone and only changes one SVG group transform
+(`groupTransform` in `view.ts`): translate to the screen anchor, rotate, scale, then translate by
+the centre's offset from the anchor. A tick never walks or rebuilds a path.
+
+The map reads its five DataRefs through the same three-answer shape as the other panels
+(`MapReader`: resolved, definitively missing, or not checked yet). Only latitude or longitude
+missing makes the feature unavailable, by `mapModel` in `src/domain/map/map-model.ts`; GPS
+altitude, true heading and true track each fall back independently when unchecked or missing, and
+ground speed and magnetic track are reused from Flight data's own bindings (F-11), never probed
+twice. `chooseDirection` (`src/domain/map/direction.ts`) picks the symbol's turn: true track above
+5 kt, true heading below 3 kt, with the last choice remembered so the symbol does not flicker
+between the two right at the threshold (ruling 3).
+
+Auto-centring and pan (`useMapPan`) are evaluated during render on the panel's own 1 s clock, the
+same pattern `useReadBack` uses for the radios' read-back sentence: no timer of its own. A drag
+moves the centre to a geographic point and shows a Centre button; 30 s without a further touch, or
+a press of Centre, hands the centre back to the ownship. Orientation, range and pan are all local
+controls — `MapControls` never writes a DataRef or activates a command — so they keep working even
+while the link is down and the symbol is drawn hollow at its last known position (§4.6).
+
 ## Autopilot
 
 `src/features/panels/autopilot/` is the Autopilot panel (F-20): `AutopilotPanel` lays out

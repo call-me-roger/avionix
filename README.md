@@ -23,7 +23,8 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
   each change checked against what X-Plane reports), Navigation (a Garmin-style HSI standing on the
   heading alone, with course, lateral and glideslope deviation in dots, TO/FROM, bearing pointers,
   DME and marker beacons; a NAV control unit to pick the source, set the course by keypad or
-  stepper, and centre it with CTR, all in NAV green or GPS magenta, never colour alone), Systems
+  stepper, and centre it with CTR, all in NAV green or GPS magenta, never colour alone), Map
+  (below), Systems
   (battery, avionics master and generators; the fuel selector and pumps; magnetos and starter;
   exterior and interior lights; flaps, trim, landing gear and parking brake; pitot heat and the
   anti-ice switches — every control reads X-Plane's own state and sends explicit on/off commands,
@@ -46,6 +47,8 @@ over WebSocket, write a DataRef and activate a command, and recover from connect
   Every key press gives a haptic tick, and a refused change gives an error buzz, through a Setup →
   Display "Haptic feedback" toggle; haptics need a new development build (the only new native
   module this adds), and the app runs silently without one.
+- **Moving map**: the aircraft on a built-in outline map with runways and airport identifiers,
+  north-up or track-up, range rings, works without internet.
 - A **flight-mode annunciator (FMA)** on the Autopilot panel and across the top of the PFD: four
   columns (autothrottle, lateral, AP/FD, vertical) in the G1000's own layout, a box around a mode
   for 10 s after it engages, and an amber, flashing "AP" for 5 s when the autopilot disconnects

@@ -562,3 +562,24 @@ ADF2/NAV3/NAV4/DME1/DME2, the copilot set, and the `audio_volume_*` floats (volu
 scope).
 
 Total: 9 new DataRefs, 16 new commands, probed at connect like every other binding.
+
+## Moving map (F-13)
+
+Verified against the 12.4.3 DataRef database. `latitude` and `longitude` are required; the rest are
+optional, each falling back independently (spec §4.7). Nothing is written and no command is
+activated.
+
+| Purpose | Name | Type, units |
+|---|---|---|
+| Latitude | `sim/flightmodel/position/latitude` | double, degrees |
+| Longitude | `sim/flightmodel/position/longitude` | double, degrees |
+| GPS altitude | `sim/flightmodel/position/elevation` | double, metres MSL |
+| True heading | `sim/flightmodel/position/true_psi` | float, degrees true |
+| True track | `sim/flightmodel/position/hpath` | float, degrees true |
+| Magnetic track (readout) | `sim/cockpit2/gauges/indicators/ground_track_mag_pilot` | float, degrees magnetic (already read by Flight data, F-11) |
+| Ground speed | `sim/cockpit2/gauges/indicators/ground_speed_kt` | float, knots (already read by Flight data, F-11) |
+
+`hpath` is the true track: Laminar documents it as "the heading the aircraft actually flies", and
+`hpath + beta = psi` (true heading) for a nonzero sideslip. `magnetic_variation` is not read: the
+map draws in true north throughout, so there is no magnetic value to convert and no sign convention
+to get wrong.

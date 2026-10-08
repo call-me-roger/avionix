@@ -89,7 +89,7 @@ aircraft-agnostic.
 
 | ID | Feature | Why now | File |
 |---|---|---|---|
-| F-05 | Demo mode | Avoids "worthless without a simulator" reviews; lets stores and friends try the app | [F-05](features/F-05-demo-mode.md) |
+| F-05 | Demo mode | Deferred (2026-10-07, user decision) | [F-05](features/F-05-demo-mode.md) |
 | F-12 | Engine and systems monitoring | Standard in panel builders; second screen for engine gauges is a common use | [spec](../superpowers/specs/2026-10-07-engine-monitoring-design.md) |
 | F-23 | Audio panel | Completes the radio stack | [spec](../superpowers/specs/2026-10-07-audio-panel-design.md) |
 | F-24 | Aircraft systems controls | Lights, gear, flaps, trim: the button-box use case of Touch Portal and Stream Deck | [spec](../superpowers/specs/2026-10-06-systems-controls-design.md) |
@@ -104,11 +104,14 @@ then F-05 last so the demo covers every panel. Rationale in
 
 | ID | Feature | Why now | File |
 |---|---|---|---|
-| F-13 | Moving map with ownship | The EFB category's core; needs internet tiles but no navdata | [F-13](features/F-13-moving-map.md) |
+| F-13 | Moving map with ownship | The EFB category's core; needs internet tiles but no navdata | [spec](../superpowers/specs/2026-10-07-moving-map-design.md) |
 | F-31 | Flight plan progress view | Read-only progress from the default FMS | [F-31](features/F-31-flight-plan-progress.md) |
 | F-40 | TCAS traffic display | Surveillance scope; TCAS datarefs are documented | [F-40](features/F-40-tcas-traffic.md) |
 | F-06 | Custom controls and profiles | Power-user demand seen in Touch Portal, Stream Deck and Air Manager | [F-06](features/F-06-custom-controls.md) |
 | F-25 | Simulator control and instructor station | Failure injection and environment control are loved by instructors | [F-25](features/F-25-sim-control-instructor.md) |
+
+Build order (decided 2026-10-07): F-13, F-40, F-31, F-25, F-06. F-05 demo mode is deferred until
+after Stage 3.
 
 ### Stage 4 — Boeing 737 and flight records
 
